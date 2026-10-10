@@ -56,6 +56,7 @@
 - [run.md](../docs/mechanism/run.md) — 长期运行、issue 三重角色、统一执行记录、可视化
 - [eval-arena.md](../docs/mechanism/eval-arena.md) — 元层 eval 台（train/val 门控）与影响账本
 - [ixn-replay.md](../docs/mechanism/ixn-replay.md) — 交互面评测（追问 / 信息充分性 / 过早结论）
+- [status.md](../docs/mechanism/status.md) — 机制状态总表、未建与空转、代码与文件入口对照、相邻文档分工（全库唯一一份）
 
 **操作指南（用到那个环节时才读）**
 *你要搭新部署、装环境（Windows skills 使能）、跑评测、看指标、走 git 门控、或做导入时*

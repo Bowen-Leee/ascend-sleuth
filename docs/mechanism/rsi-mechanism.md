@@ -6,9 +6,9 @@
 
 范围：本文覆盖机制怎么运转、哪一步需要人、数据落在哪、验证怎么闭环、现状与缺口。不含单个流程内部的执行规则（`skills/<name>/SKILL.md`）、演进流水线的状态机与卡 schema（[pipeline.md](pipeline.md)）、评测池与交互面评测的口径（[eval-arena.md](eval-arena.md)、[ixn-replay.md](ixn-replay.md)）。
 
-读者与前置：先读 [demo-walkthrough.md](../demo-walkthrough.md)，它能说清系统整体在做什么。正文不用内部简称；改脚本、查数据文件之前，先用第 11 节的[代码与文档入口](#11-代码与文档入口)把正文用词换成代码与文件里的名字。本文不写会过期的数字，需要时现算：知识库条数用 `python3 scripts/index_counts.py`，改进项状态用 `python3 scripts/ev_measure.py --audit`，指标读 `metrics/timeline.yaml`，判据阈值读 `proposals/gates.yaml` 与 `metrics/gates.yaml`。
+读者与前置：先读 [demo-walkthrough.md](../demo-walkthrough.md)，它能说清系统整体在做什么。正文不用内部简称；改脚本、查数据文件之前，先用第 10 节的[代码与文档入口](#10-代码与文档入口)把正文用词换成代码与文件里的名字。本文不写会过期的数字，需要时现算：知识库条数用 `python3 scripts/index_counts.py`，改进项状态用 `python3 scripts/ev_measure.py --audit`，指标读 `metrics/timeline.yaml`，判据阈值读 `proposals/gates.yaml` 与 `metrics/gates.yaml`。
 
-何时不必读：只想知道系统整体在做什么的人读 [demo-walkthrough.md](../demo-walkthrough.md) 即可；按现有流程跑日常诊断与沉淀的人不必读本文。要改机制本身，先看第 13 节的权威归属表，它说明每件事由哪篇文档说了算。
+何时不必读：只想知道系统整体在做什么的人读 [demo-walkthrough.md](../demo-walkthrough.md) 即可；按现有流程跑日常诊断与沉淀的人不必读本文。要改机制本身，先看第 12 节的权威归属表，它说明每件事由哪篇文档说了算。
 
 ---
 
@@ -140,7 +140,7 @@ flowchart TD
 
 这张图里值得注意的地方：自动化步骤（蓝）都要过一个判断点（黄）才落终态（灰），判断本身不交给执行方；人只出现在三个位置，给收尾检查下目标或要求体检、改输出形态时做新旧对照、审查合并；触发点与终态同为灰框，回写合入记录后回到收尾检查，所以判据读数反映的是已合入的实现。
 
-三种终局是采纳、换方向与不采纳，它们的比例本身就是一条读数。如果采纳与换方向都有、不采纳一次都没有出现过，那么采纳记录不能单独用作质量结论：它说明系统缺少拒绝的路径。外部研究对这一点有直接结论，见第 13 节的 PACE 一行。
+三种终局是采纳、换方向与不采纳，它们的比例本身就是一条读数。如果采纳与换方向都有、不采纳一次都没有出现过，那么采纳记录不能单独用作质量结论：它说明系统缺少拒绝的路径。外部研究对这一点有直接结论，见第 12 节的 PACE 一行。
 
 ### 4.2 每一步的判据与落点
 
@@ -199,7 +199,7 @@ flowchart TD
 | 前后无回归 | 改前改后对照 | 改坏了原来能命中的场景 | 机械 |
 | 对照标准不可自改 | 冻结的对照样本按内容哈希固定 | 同一方既改被测对象又改对照标准 | 机械判定；重新冻结仍需人，见第 6 节 |
 
-检查必须能报错才算检查。从来没红过的检查与没有检查在观测上无法区分。硬性检查因此都配了负例断言：故意改坏被检查的对象，看检查是否报错。这些断言由 `scripts/rehearse_evolve_loop.py` 逐条执行。这条准入标准来自外部研究，见第 13 节的 Falsifiable Release Gates 一行。
+检查必须能报错才算检查。从来没红过的检查与没有检查在观测上无法区分。硬性检查因此都配了负例断言：故意改坏被检查的对象，看检查是否报错。这些断言由 `scripts/rehearse_evolve_loop.py` 逐条执行。这条准入标准来自外部研究，见第 12 节的 Falsifiable Release Gates 一行。
 
 已知例外是体检器的判据：它们还没有负例断言，现在通过，但没有证据表明它们能报错。这是第 8 节第 2 项。
 
@@ -245,7 +245,7 @@ flowchart TD
 | 情形 | 机制的行为 | 细则 |
 |---|---|---|
 | 收尾检查跑了但没有信号 | 留一行记录，与根本没跑可区分 | 第 4.2 节 |
-| 改进项积压量超上限 | 只记信号，不立新项，停产 | 第 4.1 节、第 13 节 Safe Harness Self-Evolution 一行 |
+| 改进项积压量超上限 | 只记信号，不立新项，停产 | 第 4.1 节、第 12 节 Safe Harness Self-Evolution 一行 |
 | 预期不成立 | 记不采纳，保留结论 | 第 4.1 节 |
 | 验证过程中出现更好的方向 | 记换方向，新项替代本项 | 第 4.1 节 |
 | 人审打回 | 记不采纳 | 第 4.1 节 |
@@ -278,120 +278,26 @@ flowchart TD
 
 ---
 
-## 9 现状：已落地、蓝图与已否决
-
-三块状态各自成表，取值只有已落地、蓝图、已否决。已落地的每一条都附一条可执行的确认方式；给不出确认方式的不写进这一块。
-
-| 已落地的机制 | 落地形态 | 确认方式 |
-|---|---|---|
-| 内容流程收尾的伴随演进 | `evolve-check` 协议已建 | `ls skills/evolve-check/SKILL.md` |
-| 全库体检轮 | `self-evolve` 协议已建 | `ls skills/self-evolve/SKILL.md` |
-| 每周批审 | `knowledge-groom` 协议已建 | `ls skills/knowledge-groom/SKILL.md` |
-| 改进项的过程档案与可复现预期 | 决策记录缺环或强制卡缺 measure，CI 报错 | `python3 scripts/verify_proposals.py --check` |
-| 判定三态与不冒充通过 | 符合、被证伪、无法判定；声明不可度量为合法退化 | `python3 scripts/ev_measure.py --audit` |
-| 观测账本进 CI | 回归样本跑过什么记进账本，账本没重建即红 | `python3 scripts/eval_scorecard.py --check` |
-| 冻结对照样本按内容哈希固定 | 改内容或删除即红，合法改需维护者重新冻结并打标签 | `python3 scripts/holdout.py --check` |
-| 硬性检查配负例断言 | 闭环演练逐条执行正例与负例 | `grep -n "负例" scripts/rehearse_evolve_loop.py` |
-| 体检器三态退出码 | `--check` 时 0 全评过无越界、1 有违反、2 有判据未评；不带 `--check` 恒为 0 | `grep -n "exit_code = 2 if" scripts/evolution_health.py` |
-| 判定池的吸收分流与运行期重判 | `--build-pool` 拆出回归池，`--gate` 按 `absorption_rev` 在判定时刻重算（卡 EV-2026-167） | `grep -n "absorption_rev" scripts/eval_arena.py` |
-| 选样的机械判据 | 流程与文档类前缀硬拒，弱信号默认不收（卡 EV-2026-173） | `grep -n "include-weak" scripts/s2_calibration.py` |
-| 积压量水位与超限停产 | 候选水位读数 | `python3 scripts/ev_proposal.py --waterline` |
-| 数字现算，不写进文档 | 条数与容量由脚本现算 | `python3 scripts/index_counts.py` |
-| 记账号的生存范围 | 机制文档不裸用记账号 | `python3 scripts/render_review_summary.py --scan docs/mechanism/rsi-mechanism.md` |
-
-| 蓝图机制 | 触发条件 | 此前的替代做法 |
-|---|---|---|
-| 现场反馈通道出数据 | 真实工程师跑完一次诊断、回报修复结果，捕获计数不再为 0（第 8 节第 1 条） | 命中率、误诊率、校准一律标成不可解读 |
-| 体检器判据的负例断言 | 给体检器的每一条判据配一个故意改坏的负例（第 8 节第 2 条） | 判据现在通过，但没有证据表明它们能报错 |
-| 外部验证的第一条独立记录 | 出现一条既不来自该知识的来源、也不被该知识正文引用的验证（第 8 节第 3 条） | 通道已建好、选样纪律已写，但没有记录 |
-| 对照样本池扩容 | 新增未吸收样本入场，逐条向量齐备（第 8 节第 4 条） | 判定池 9 条里 8 条重放完，可评样本少，点估计靠单条样本 |
-| 触发信号表覆盖真实信号族 | 维护者决定扩表覆盖真实信号族，或收窄行为、把表外信号归一（第 8 节第 5 条） | 多数改进项落不进设计表 |
-| 判据阈值的实测重校 | 有实测数据后重校越界线（第 8 节第 6 条） | 阈值都是估计值，标注接受实测重校 |
-| 未覆盖评测面的判据 | 为性能类数值断言、平台键控分支、修复正确性、严重性行为补判据（第 8 节第 7 条） | 冻结对照样本的覆盖报告只报出有知识却没有样本的格子 |
-| 判据越界的自动读取 | 把体检挂到已有的收尾动作上，让判据越界自己成为入口（第 2 节、第 6 节） | 要人跑一次体检才读得到 |
-
-| 已否决的做法 | 否决理由与代价 |
-|---|---|
-| 全库体检的自动发起 | 已关掉：系统不知道业务上现在该关心什么。要重新放开，先要有不依赖人的触发源（第 6 节） |
-| 由 agent 单独决定结构性改动 | 骨架、路由、新 skill 立项的影响面无法局部验证，设计上不走单独决定，走两人双签（第 6 节） |
-| 系统改自己的评分口径与指标定义 | 自己改评分标准，验证就不再是外部约束（第 4.2 节、第 6 节） |
-| 退休从没被选中的罕见条目 | 过早退休会删掉正确的罕见知识（第 4.3 节、第 13 节 Library Drift 一行） |
-
-三块之间不混排：一条机制只能待在一个表里。状态变化时改表，不另起一段叙述。
-
----
-
-## 10 明确不做（防过度设计）
+## 9 明确不做（防过度设计）
 
 - 不把系统做成无人全自动。自动化只产出建议与证据，采纳由人执行（第 4.3 节）。
 - 不为尚未出现的问题预建机制。改动由数据触发，不按日历排期（第 4.3 节；原则十一见 [design-principles.md](../spec/design-principles.md)）。
 - 不改诊断与沉淀两个环内部的执行规则。它们的规则在各自的 skill 正文里，本文只覆盖机制层（第 1 节）。
 - 不让 agent 单独决定结构性改动。骨架、路由、新 skill 立项走两人双签（第 6 节）。
 - 不让系统改自己的评分口径与指标定义，也不让被检查的一方重新冻结对照样本（第 4.2 节、第 6 节）。
-- 不把判断性规范硬化成 CI 检查。只有机械可查、后果确定、复发至少两次三条都满足才进 CI（第 13 节 Agent Skills Can Be Harmful 一行）。
-- 不用改进项数量当进度指标。积压量超上限即停产新项（第 13 节 Safe Harness Self-Evolution 一行）。
-- 不用向量检索替换词法召回（第 13 节 大 skill 库检索比较 一行；决策记在 `docs/adr/`）。
+- 不把判断性规范硬化成 CI 检查。只有机械可查、后果确定、复发至少两次三条都满足才进 CI（第 12 节 Agent Skills Can Be Harmful 一行）。
+- 不用改进项数量当进度指标。积压量超上限即停产新项（第 12 节 Safe Harness Self-Evolution 一行）。
+- 不用向量检索替换词法召回（第 12 节 大 skill 库检索比较 一行；决策记在 `docs/adr/`）。
 
 ---
 
-## 11 代码与文档入口
+## 10 代码与文档入口
 
-本节给正文用词与代码、文件里的名字的对照，以及一件事该读哪篇。
-
-### 11.1 正文用词与代码里的名字
-
-正文用白话；本表给出代码与文件里的实际名字。
-
-| 正文里说 | 代码与文件里的名字 |
-|---|---|
-| 改进项 | `proposals/ideas/` 下的卡 |
-| 收尾检查 | `evolve-check` |
-| 全库体检轮 | `self-evolve` |
-| 判据、体检器 | `proposals/gates.yaml`、`scripts/evolution_health.py`、`metrics/gates.yaml`、`scripts/metrics_health.py` |
-| 积压量 | 水位读数，`scripts/ev_proposal.py --waterline` |
-| 回写合入指针 | `scripts/ev_proposal.py --mark-merged` |
-| 回归样本 | golden fixture，`eval/golden/` |
-| 冻结的对照样本 | holdout，`eval/holdout.yaml` |
-| 对照样本集 | arena 池，`scripts/eval_arena.py --stats/--gate` |
-| 用历史问题重跑 | S2 issue-replay，`scripts/s2_replay.py` |
-| 预期可复现 | `predicted_effect.measure`，`scripts/ev_measure.py` |
-| 诊断记录 | trace，`traces/<session>.yaml` |
-| 执行记录 | `metrics/skill-exec-log.yaml`（运行时文件） |
-| 观测账本 | `eval/scorecard.yaml`，`scripts/eval_scorecard.py --check` |
-| 现场反馈回报 | 反馈通道 S1，`case.confidence` |
-| 内容与外部结论对照 | 反馈通道 S2，`case.validation_record` |
-| 每周批审 | `knowledge-groom` |
-| 影响面 | 触及面，`scripts/evolution_health.py` 输出里的 `by_surface` |
-| 闭环演练 | `scripts/rehearse_evolve_loop.py` |
-| 先筛摘要再读正文 | 两阶段加载，Tier 2 索引分片 |
-
-影响面与触及面指同一件事：正文用影响面，体检器输出用触及面；更早的文档里写轴的也是它。
-
-### 11.2 一件事一个权威处
-
-一件事只有一个权威处，其余文档都是引用。
-
-| 要做的事 | 读哪篇 |
-|---|---|
-| 判断某个设计或改动是否合规 | [design-principles.md](../spec/design-principles.md) |
-| 写给人看或给人审的文本 | [writing-norms.md](../spec/writing-norms.md) |
-| 改一个流程的行为 | `skills/<name>/SKILL.md`。流程必须自包含，不依赖 docs/ |
-| 改测评检查、跑回归 | [eval.md](../guide/eval.md) |
-| 走 PR、门控、多人协作 | [git-workflow.md](../guide/git-workflow.md) |
-| 看指标口径、跑周批 | [metrics.md](../guide/metrics.md) |
-| 查演进闭环自身健康度的判据定义 | [pipeline.md](pipeline.md) 第 7 节 |
-| 改演进机制本身 | [pipeline.md](pipeline.md) 状态机与卡 schema、[execution.md](execution.md) 信息契约与验证、[orchestration.md](orchestration.md) 会话与预算、[run.md](run.md) 持续运行 |
-| 做评测机制 | [eval-arena.md](eval-arena.md)、[ixn-replay.md](ixn-replay.md) |
-| 排下一步工作、评估能否推广 | [roadmap.md](../plan/roadmap.md)、[rollout-assessment.md](../plan/rollout-assessment.md) |
-| 查当初为什么这样选 | `docs/adr/` |
-
-内部记账号只在各自的计划文档里使用。机制文档、PR 说明、改进项正文要引用就写中文含义，规则见 [glossary.yaml](../glossary.yaml) 的生存范围字段。
-
-改机制之前先读 [design-principles.md](../spec/design-principles.md) 与 [eval.md](../guide/eval.md)：前者是条文的来源，后者写清了改哪里测哪里的规矩。
+[status.md](status.md) 的机制状态总表、未建与空转、代码与文件入口、相邻文档分工是全库唯一的一份；本节的机制状态表与代码入口表已并入其中，不再各留副本。
 
 ---
 
-## 12 每周做什么
+## 11 每周做什么
 
 | 节奏 | 动作 | 命令或入口 | 产物 |
 |---|---|---|---|
@@ -410,7 +316,7 @@ flowchart TD
 
 ---
 
-## 13 外部参考
+## 12 外部参考
 
 本节只放外部讨论：外部研究与本仓库设计的关系，以及哪些部分不取。表后一句说明这些结论为什么不能直接照搬。
 

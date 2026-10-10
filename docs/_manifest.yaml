@@ -94,6 +94,10 @@ docs:
   - path: docs/mechanism/ixn-replay.md
     layer: mechanism
     purpose: 交互面评测（追问 / 信息充分性 / 过早结论）
+  - path: docs/mechanism/status.md
+    layer: mechanism
+    purpose: 机制状态总表、未建与空转、代码与文件入口对照、相邻文档分工（全库唯一一份）
+    note: 各篇机制文档只留一行指向本文的指针，状态变化改本文
   - path: docs/guide/evolution-user-guide.md
     layer: guide
     purpose: 使用者侧：能说什么、一句话后发生什么、怎么读进度
