@@ -2,7 +2,7 @@
 
 本文说清演进流水线怎么运作：系统如何把自身产生的观测数据转成自身的改动，以及一条改进从提出到合入要过哪几道状态、每道由谁裁决、账上要记什么。要改这套机制本身的人读它——它给出每道状态的裁决人与放行依据，改流程时先看这里，不必从实现里反推。
 
-范围是三层模型（L1 知识内容、L2 流程与 skill、L3 工作流与编排）与 §2 至 §8 的机制。不覆盖各层内部的实现细节、编排与治理规则、单张改动的执行契约，它们各有自己的文档，入口见 §12。
+范围是三层模型（L1 知识内容、L2 流程与 skill、L3 工作流与编排）与 第 2 节 至 第 8 节 的机制。不覆盖各层内部的实现细节、编排与治理规则、单张改动的执行契约，它们各有自己的文档，入口见 第 12 节。
 
 读者需要先读过 [rsi-mechanism.md](rsi-mechanism.md)（对象层，即 case 与 reference 的闭环）。
 
@@ -26,9 +26,9 @@ L1 的闭环是 L2 与 L3 的数据前提，它由 [rsi-mechanism.md](rsi-mechan
 
 一条流水线服务三层：信号源相同（trace、metrics、容量、回放），候选改进项标注所属层，各层走各自的验证与授权路径。
 
-反馈数据不只有工程师回报一种形态，见 §2.1 的评分源分级。对已闭环 issue 做 diagnose 重放、以 issue 的实际 resolution 为基准的对照评分，是不依赖人的自动评分源，可以部分替代工程师反馈，支撑检索与路由类的演进。S1 当前捕获率约等于 0，后果是知识层的校准与命中率读不出结论，依赖现场反馈的改动也升不到 auto（§2.1 与 §6.3a 末段的升级门槛）。
+反馈数据不只有工程师回报一种形态，见 第 2.1 节 的评分源分级。对已闭环 issue 做 diagnose 重放、以 issue 的实际 resolution 为基准的对照评分，是不依赖人的自动评分源，可以部分替代工程师反馈，支撑检索与路由类的演进。S1 当前捕获率约等于 0，后果是知识层的校准与命中率读不出结论，依赖现场反馈的改动也升不到 auto（第 2.1 节 与 §6.3a 末段的升级门槛）。
 
-本文以及整套 evolution 文档都是完整的设计蓝图，不是全部待办。落地时只实现 §11.1「已落地的机制」表里的组件；「蓝图机制」表是预测性设计，触发条件（数据或用户诉求）出现才激活，不为未发生的问题预建机制（原则十一）。
+本文以及整套 evolution 文档都是完整的设计蓝图，不是全部待办。落地时只实现 [status.md](status.md) 的机制状态总表里标「已落地」那一档的组件；标「蓝图」那一档是预测性设计，触发条件（数据或用户诉求）出现才激活，不为未发生的问题预建机制（原则十一）。
 
 ## 2 观测基座：归因事件写入 trace，报告按需聚合
 
@@ -43,7 +43,7 @@ L1 的闭环是 L2 与 L3 的数据前提，它由 [rsi-mechanism.md](rsi-mechan
 - 按需聚合，无常驻表：深度轮或季度自评需要时运行 `scripts/component_tally.py`，从 traces 的 attribution 事件加 `.s2-replay/attributions.yaml`（S2 路由 miss 候选）现聚合失败簇。有簇才考虑沉淀成 L2 修复候选（修订该组件所在的 skill 步骤或 triage 分支），没有数据就是空转结果。脚本不写任何常驻状态文件。
 - S2 的归因边界：`s2_replay --collect` 只报路由 miss 这个事实（对照人工预标的 `expected.namespace` / `expected.category`），verdict 记 candidate。路由 miss 可能是 triage 正则错、agent 推理错或优雅退化，S2 区分不了三者。要指向修复，必须先由人或 trace 确认组件归因，不能把它当成 execution_error：判定是不是执行错是 diagnose 一侧的职权。
 
-L2 与 L3 的指标全部从已有的 trace 与 metrics 派生，不新增采集面：组件执行错率（按需聚合时算）、skill 变更前后的回测差、改进项采纳率与回测通过率、信号误报率（触发了却被否决的候选占比）。它们观测的对象是系统自身行为，不是人或协作。与 roadmap 中「明确不做 KPI、身份、使用观测」的边界是否相容，见 §5.3 与 §9。
+L2 与 L3 的指标全部从已有的 trace 与 metrics 派生，不新增采集面：组件执行错率（按需聚合时算）、skill 变更前后的回测差、改进项采纳率与回测通过率、信号误报率（触发了却被否决的候选占比）。它们观测的对象是系统自身行为，不是人或协作。与 roadmap 中「明确不做 KPI、身份、使用观测」的边界是否相容，见 第 5.3 节 与 第 9 节。
 
 ### 2.1 评分源分级：反馈数据不只有工程师回报
 
@@ -213,7 +213,7 @@ roadmap 明确不做的是 KPI、身份与使用观测，观测对象是人（�
 
 一批指一段时间或一段目标内产出的多张卡的改动，攒到批边界合成一个 PR 送审。人审的单位是批，不是卡。批边界在任一条件触发时成立，防止无限攒批：
 
-- 轮次停止条件触发（§6.2 与 [orchestration.md](orchestration.md) 第 2.2 节：预算耗尽、产出达标、收敛、人中断）时，default 模式的默认批边界是一轮。
+- 轮次停止条件触发（第 6.2 节 与 [orchestration.md](orchestration.md) 第 2.2 节：预算耗尽、产出达标、收敛、人中断）时，default 模式的默认批边界是一轮。
 - 攒批数量达上限（默认 10 卡，落地时按实测校准），防止单个 PR 过大难审。
 - 任务级批提交（hands-off 的默认形态）：用户明确说「做到目标完成再提 PR」时，批边界延伸到长期任务的目标完成点（[run.md](run.md) 第 2 节的任务层）。
 
@@ -238,7 +238,7 @@ roadmap 明确不做的是 KPI、身份与使用观测，观测对象是人（�
 升级门槛对 S1 的依赖可以防止 auto 扩权死锁。能升级的类别由「回测通过」的信号来源决定：
 
 - S2 与 golden 可以即时判定的类（检索、路由、skill 流程、脚本，观察窗即时，不依赖 S1）：回测通过可以正常累积，可以升级到 auto。
-- 依赖 S1 的类（content 沉淀效果、fix 有效性，观察窗要等现场反馈）：S1 断供时全部走降级态（`unconfirmed_valid` / `unconfirmed`，[execution.md](execution.md) 第 5.1a 节），拿不到「回测通过」，也就无法升级到 auto。观察窗超时降级态指等不到现场反馈时把改动标成未确认，不判失败；它目前是蓝图（§11.1），此前的替代做法是标存疑加提醒人。
+- 依赖 S1 的类（content 沉淀效果、fix 有效性，观察窗要等现场反馈）：S1 断供时全部走降级态（`unconfirmed_valid` / `unconfirmed`，[execution.md](execution.md) 第 5.1a 节），拿不到「回测通过」，也就无法升级到 auto。观察窗超时降级态指等不到现场反馈时把改动标成未确认，不判失败；它目前是蓝图（见 [status.md](status.md) 的机制状态总表），此前的替代做法是标存疑加提醒人。
 
   这是数据前提缺失的结果，不是流程故障：没有现场证据就不该给「自动合入知识」的信任，因为 auto 合入意味着没有人逐条审，而 content 与 fix 的正确性最终只能由现场验证。S1 恢复后（反馈捕获率回升），这类自动恢复升级通道；季度自评要监控「因 S1 断供被锁在 review 的类别」并报告。
 
@@ -276,9 +276,9 @@ roadmap 明确不做的是 KPI、身份与使用观测，观测对象是人（�
 
 多 agent 载体属于蓝图，触发条件到了才启用。出现真实的多 agent 并行场景（例如 DSH Agent Teams 或 dsh-agent-teams 插件驱动的长期任务轮间调度）时，再按下列约束展开，不为预言的多 agent 场景预建编排细节（原则十一）。
 
-- 角色分工：观测 agent（串行，唯一读写共享状态的一方）→ 起草 agent（可并行，只读聚合结果与改进项）→ 实验 agent（每张卡一个独立 worktree）→ PR agent（按模板开 PR、跑 CI、按授权合入或送审）→ 人闸（§6.3 级别的人审加 §6.6 的季度自评）。
+- 角色分工：观测 agent（串行，唯一读写共享状态的一方）→ 起草 agent（可并行，只读聚合结果与改进项）→ 实验 agent（每张卡一个独立 worktree）→ PR agent（按模板开 PR、跑 CI、按授权合入或送审）→ 人闸（第 6.3 节 级别的人审加 第 6.6 节 的季度自评）。
 - 共享状态的单一写入口：对 ingest-state、timeline、ideas 队列、session state 的写入收敛到一个持锁写服务（本地文件锁或单写者队列），不依赖 agent 自觉。这是把「唯一写者」从纪律变成结构（原则二）。worktree 隔离照旧，成员之间通过消息与任务结果间接协作。
-- 策略记忆指跨轮保存探索策略的独立文件（`strategy-memory.yaml`），现在还不存在，策略暂存在 session 上下文里，触发条件见 §11.1。
+- 策略记忆指跨轮保存探索策略的独立文件（`strategy-memory.yaml`），策略暂存在 session 上下文里，触发条件与是否已建见 [status.md](status.md) 的机制状态总表与「未建与空转」。
 - DSH 执行载体的可选形态（continuable subagent、内置 Agent Teams、dsh-agent-teams 插件）与质量门的对应关系，等这套编排启用时按当时的机制文档确定，不在本文常驻展开。
 
 ## 7 改进项的 schema 与状态机
@@ -320,7 +320,7 @@ predicted_effect:
   metric: 组件执行错率
   from: 0.6
   to: "<0.3"
-  measure:                       # 预测的出处（可复现，execution §2/§7），reviewer 的判定把手
+  measure:                       # 预测的出处（可复现，execution 第 2 节/第 7 节），reviewer 的判定把手
     command: python3 scripts/eval_arena.py --gate
     expect_exit: 0               # 与 expect_stdout 至少给一项；不可度量时省略 command 并写 reason
                                  # 复核：python3 scripts/ev_measure.py <card-id> --run
@@ -379,7 +379,7 @@ rejected 卡同样进 PR 供审：agent 提出改进项、改了、实验发现�
 
 validated 与观察窗的关系：agent 判 validated 依据的是合入前可得的验证（S2、golden、归因事件复测）。真实反馈类（content 与 fix 的现场有效性）agent 只能做到实现加 S2 佐证再加判 validated；现场确认（S1）在合入后的观察窗里发生，观察窗结果（`confirmed` 或 `rolled_back`）作为追加的 decision 记录写回卡，不改变卡状态机。
 
-规则：`status` 与 `authorization` 由机制推进，不靠自觉（落地时 schema 校验能机械执行就进 CI，准入判据同 §6.5）；`decisions` 只追加不修改；`supersedes` 与 `superseded_by` 构成替换追溯链（[run.md](run.md) 第 5 节），回滚粒度是被替代版本的合入点。
+规则：`status` 与 `authorization` 由机制推进，不靠自觉（落地时 schema 校验能机械执行就进 CI，准入判据同 第 6.5 节）；`decisions` 只追加不修改；`supersedes` 与 `superseded_by` 构成替换追溯链（[run.md](run.md) 第 5 节），回滚粒度是被替代版本的合入点。
 
 ### 7.1 演进闭环的判据层
 
@@ -434,14 +434,14 @@ validated 与观察窗的关系：agent 判 validated 依据的是合入前可�
 
 | 情形 | 行为 | 细则 |
 |---|---|---|
-| S1 现场反馈断供 | 依赖 S1 的改动全部走降级态（`unconfirmed_valid` / `unconfirmed`），无法升级到 auto；依赖 S2 的类不受影响 | §2.1、§6.3a、§6.5 |
-| 观察窗到期没有反馈 | 标存疑加提醒人，人可以补反馈或回滚；超时降级态是蓝图 | §6.3a、§11.1 |
-| S2 路由 miss | 只记 candidate 归因，不能当 execution_error；只能产出检索层候选 | §2、§2.1 |
+| S1 现场反馈断供 | 依赖 S1 的改动全部走降级态（`unconfirmed_valid` / `unconfirmed`），无法升级到 auto；依赖 S2 的类不受影响 | 第 2.1 节、§6.3a、第 6.5 节 |
+| 观察窗到期没有反馈 | 标存疑加提醒人，人可以补反馈或回滚；超时降级态是蓝图 | §6.3a、[status.md](status.md) 的机制状态总表 |
+| S2 路由 miss | 只记 candidate 归因，不能当 execution_error；只能产出检索层候选 | 第 2 节、第 2.1 节 |
 | golden 断供或套件不足以区分 | 用 S2 issue-replay 校准替代或补充 | §4.3 |
 | 实验失败 | 改进项停在 `in_experiment` 或转 `rejected`，保留结论，不因为「方案合理」推进 | §6.5 |
 | 回测不达预期 | 回滚，或开一张再迭代的改进项；没有回测的 L2 变更标「变更已合入、效果待观测」 | §4.5 |
-| 候选积压 | 水位读数超限即提前提批；候选过期态是蓝图 | §6.3a、§11.1 |
-| 多个 agent 并发写共享状态 | 观测 agent 串行；多 agent 时写入收敛到一个持锁写服务 | §6.2、§6.7 |
+| 候选积压 | 水位读数超限即提前提批；候选过期态是蓝图 | §6.3a、[status.md](status.md) 的机制状态总表 |
+| 多个 agent 并发写共享状态 | 观测 agent 串行；多 agent 时写入收敛到一个持锁写服务 | 第 6.2 节、第 6.7 节 |
 | 卡不完整（执行与验证完成却无终态、终态无判断结论） | 判为审计缺口；机制按 `status` 推进，不靠 agent 记得改状态；`verify_proposals.py` 校验 | §7 |
 | LLM 非确定性 | 验证门用 top-3 断言容忍 | §4.3 |
 
@@ -489,59 +489,9 @@ validated 与观察窗的关系：agent 判 validated 依据的是合入前可�
 
 与 roadmap 现有事项的关系：本文是机制层文档；roadmap 里与本文相关的下游事项（容量治理、路由错例演进、trace 结构挖掘、反馈捕获率监测、评测覆盖报告、fixture replay 半自动化、groom token 预算）闸门不变。本文若被采纳，建议在 roadmap 的「常设检查点」加一行「自演进季度自评」，载体是 `proposals/reviews/`。
 
-### 11.1 实现分级：第一批落地与蓝图
+其他文档的落地项分别归到哪一 Phase（[execution.md](execution.md) 第 10 节与 [run.md](run.md) 第 9 节的各项）见 [status.md](status.md) 的「其他文档落地项的归属阶段」；本节给的是各阶段的内容与入口闸门。
 
-机制已经开始真实运行，设计对错正随数据流入验证（原则八），所以落地必须分级。读数现算：
-
-- 知识库条数用 `python3 scripts/index_counts.py`。
-- 改进项状态用 `python3 scripts/ev_measure.py --audit`。
-- 真实诊断会话数用 `ls <主检出>/traces/*.yaml | wc -l` 或 `python3 scripts/trace_metrics.py --root <主检出>`。
-
-第一批落地指让机制第一次真实跑起来的最小组件集，用 1 至 2 轮真实 issue 验证设计：会话协议（目标 → 对齐 → 计划 → 执行）、批提交核心（一个批一个 PR）、验证先于交付的双路径、S2 issue-replay 校准、知识层分级（auto / review / dual 是合入门，EV 决策本身由 agent 做）、改进项状态机（产卡即执行，含 `in_experiment` / `validated` / `rejected` / `superseded`）。仓库 [rollout-assessment.md](../plan/rollout-assessment.md) 的「数据与运维层未就绪，需第一个团队跑起来」与此一致；在它之上预建全部机制（十几态状态机、多套载体、多级降级）即为过度设计。
-
-已落地的机制，每条附一条可执行的确认方式：
-
-| 机制 | 落地形态 | 确认方式 |
-|---|---|---|
-| 归因事件字段（§2） | diagnose 在 `attribution` 事件里带 `component` | `grep -n "attribution" skills/diagnose/references/diagnosis-trace.md` |
-| 改进项状态机与 schema 校验（§7） | `proposals/ideas/` 下的卡，校验脚本 `verify_proposals.py` | `python3 scripts/verify_proposals.py --check` |
-| 知识层分级（§6.3） | 卡上的 `authorization` 字段取 auto / review / dual | `grep -h "^authorization:" proposals/ideas/*.yaml \| sort \| uniq -c` |
-| S2 issue-replay 校准（§2.1） | 单池 `eval/s2/vllm-ascend.yaml`，脚本 `s2_replay.py` 与 `settle_s2_feedback.py` | `ls eval/s2/vllm-ascend.yaml` |
-| 批提交的合入指针回写（§6.3a） | `ev_proposal.py --mark-merged --from-prs` | `grep -n "mark-merged" scripts/ev_proposal.py` |
-| 候选水位治理（§6.3a） | `ev_proposal.py --waterline`（读数与退出码） | `python3 scripts/ev_proposal.py --waterline` |
-| 改进项影响视图（§7.1） | `ev_proposal.py --impact`（组件 × 尝试 × 结局；组件键取 `target_component`，缺省回退到改动落点） | `python3 scripts/ev_proposal.py --impact` |
-| 元层判据（§7.1） | `proposals/gates.yaml` 的判据数据加 `scripts/evolution_health.py` 的判决器 | `ls proposals/gates.yaml scripts/evolution_health.py` |
-| reviews 与 experiments 独立目录 | `proposals/reviews/` 与 `proposals/experiments/`（运行时件，`.gitignore` 只放行 `.gitkeep`） | `git ls-files proposals/reviews proposals/experiments` |
-
-蓝图机制，触发条件出现才实现：
-
-| 机制 | 触发条件 | 此前的替代做法 |
-|---|---|---|
-| 观察窗超时降级态（`unconfirmed_valid` / `unconfirmed`） | S1 断供真实持续 ≥2 期（先用「标存疑加提醒」的轻量处理，不进正式状态机） | §6.3a、[execution.md](execution.md) 第 5.1a 节 |
-| 候选过期态（`stale`） | 候选停留超过 8 周（参数待校准）且从未被采纳（先用 inbox 式标红） | §6.3a、[orchestration.md](orchestration.md) 第 2.4 节 |
-| 策略记忆独立文件（`strategy-memory.yaml`） | 季度自评跑通 ≥1 轮后（此前并入 session context） | §6.7 |
-| 稳态降频（steady） | scope 真实收敛后 | §6.3a、[orchestration.md](orchestration.md) 第 2.3 节 |
-| 运行模式细化（任务级批提交跨轮） | 用户真实要求「跨多轮攒批」后（默认批边界是一轮已经够用） | §6.3a |
-| 成功模式提取信号 | 常态运行中首次出现可复述的成功模式（无信号即止，不预设轮次） | §13.2、roadmap 的「成功模式提取信号」事项 |
-| 可信自动升格（trusted auto-promotion） | roadmap 的 trusted auto-promotion 事项的入口条件（随 v2 池入口：trace ≥100 个 session，且 Phase 1 完成 ≥3 项，且指标趋势连续两季可解读） | §1 的 L1 自动化边界：groom 预分诊自动，人审转正 |
-| 多 agent 载体（DSH Agent Teams 一类） | 出现真实的多 agent 并行场景 | §6.7 |
-
-分级原则：机制分为两类，解决已发生问题的第一批落地件，与解决预测问题的蓝图件。蓝图件保留设计但不实现，触发条件（数据、用户诉求）出现才激活，这正是仓库原则十一（数据触发演进）与 roadmap「明确不做（触发条件到再评估）」的形态。
-
-落地顺序有主从关系，防止多源冲突：本文 §11 是唯一权威落地总纲。[execution.md](execution.md) 第 10 节与 [run.md](run.md) 第 9 节是各自维度的落地细化，不是平行计划；落地时按本表的 Phase 推进，execution 与 run 的表只回答本层内部先做什么。
-
-| 其他文档的落地项 | 归属本表哪一 Phase |
-|---|---|
-| execution §10：改进项 schema v3 落模板 | Phase A（已完成：schema 加 `verify_proposals.py`） |
-| execution §10：沉淀效果字段（predicted_value / first_hit） | Phase B（归因事件与首条 L2 卡之后，随首批沉淀） |
-| execution §10：follow-up 观察窗常态化 | Phase C（依赖 fixture replay 与 S2 的即时判定） |
-| execution §10：回滚率等机制指标进 timeline | Phase D 试点 ≥1 轮后 |
-| run §9：统一执行记录 | 第一批已完成（schema、脚本、四个内容 skill 收尾接入：issue-ingest / to-reference / to-postmortem / knowledge-groom，evolve-check 自身也落记录）。收敛边界：只覆盖内容 skill 收尾，diagnose 走 trace 不重复落（见 [run.md](run.md) 第 4 节） |
-| run §9：supersede 字段与回滚语义 | Phase D（出现首个替代场景时，schema 已含字段） |
-| run §9：长期任务层试点 | Phase D（试点即含轮间调度） |
-| run §9：可视化 | Phase E 后或常设（任务层跑通 ≥1 轮） |
-
-### 11.2 闸门 × 数据源盘点（2026-09-04 快照；决议载体 `proposals/ideas/EV-2026-011.yaml`）
+### 11.1 闸门 × 数据源盘点（2026-09-04 快照；决议载体 `proposals/ideas/EV-2026-011.yaml`）
 
 > 目的：把「等数据积累」从模糊口号变成可核对清单：每个数据触发闸门计量什么对象、现有来源与计数、未达标是「量不够 / 事件未发生 / 可判性缺 / 独立性缺」中的哪一种。
 > 计数口径：三类数据源属不同对象，闸门按对象取数、不混算。`traces/`（真实 diagnose 会话）是检索行为与执行行为的真实样本；`.s2-replay/*.result.yaml`（评测单发）只作检索层证据（路由、命中、覆盖缺口），其 miss 的三种解释（路由错、缺 case、内容错）没有 verdict，不冒充执行错（见 §2 的 S2 归因边界）；`metrics/skill-exec-log.yaml`（内容 skill 收尾摘要）只回答内容流程跑了什么。真实 trace 与 S2 池相互独立：S2 同时当触发与验证等于同池自我优化，这是路由错例演进与 trace 结构挖掘两项门槛都要求真实 trace 的原因。
@@ -558,7 +508,7 @@ validated 与观察窗的关系：agent 判 validated 依据的是合入前可�
 | S2 覆盖缺口（补 case 信号） | Tier 2 miss（无 case 命中） | 9 条 replay 中 7 条无命中，其中 5 条已沉淀同名 case（replay 先于沉淀，结算为 self_consistent）；当时真缺口 2 条：13673（random_sample 跨流）、13961（310P 加 bge-m3，待上游闭环核验） | 已达标且部分已结算 | 剩余动作：2 个候选走 issue-ingest 管道，13673 待上游 fix 闭环核验 |
 | fixture replay 半自动化（roadmap） | golden fixture ≥5 | golden 23 条 | 已达标 | 半自动脚本可推进 |
 | S2 校准集建立（Phase C2，§2.1） | 已闭环 issue 池 | 单池 19 条，其中 11 条的 `confidence` 是 high（复算：`grep -c "^    confidence: high" eval/s2/vllm-ascend.yaml`） | 已建 | 扩池是持续动作，不是前置阻塞 |
-| S1 现场反馈（confidence 结算） | 工程师回报 fix 结果 | 捕获率约等于 0 | 未达标 | 量（依赖人）；观察窗降级态是兜底（§11.1 的蓝图） |
+| S1 现场反馈（confidence 结算） | 工程师回报 fix 结果 | 捕获率约等于 0 | 未达标 | 量（依赖人）；观察窗降级态是兜底（蓝图，见 [status.md](status.md) 的机制状态总表） |
 | Phase D 试点（§11） | C 或 C2 任一落地，加 trace ≥20 可归因 | C2 已落地（单池 19 条）；trace 齐全 5 | 部分达标 | 量（真实可归因会话）。Phase D 与路由错例演进同门，S2 replay 不计入的口径同样适用 |
 
 盘点结论（2026-09-04 快照）：多数蓝图闸门未解锁的原因不是没有数据记录，而是三类性质限制：
@@ -571,43 +521,7 @@ validated 与观察窗的关系：agent 判 validated 依据的是合入前可�
 
 ## 12 代码与文档入口
 
-正文用白话。改脚本、查数据文件时，用这张表换成代码与文件里的实际名字：
-
-| 正文里说 | 代码与文件里的名字 |
-|---|---|
-| 改进项 | `proposals/ideas/` 下的卡 |
-| 批提交 | 一个 PR 装一批卡；合入指针用 `scripts/ev_proposal.py --mark-merged` 回写 |
-| 归因事件 | trace 顶层的 `attribution` 事件，`scripts/component_tally.py` 按需聚合 |
-| 诊断记录 | trace，`traces/<session>.yaml`（运行时件） |
-| 执行记录 | `metrics/skill-exec-log.yaml`（运行时件，同一克隆共享） |
-| 观测账本 | `eval/scorecard.yaml`，`scripts/eval_scorecard.py --check` |
-| 判据、体检器 | `proposals/gates.yaml`、`scripts/evolution_health.py`、`metrics/gates.yaml`、`scripts/metrics_health.py` |
-| 影响面 | 触及面；从卡文本派生，判据输出里的 `by_surface` |
-| 现场反馈回报 | 反馈通道 S1，`case.confidence` |
-| 内容与外部结论对照 | 反馈通道 S2，`case.validation_record` |
-| 回归样本 | golden fixture，`eval/golden/` |
-| 用历史问题重跑 | S2 issue-replay，`scripts/s2_replay.py` |
-| 收尾检查 | `/skill:evolve-check` |
-| 全库体检轮 | `/skill:self-evolve` |
-| 每周批审 | `/skill:knowledge-groom` |
-| 可信自动升格 | roadmap 的 trusted auto-promotion 事项 |
-| 预期可复现 | `predicted_effect.measure`，`scripts/ev_measure.py` |
-| 积压量 | 水位读数，`scripts/ev_proposal.py --waterline` |
-| 五类演化动作 | [rsi-mechanism.md](rsi-mechanism.md) 的置信度校准、知识注入、误诊归因、结构演化、退休与复活 |
-
-相邻文档的分工：
-
-| 文档 | 管什么 |
-|---|---|
-| [rsi-mechanism.md](rsi-mechanism.md) | 对象层（case 与 reference）的闭环与五类演化动作；机制地图 |
-| [execution.md](execution.md) | 单张改进项卡的执行契约：记录什么、follow-up 怎么验证、沉淀效果怎么度量 |
-| [orchestration.md](orchestration.md) | 单轮会话的边界、目标函数与停止条件、token 预算 |
-| [run.md](run.md) | 长期运行的装配：用户可下指令、可观察、可干预的形态 |
-| [eval-arena.md](eval-arena.md) | 元层评测台：配对检验与复用折减 |
-| [design-principles.md](../spec/design-principles.md) | 原则一至原则十一的出处 |
-| [design-theory.md](../spec/design-theory.md) | 理论推导，含注意力预算 `$B_{\text{attn}}` |
-| [git-workflow.md](../guide/git-workflow.md) | 多 agent 并行的隔离与合流规则 |
-| [metrics.md](../guide/metrics.md) | 指标口径纪律 |
+[status.md](status.md) 的机制状态总表、未建与空转、代码与文件入口、相邻文档分工是全库唯一的一份；本节的机制状态表与代码入口表已并入其中，不再各留副本。
 
 ## 13 外部参考
 
@@ -621,11 +535,11 @@ validated 与观察窗的关系：agent 判 validated 依据的是合入前可�
 
 | SkillOpt 机制 | 与本设计的关系 | 采纳动作 |
 |---|---|---|
-| validation gate：held-out 严格提升才接受，加 `gate_no_regression`（每任务持平或提升，缺结果即拦） | 与 §6.5「数据与效果驱动合入」同构 | 语义吸收进 §6.5；无回归与严格提升、持平的验收口径同 gate_no_regression 一致 |
+| validation gate：held-out 严格提升才接受，加 `gate_no_regression`（每任务持平或提升，缺结果即拦） | 与 第 6.5 节「数据与效果驱动合入」同构 | 语义吸收进 第 6.5 节；无回归与严格提升、持平的验收口径同 gate_no_regression 一致 |
 | 编辑量有界（learning-rate 限制每步编辑数） | 与本设计「变更集小步、可整体 revert」（原则七）同构 | 已含：单轮候选批量上限、单 skill 单轮编辑数上限 |
-| reflect 从失败轨迹生成编辑建议 | 与本设计「trace 归因 → 候选改进项」同构 | 已含（§2、§4） |
-| reject buffer 与 slow update（防跨轮遗忘） | 与本设计「rejected 留痕、季度自评跨期对比」同构 | 已含（§6.4 的 decisions 追加、§6.6 自评） |
-| held-out 验证需要自动评分集 | 这正是 §2.1 的 S2 issue-replay 校准的用武之地：SkillOpt 式 gate 的分数来源 | 已含（§2.1、§4.3、§6.5） |
+| reflect 从失败轨迹生成编辑建议 | 与本设计「trace 归因 → 候选改进项」同构 | 已含（第 2 节、第 4 节） |
+| reject buffer 与 slow update（防跨轮遗忘） | 与本设计「rejected 留痕、季度自评跨期对比」同构 | 已含（第 6.4 节 的 decisions 追加、第 6.6 节 自评） |
+| held-out 验证需要自动评分集 | 这正是 第 2.1 节 的 S2 issue-replay 校准的用武之地：SkillOpt 式 gate 的分数来源 | 已含（第 2.1 节、第 4.3 节、第 6.5 节） |
 | held-out 防过拟合（selection 与 test 分离） | SkillOpt 在 selection 上做 gate 决策、在 held-out test 上做最终验收 | 已含：§2.1 的 S2 校准集按 selection 与 test 分离设计，单池运行的降级见该节 |
 | judge 区分 shape ops 与 outcome ops（防格式化作弊） | 与「避免把约定当硬门」一致 | 作为校验设计准则参考：可以被形式上满足的检查不算验收 |
 | harvest 本地 transcript 送 provider | 数据边界冲突（traces 含客户信息） | 不取 |
@@ -673,6 +587,6 @@ SkillOpt 的验证门语义与自动评分集思路与本设计一致并互相�
 - pattern 页 10 至 30 行、update 不 create，对应 case 判重与 groom 语义。
 - 知识不进执行上下文，对应 references 与自观测教训的分层边界应当保持。
 
-本条与 §13.1 的采纳项与设计原则的对应，已并入 §10 的原则追溯表。
+本条与 第 13.1 节 的采纳项与设计原则的对应，已并入 第 10 节 的原则追溯表。
 
 将来若跑类 SkillOpt 实验，作用域仅限 L2 中某个可自动评分的子组件（例如 triage 分支文本），且必须先有 S2 校准集与 golden 验证门。

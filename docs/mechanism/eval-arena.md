@@ -4,9 +4,9 @@ eval 台（下称 arena）是自演进机制在评测层的那一部分。它把
 
 本文说清三件事：train/val 分离怎么防住拿同一批数据自证；门控协议在哪一层生效；影响账本记了什么。
 
-范围是五套样本的分层与角色、池构建、评分口径、门控协议、工具与失败模式。不含两类：日常 S2 单池评测的执行规则（见 [pipeline.md](pipeline.md) 第 2.1 节），以及与归因层、交互层 [ixn-replay.md](ixn-replay.md) 的分工；这两块各有自己的文档，入口见 §10。与别的项目、论文的对比放在文末 §11。
+范围是五套样本的分层与角色、池构建、评分口径、门控协议、工具与失败模式。不含两类：日常 S2 单池评测的执行规则（见 [pipeline.md](pipeline.md) 第 2.1 节），以及与归因层、交互层 [ixn-replay.md](ixn-replay.md) 的分工；这两块各有自己的文档，入口见 第 8 节。与别的项目、论文的对比放在文末 第 9 节。
 
-读者需要先读过 [rsi-mechanism.md](rsi-mechanism.md)，那是自演进机制地图与日常执行规则。只想知道日常怎么跑 S2、或按现有流程跑一轮评测的人不必读本文。正文不用内部简称；改脚本、查数据文件之前，先用 §10 的名词对照把正文用词换成代码与文件里的名字。池的样本条数、已吸收条数与已评分条数随运行变化，本文只在解释判据时引用读数，并写明复算命令。
+读者需要先读过 [rsi-mechanism.md](rsi-mechanism.md)，那是自演进机制地图与日常执行规则。只想知道日常怎么跑 S2、或按现有流程跑一轮评测的人不必读本文。正文不用内部简称；改脚本、查数据文件之前，先用 §8 的名词对照把正文用词换成代码与文件里的名字。池的样本条数、已吸收条数与已评分条数随运行变化，本文只在解释判据时引用读数，并写明复算命令。
 
 ## 1 解决什么问题与五套样本
 
@@ -28,13 +28,13 @@ eval 台（下称 arena）是自演进机制在评测层的那一部分。它把
 
 ### 1.1 test 分离的池规模闸门（2026-10 定口径）
 
-终判子集什么时候划出来，由池规模闸门决定。闸门的条数由判据反推得出，不是估一个数填进去。先定这套闸门要支撑几次判定，记为 K；K 由 owner 定，下面只给按 K 反推可评样本条数的算法，不替 owner 选 K。池规模这个缺口本身的盘点见 [rsi-mechanism.md](rsi-mechanism.md) 第 8 节的已知缺口第 4 条。
+终判子集什么时候划出来，由池规模闸门决定。闸门的条数由判据反推得出，不是估一个数填进去。先定这套闸门要支撑几次判定，记为 K；K 由 owner 定，下面只给按 K 反推可评样本条数的算法，不替 owner 选 K。池规模这个缺口本身的盘点见 [rsi-mechanism.md](rsi-mechanism.md) 第 7 节的已知缺口第 4 条。
 
-- 第 k 次复用同一个池时，判定阈值折减为 `α_eff = α/(k+1)`（α 默认 0.10，k 从 0 起算）。折减在调用点 `scripts/eval_arena.py:677-678`；`reuse_index()` 本身只按池名与池哈希计数，见 `scripts/eval_arena.py:359-371`。要判 `accept`，配对检验须满足 `P(Bin(b+c, 0.5) ≥ b) ≤ α_eff`，其中 b 是 candidate 独家命中数、c 是 baseline 独家命中数。
+- 第 k 次复用同一个池时，判定阈值折减为 `α_eff = α/(k+1)`（α 默认 0.10，k 从 0 起算）。折减在调用点（`grep -n "alpha_eff" scripts/eval_arena.py`）；`reuse_index()` 本身只按池名与池哈希计数（`grep -n "def reuse_index" scripts/eval_arena.py`）。要判 `accept`，配对检验须满足 `P(Bin(b+c, 0.5) ≥ b) ≤ α_eff`，其中 b 是 candidate 独家命中数、c 是 baseline 独家命中数。
 - c > 0 不会自动否决，但会摊薄证据：检验的 n 变成 b + c，同一个 b 的 p 值随之变大。k = 0 时，c = 0 只要 b = 4 就达线，c = 1 要 b = 6。下面的反推取 c = 0，给出需要样本最少的情形。
 - 取 c = 0：`b*(k)` 是满足 `2^-b ≤ α/(k+1)` 的最小 b，取值为 4、5、5、6、6、6、7、7、7…（k 从 0 起算）。判过的样本不能翻第二次，所以要支撑 K 次判定，selection 侧留下的可评样本数至少要有 `Σ_{k<K} b*(k)`：4（K=1）、9（K=2）、14（K=3）、20（K=4）、26（K=5）。
 - 终判子集自己也要按同一条判定线判一次，因此至少要有 `b*(0) = 4` 条。两笔相加就是划出终判子集的触发线：判定池的可评样本数 ≥ `4 + Σ_{k<K} b*(k)`，即 8（K=1）、13（K=2）、18（K=3）、24（K=4）。
-- 现状（2026-10 读数，见第 3 节）：判定池 9 行、可评 8 行（1 条非诊断样本已剔出），按上式只够 K = 1；升到 13 条才够支撑 2 次判定并同时留下终判子集。本文件与 [roadmap.md](../plan/roadmap.md) 里都没有「判定池 ≥20 条」这个目标。`≥20` 的出处是 `proposals/ideas/EV-2026-013.yaml:80` 的「③test/selection 分离按规模闸门（selection ≥20）启用」，说的是 selection 侧条数，正好等于 K = 4 时 selection 侧的 Σ = 20，两条口径由此对齐。
+- 现状（2026-10 读数，见第 3 节）：判定池 9 行、可评 8 行（1 条非诊断样本已剔出），按上式只够 K = 1；升到 13 条才够支撑 2 次判定并同时留下终判子集。本文件与 [roadmap.md](../plan/roadmap.md) 里都没有「判定池 ≥20 条」这个目标。`≥20` 的出处是改进项「test/selection 分离按规模闸门」的正文（`grep -rn "selection ≥20" proposals/ideas/`），说的是 selection 侧条数，正好等于 K = 4 时 selection 侧的 Σ = 20，两条口径由此对齐。
 - 这个下限是必要条件，不是充分条件：它只说池子大到够得上判定线，能不能真判成还取决于池里有多少条真会翻转的样本。判据卡 EV-2026-175 记的实测是 20 条池上只有 2 条会翻转，缺口主要在这里；第 3 节的命中率 2/20 与这里的 2 条会翻转不是同一个量，不能混读。样本条数由 `--stats` 输出的「N/M 条已评分」与 `held_out_skipped` 现算，不另外维护一份数字。
 
 ## 2 池构建
@@ -82,7 +82,7 @@ case 实名还要求文件名 stem 匹配命名规则 `^[A-Z][A-Z0-9]*(?:-[A-Z0-
 
 - 命中率 hit_rate：hit_case 非空的比例（tier2 命中）；
 - 路由正确率 route_ok：route 与 expected_ns 一致的比例；
-- 结论一致率 `rc_match`：结论与 resolution 一致的比例。result 文件里这个字段写作 `root_cause_ok`，聚合进 stats 后改叫 `rc_match`（`rc = r.get("rc_match", r.get("root_cause_ok"))`，`scripts/eval_arena.py:538`），两层名字指同一个度量；人工核验兜底；
+- 结论一致率 `rc_match`：结论与 resolution 一致的比例。result 文件里这个字段写作 `root_cause_ok`，聚合进 stats 后改叫 `rc_match`（`grep -n "root_cause_ok" scripts/eval_arena.py`），两层名字指同一个度量；人工核验兜底；
 - 可证伪性 `ground_truth`：这个 issue 的外部结论是什么形态，取 `maintainer-conclusion`（维护者判词）、`fix-merged`（已合入 fix PR）、`both`、`none`（没有外部结论）。写 `none` 的样本在结算时整体跳过：结论一致与否在这类样本上没有真值，记 `consistent` 判不出对错，记 `inconsistent` 则会把一条假复审信号压到 case 上（实测 #10913 命中 VLLM-ASC-8646，但该 issue 以 NOT_PLANNED 关闭，没有维护者结论）。字段缺席按旧行为处理，存量 result 不受影响。
 
 判定侧也要读这个字段。此前只有结算侧（`scripts/settle_s2_feedback.py`）按上面的规则办事，判定侧不读它：同一条 `ground_truth: none` 的样本，结算跳过，而 `--stats` 只要它写了 `root_cause_ok: true` 就把没有真值的猜测记成结论一致，推高结论一致率。现在 `--stats` 同样把 `none` 的行剔出结论一致率分母（逐条向量的 `rc_match` 记空），各取值条数写进 `stats["ground_truth"]`（`counts`/`none`/`absent`），`--gate` 把两侧读数记进账本。
@@ -168,50 +168,7 @@ cross 样本（`eval/s2/vllm-ascend-cross.yaml`）是另一类：与某条 case 
 | 复用超限（`pool_reuse_uncontrolled`） | 动作是重新选样（池内容改变、计数归零）或扩池，不是把标准说松 | §4 |
 | 跑改后侧前覆盖了 baseline stats | 没有配对数据（两次 `--stats` 写同一个文件名） | §5 |
 
-## 7 现状：已落地 / 蓝图 / 已否决
-
-已落地的一条附可执行确认方式；给不出确认方式的标「已决定」。蓝图的一条附触发条件，触发条件出现才激活（原则十一）。
-
-### 7.1 已落地
-
-| 内容 | 可执行确认方式 |
-|---|---|
-| 设计文档与 `scripts/eval_arena.py` 的子命令（`--build-pool`、`--pool`、`--stats`、`--gate`、`--rc-check`、`--self-test`），改进项 EV-2026-013 | `python3 scripts/eval_arena.py --help` |
-| 接受判据（配对检验、复用折减、三态判词） | `grep -n "exact_mcnemar_ge\|ALPHA_DEFAULT\|reuse_index" scripts/eval_arena.py` |
-| `--self-test` 进 CI（`kb-checks` 的 `arena-gate-rule`） | `grep -n "arena-gate-rule" .github/workflows/kb-checks.yml` |
-| 复用判据 `pool_reuse_uncontrolled` | `grep -n "pool_reuse_uncontrolled" proposals/gates.yaml` |
-| 池按吸收状态分流（吸收样本只进回归池，`--gate` 拒绝回归池） | `grep -n "role.*regression\|absorbed" scripts/eval_arena.py` |
-| 吸收状态在本池范围内运行期重判（`absorption_rev` 对不上则 `--gate` 退出 3、不写账本） | `python3 scripts/eval_arena.py --pool .s2-replay/arena/pool-val.yaml` |
-| `held_out` 在 `--stats` 与 `--gate` 生效 | `grep -n "held_out" scripts/eval_arena.py` |
-| 非诊断样本剔出命中率分母与配对 | `grep -n "non_diagnostic" scripts/eval_arena.py scripts/s2_replay.py` |
-| 无回归范围写进账本（`no_regression_scope: arena-pool-only`） | `grep -n "no_regression_scope" scripts/eval_arena.py` |
-| 证据面留痕（`ground_truth: none` 剔出结论一致率分母，重放版本 `kb_rev` 进 `replay_revs` 并在跨版本时告警） | `grep -n "ground_truth\|replay_revs" scripts/eval_arena.py` |
-
-### 7.2 推进
-
-基线已出一轮，判定池 9 条里 8 条有逐条向量；下一步是继续扩样本。这一条里「基线已出」是本地运行件里的读数，检出里核不到，只能按「已决定」读。
-
-| 内容 | 下一步 |
-|---|---|
-| selection 池的 expected 标注与基线回放（现行 19 条） | 继续扩样本 |
-| 门控端到端运转一次（真实 miss → 候选 → gate → 合入） | baseline 可用后 |
-
-### 7.3 蓝图
-
-| 内容 | 触发条件 |
-|---|---|
-| test 分离（触发线按判定线反推，见 §1） | 池子撑得起两半 |
-| 归因层与交互层入台 | 两层各自有可用的评测集 |
-| 分数进 timeline（样本 ≥10 且带分母） | 样本规模达标 |
-| 判定池扩容（分流已落地，新增未吸收样本仍要人工选样与标注；下一步的闸门在样本规模，见 §1） | 规模或数据触发 |
-
-### 7.4 已否决
-
-| 内容 | 否决理由 |
-|---|---|
-| 外部验证卡占比下限 1/3 | 实测不可达（可达上限约 18%），且原判据把自己的动作文案排除出分子却留在分母里；改为 `external_verification_stall`（§3.2） |
-
-## 8 原则追溯
+## 7 原则追溯
 
 | 元素 | 原则 |
 |---|---|
@@ -224,58 +181,26 @@ cross 样本（`eval/s2/vllm-ascend-cross.yaml`）是另一类：与某条 case 
 | 评估池扩容 | 十一（数据触发） |
 | 吸收状态在运行期重判、无回归范围写进账本、没有校验与校验通过可区分 | 十（诚实退化：池不新鲜就拒绝出判词；命令没做的事不写成做到了）、六（闸门硬度：拒绝要机械可判） |
 
-## 9 明确不做（防过度设计）
+## 8 明确不做（防过度设计）
 
 以下都是本台明确不做、或试过之后定下不做的，每条写清没选它的代价与理由。
 
 - 不做点估计判定（「两个比例各看一遍、涨了就收」）：反复对同一个池做接受决定是一串不受控的适应性检验，假接受会累积；池越小越严重（判定池现为 9 条，一次翻转就是 +11 个百分点）。改用配对检验加复用折减（§4）。
-- 不把外部验证占比当下限判据：实测不可达，且原判据拿掉了分子却留着分母；改为问通道还在不在用（§3.2、§7.4）。
+- 不把外部验证占比当下限判据：实测不可达，且原判据拿掉了分子却留着分母；改为问通道还在不在用（第 3.2 节、[status.md](status.md) 的机制状态总表）。
 - 不用整库 case 实名集合当池新鲜度指纹：任何一条与样本无关的新 case 都会把池判成过期，而沉淀是本仓常态，门会长期拒绝出判词，最后被人绕过。指纹只覆盖本池的行（§2）。
 - 不用「issue 号出现在正文里」当吸收判据：正文提到别的 issue 是常事（`knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-13639.yaml` 写着 14871），文本搜索会把未吸收的样本误判成已吸收。吸收判据是 case 实名（§2）。
 - 不让代码按正文长度猜非诊断样本：机器猜会把描述简短但可判别的样本一并剔掉，那是把不可判的样本算成失败。判据由人读校准集那一行的输入下（§3）。
 - 不把跨知识库版本混算当拒绝理由：混算是数据质量问题，不是判定不成立；做成拒绝会把这批分数没法比和改动没通过混成一个信号（§3）。
 - 不为还没有改动的机制预建判定：test 分离按判定线反推的触发线到了才划；小池下 test 半无法成立，因为沉淀会消耗池子（§1、原则十一）。
-- 不把 `--stats` 做成判定命令：它是产物生成器，恒退出 0；判定以 `--gate` 为准（§2、§4）。
+- 不把 `--stats` 做成判定命令：它是产物生成器，恒退出 0；判定以 `--gate` 为准（第 2 节、第 4 节）。
 - 不用门控替代人闸：高风险的 dual 级改动门控通过后仍按 kb/high-risk 双签送人审（§4、原则五、六）。
 - 不把 `--gate` 当成 golden 全量回归：门控这一步的范围只到本池（§4）。
 
-## 10 代码与文档入口
+## 9 代码与文档入口
 
-正文用白话。改脚本、查数据文件之前，用下面第一张表把正文用词换成代码与文件里的名字。关键行号：`scripts/eval_arena.py:677-678` 是 α_eff 的折减调用点，`scripts/eval_arena.py:359-371` 是 `reuse_index()`，`scripts/eval_arena.py:538` 是 `rc = r.get("rc_match", r.get("root_cause_ok"))`。
+[status.md](status.md) 的机制状态总表、未建与空转、代码与文件入口、相邻文档分工是全库唯一的一份；本节的机制状态表与代码入口表已并入其中，不再各留副本。
 
-| 正文里说 | 代码与文件里的名字 |
-|---|---|
-| eval 台、arena | `scripts/eval_arena.py` |
-| 改进项卡 | `proposals/ideas/` 下的卡 |
-| 回归样本、golden | `eval/golden/` 下的 fixture，`scripts/replay_golden.py` |
-| 对照样本集、校准集 | `eval/s2/vllm-ascend.yaml`、`eval/s2/vllm-ascend-cross.yaml` |
-| 判定池 | `.s2-replay/arena/pool-val.yaml`（`role: judgment`） |
-| 回归池 | `.s2-replay/arena/pool-val-absorbed.yaml`（`role: regression`） |
-| 已吸收样本 | 答案已进知识库的样本，判据是 `knowledge/` 下存在 `VLLM-ASC-<issue>.yaml` |
-| 吸收状态指纹 | `absorption_rev`、`absorption_recheck` |
-| 池规模闸门、触发线 | 判定池可评样本数 ≥ `4 + Σ_{k<K} b*(k)` |
-| 判定阈值折减 | `α_eff = α/(k+1)`、`ALPHA_DEFAULT`、`reuse_index()` |
-| 三态判词 | `accept`、`weak_accept`、`reject`，`decide()` |
-| 影响账本 | `.s2-replay/arena/impact.yaml` |
-| 池内容哈希 | `pool_hash` |
-| 逐条判决向量 | stats 的 `issues`，`vectors()` |
-| 重放版本 | `kb_rev`、`replay_revs`、`scripts/kb_rev.py` |
-| 用历史问题重跑 | S2 issue-replay，`scripts/s2_replay.py` |
-| 结算 | `scripts/settle_s2_feedback.py` |
-| 收样判据 | `scripts/s2_calibration.py`、`NON_DIAGNOSTIC_PREFIXES` |
-| 判据、体检器 | `proposals/gates.yaml`、`metrics/gates.yaml`、`scripts/evolution_health.py` |
-| 每周批审 | `knowledge-groom` |
-
-相邻机制与文档分工：
-
-| 文档 | 管什么 |
-|---|---|
-| S2 单池评测（[pipeline.md](pipeline.md) 第 2.1 节） | 本台是 S2 的门控化形态。S2 单池评测照旧用于日常，arena 是演进时的门，改动时才跑。 |
-| 路由错例演进（从 trace 提取路由错例，产出 triage 修订建议）与 fixture 回放半自动化 | arena 提供它们的自动评分数据源（[roadmap.md](../plan/roadmap.md) 里的两个可演进事项）。 |
-| [ixn-replay.md](ixn-replay.md) | 交互层，兄弟台；本台管检索/路由层。 |
-| [rsi-mechanism.md](rsi-mechanism.md) | 自演进机制地图与日常执行规则。 |
-
-## 11 外部参考
+## 10 外部参考
 
 本节放与其他项目、论文的对比；读者不读这一节也不影响理解前面的机制。
 
@@ -283,4 +208,4 @@ cross 样本（`eval/s2/vllm-ascend-cross.yaml`）是另一类：与某条 case 
 
 golden 无回归加 val 严格提升，与 SkillOpt/WikiSkill 的 `R_val > R_best` 是同一条验证语义，都要求留出样本上严格更好（[pipeline.md](pipeline.md) 第 13 节已吸收）。本台的配对检验与复用折减是在此之上把统计口径收紧：那些工作的闸门语义是 val 上更好就接受，本台进一步要求更好在配对意义上达到证据门槛。
 
-[pipeline.md](pipeline.md) 第 13.2 节（WikiSkill）：本台把第 13 节末句预留的类 SkillOpt 实验正式化，作用域是流程与 skill 层里可自动评分的子组件。
+[pipeline.md](pipeline.md) 第 13.2 节（WikiSkill）：本台把 [pipeline.md](pipeline.md) 第 13 节末句预留的类 SkillOpt 实验正式化，作用域是流程与 skill 层里可自动评分的子组件。

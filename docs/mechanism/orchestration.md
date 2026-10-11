@@ -4,7 +4,7 @@
 
 读完能说出一次会话的边界，即读什么、何时停、花多少。自演进会持续运行并且会改自己：没有会话边界与治理，它就无法审计，也无法按预期停下来。
 
-范围是 §1 到 §5 的会话模型、目标函数与停止条件、token 预算与成本侧、自我指涉治理、全局上下文与执行编排规则。不覆盖单张改进项卡的执行契约（[execution.md](execution.md)）、三层闭环总览与批提交（[pipeline.md](pipeline.md)）、长期任务的装配（[run.md](run.md)），入口见 §10 的相邻文档分工。
+范围是 第 1 节 到 第 5 节 的会话模型、目标函数与停止条件、token 预算与成本侧、自我指涉治理、全局上下文与执行编排规则。不覆盖单张改进项卡的执行契约（[execution.md](execution.md)）、三层闭环总览与批提交（[pipeline.md](pipeline.md)）、长期任务的装配（[run.md](run.md)），入口见 第 9 节 的相邻文档分工。
 
 读者需要先读过 [pipeline.md](pipeline.md)（三层闭环与卡 schema）与 [execution.md](execution.md)（单卡执行契约）。本文属论证层，日常执行不必读：执行规则与机制地图见 [rsi-mechanism.md](rsi-mechanism.md)。
 
@@ -19,13 +19,13 @@
 | 编号 | 缺口 | 补缺口的小节 |
 |---|---|---|
 | G1 | 会话层缺失 | §1 |
-| G2 | 无目标与停止 | §2.1、§2.2 |
+| G2 | 无目标与停止 | 第 2.1 节、第 2.2 节 |
 | G3 | 系统改自己的 skill | §4 |
 | G4 | 同轮多卡冲突 | §5.2 |
 | G5 | 执行前无全局上下文 | §5.1 |
-| G6 | 卡无成本侧字段 | §3.1、§3.2 |
+| G6 | 卡无成本侧字段 | 第 3.1 节、第 3.2 节 |
 | G7 | 无稳态降频 | §2.3 |
-| G8 | 无暂停重启 | §1.2（会话可 resume）、§2.3（收敛后降频） |
+| G8 | 无暂停重启 | 第 1.2 节（会话可 resume）、第 2.3 节（收敛后降频） |
 
 本文不解决的问题集中在 §7「明确不做」。
 
@@ -117,7 +117,7 @@
 
 ### 2.3 稳态降频（G7：无稳态降频）
 
-这一节是蓝图，触发条件是某个范围真实收敛；[pipeline.md](pipeline.md) §11.1 把它列在蓝图机制一列。在那之前，停止条件里的「收敛」已足够。
+这一节是蓝图，触发条件是某个范围真实收敛；[status.md](status.md) 的机制状态总表把它列在蓝图机制一列。在那之前，停止条件里的「收敛」已足够。
 
 某个范围连续两轮满足四个条件时标记为 `steady`，并进入降频池（默认停 4 轮再复检）：
 
@@ -134,10 +134,10 @@
 
 第一条（水位读数）已经落地。启用依据是数据而不是日历：设计定的启用条件是「候选积压真实发生（池内超过 20 张）」，实测该条件已满足（读数来自 `python3 scripts/ev_proposal.py --waterline`），积压从 0 单调升到数十张；而 skill 正文那句「水位超限时只记信号不产卡」既没有数值也没有读数，规则只写在散文里。落地形态是可机械读取的读数加退出码：
 
-- 候选水位上限是 `proposals/gates.yaml:41` 的 `backlog_over` 判据，默认值 20。口径是「已验证且没有合入指针」的卡数，也就是该判据的分子。超限时停产新候选，优先消化积压；信号继续记录，但不产卡。
-- 读数与动作：`python3 scripts/ev_proposal.py --waterline`（默认上限 20 见 `scripts/ev_proposal.py:244`，超限退 1）。产卡前先读它，超限时本轮只记信号。
-- 先回写再判：读数里含「合入指针没有回写」的成分。超限时先跑 `python3 scripts/ev_proposal.py --mark-merged --from-prs` 把指针补齐（按已合入 PR 逐卡匹配，匹配不上的报出，不做猜测），再看剩余量。否则会把已经合入的卡当成未合入，把动作引向「暂停产卡」这个错方向。这里出过一次分子双实现的偏差：`ev_proposal --waterline` 扫全卡文本、`ev_board_data.collect_stats` 只扫决策链结论，2026-09-22 实测同一时刻两处读到 0 张与 8 张（EV-2026-144）。口径现已收在 `scripts/ev_proposal.py:135` 的 `has_merge_pointer`，两边 import 同一个实现。
-- 候选过期（蓝图）：候选停留超过 8 周（参数待校准）且从未被采纳时，status 标 `stale`，季度自评批量转 `rejected` 并记理由「长期未采纳」。`stale` 与 `rejected` 都不删除记录，与 `rejected` 留痕纪律一致。这一条还没有出现「停留 8 周从未采纳」的实例，[pipeline.md](pipeline.md) §11.1 把它列为蓝图；在那之前先用 inbox 式标红。
+- 候选水位上限是 `proposals/gates.yaml` 的 `backlog_over` 判据（`grep -n "backlog_over" proposals/gates.yaml`），默认值 20。口径是「已验证且没有合入指针」的卡数，也就是该判据的分子。超限时停产新候选，优先消化积压；信号继续记录，但不产卡。
+- 读数与动作：`python3 scripts/ev_proposal.py --waterline`（默认上限 20 见 `grep -n "waterline" scripts/ev_proposal.py`，超限退 1）。产卡前先读它，超限时本轮只记信号。
+- 先回写再判：读数里含「合入指针没有回写」的成分。超限时先跑 `python3 scripts/ev_proposal.py --mark-merged --from-prs` 把指针补齐（按已合入 PR 逐卡匹配，匹配不上的报出，不做猜测），再看剩余量。否则会把已经合入的卡当成未合入，把动作引向「暂停产卡」这个错方向。这里出过一次分子双实现的偏差：`ev_proposal --waterline` 扫全卡文本、`ev_board_data.collect_stats` 只扫决策链结论，2026-09-22 实测同一时刻两处读到 0 张与 8 张（EV-2026-144）。口径现已收在 `scripts/ev_proposal.py` 的 `has_merge_pointer`（`grep -n "def has_merge_pointer" scripts/ev_proposal.py`），两边 import 同一个实现。
+- 候选过期（蓝图）：候选停留超过 8 周（参数待校准）且从未被采纳时，status 标 `stale`，季度自评批量转 `rejected` 并记理由「长期未采纳」。`stale` 与 `rejected` 都不删除记录，与 `rejected` 留痕纪律一致。这一条还没有出现「停留 8 周从未采纳」的实例，[status.md](status.md) 的机制状态总表把它列为蓝图；在那之前先用 inbox 式标红。
 - 重复候选：起草时若同一个 trajectory 或同一个 target 已有在池候选，合并而不是新建。起草 agent 检查在池卡，与 §5.2 的冲突检测同源。
 - 信号误报反馈：候选积压率高，说明信号产卡的速度超过消化能力，要下调该信号的触发权重（参数级自校准见 [pipeline.md](pipeline.md) §5.1），不是无限扩池。
 
@@ -234,11 +234,11 @@ proposals/strategy-memory.yaml                  # 策略记忆（跨会话累积
   结构级教训的持久层，随季度自评追加，不随会话重新生成
 ```
 
-策略记忆属于蓝图，触发条件是季度自评跑通至少一轮（[pipeline.md](pipeline.md) §11.1）；在那之前，结构级教训并入 session context 即可。
+策略记忆属于蓝图，触发条件是季度自评跑通至少一轮（[status.md](status.md) 的机制状态总表）；在那之前，结构级教训并入 session context 即可。
 
 归因事件记的是「组件失败」这类单点教训；结构级教训需要跨轮累积，否则季度自评的结论会随会话结束而丢失。例如「这个 namespace 用 category 轴拆比 platform 轴好」「该 issue 池里 workaround 类 resolution 占比高，应当降权」。
 
-做法是：季度自评的结构性结论追加进 `proposals/strategy-memory.yaml`，每条带日期与依据的指标引用；后续会话的 context 快照引用它作为决策上下文。记忆条目由人确认后写入（季度自评产出），agent 只建议，不直接写。这份跨轮累积的策略与 SkillOpt 的 meta-skill 思路同源，对照见 §12。
+做法是：季度自评的结构性结论追加进 `proposals/strategy-memory.yaml`，每条带日期与依据的指标引用；后续会话的 context 快照引用它作为决策上下文。记忆条目由人确认后写入（季度自评产出），agent 只建议，不直接写。这份跨轮累积的策略与 SkillOpt 的 meta-skill 思路同源，对照见 §10。
 
 策略记忆是资产（进 git），会话 context 是快照（写进 .gitignore），两者不混放，避免策略记忆随会话重新生成而丢失，或被运行时状态覆盖。
 
@@ -274,7 +274,7 @@ proposals/strategy-memory.yaml                  # 策略记忆（跨会话累积
 | 会话中断 | 重新加载 state，未完成的卡继续，已完成的卡不重跑（幂等） | §1.2 |
 | 数据前提不满足 | 先澄清：建池，或改用现有数据 | §1.3 |
 | 冷启动数据不足 | 明说数据基础与预计轮次，第一轮先建测试集 | §1.3 |
-| 没有 token 记账环境 | 成本用估算并标 `source: estimate` | §2.1、§3.2 |
+| 没有 token 记账环境 | 成本用估算并标 `source: estimate` | 第 2.1 节、第 3.2 节 |
 | 候选积压超水位 | 停产新候选，先回写合入指针再判剩余量 | §2.4 |
 | 同组件多卡 | 串行排队，不并行实验，否则无法归因 | §5.2 |
 | 改动范围相交 | 冲突卡降级为串行或合并；当前靠读卡，没有机械检查（`affected_paths` 未进卡 schema） | §5.2 |
@@ -291,11 +291,11 @@ proposals/strategy-memory.yaml                  # 策略记忆（跨会话累积
 - 不让 agent 修改评分与指标定义。指标口径变更只能由人走 methodology PR 发起，agent 只能建议（§4）。
 - 不做给人算的公式。每轮判读用三个定性问题，不做公式计算（§2.1）。
 - 不让 agent 直接写策略记忆。记忆条目由人确认后写入，agent 只建议（§5.1）。
-- 不为预测的问题预建机制。蓝图件保留设计但不实现，触发条件出现才激活（§9.2，原则十一）。
+- 不为预测的问题预建机制。蓝图件保留设计但不实现，触发条件出现才激活（[status.md](status.md) 的机制状态总表，原则十一）。
 
 ## 8 原则追溯
 
-文中的设计原则编号（原则一至原则十一）对应 [design-principles.md](../spec/design-principles.md)。本文自身的修订属于 L3 结构，走 methodology PR 加体系维护人审。推导依据是原则五（建议与决定分离）、七（变更可逆）、八（可观测先于改进）、九（资源预算）、十（诚实退化）、十一（数据触发）；理论见 [design-theory.md](../spec/design-theory.md) §4.2–4.4（元层信念、自演进闭环、演化即假设检验）与 §6（token 是预算资源，有价格）。
+文中的设计原则编号（原则一至原则十一）对应 [design-principles.md](../spec/design-principles.md)。本文自身的修订属于 L3 结构，走 methodology PR 加体系维护人审。推导依据是原则五（建议与决定分离）、七（变更可逆）、八（可观测先于改进）、九（资源预算）、十（诚实退化）、十一（数据触发）；理论见 [design-theory.md](../spec/design-theory.md) 第 4.2 节–4.4（元层信念、自演进闭环、演化即假设检验）与 第 6 节（token 是预算资源，有价格）。
 
 | 设计元素 | 服务的原则 | 说明 |
 |---|---|---|
@@ -309,84 +309,25 @@ proposals/strategy-memory.yaml                  # 策略记忆（跨会话累积
 | 同组件串行、变更集原子 | 七（变更可逆） | 归因与回滚粒度清晰 |
 | 全局上下文页 | 九、二 | 每轮加载最小充分状态，避免重复扫描 |
 
-## 9 现状：已落地、蓝图与已否决
+## 9 代码与文档入口
 
-三种状态分开列，不混排。已落地的每条附一条可执行的确认方式；蓝图件保留设计但不实现，触发条件出现才激活（原则十一）；已否决项写清理由，不删记录。
+[status.md](status.md) 的机制状态总表、未建与空转、代码与文件入口、相邻文档分工是全库唯一的一份；本节的机制状态表与代码入口表已并入其中，不再各留副本。
 
-### 9.1 已落地（附确认方式）
-
-| 机制 | 落地形态 | 确认方式 |
-|---|---|---|
-| 候选水位读数与退出码（§2.4） | `ev_proposal.py --waterline`，默认上限 20（`scripts/ev_proposal.py:244`），超限退 1 | `python3 scripts/ev_proposal.py --waterline` |
-| 候选水位上限判据（§2.4） | `proposals/gates.yaml:41` 的 `backlog_over`，默认值 20 | `grep -n "backlog_over" proposals/gates.yaml` |
-| 合入指针回写命令（§2.4） | `ev_proposal.py --mark-merged --from-prs`，按已合入 PR 逐卡匹配，匹配不上的报出、不做猜测 | `grep -n "mark-merged" scripts/ev_proposal.py` |
-| 成本的分子口径单一实现（§2.4） | `scripts/ev_proposal.py:135` 的 `has_merge_pointer`，`--waterline` 与 `ev_board_data` 同源 import | `grep -n "has_merge_pointer" scripts/ev_proposal.py` |
-| 卡的成本侧字段（§3.2） | 已并入 [pipeline.md](pipeline.md) 第 7 节的 schema；旧 `estimated_cost` 已废弃 | `grep -n "actual_cost" docs/mechanism/pipeline.md` |
-| 会话状态文件的落盘位置与 gitignore 规则（§1.2） | `proposals/sessions/*` 写进 `.gitignore:67`；会话协议本身随「自演进执行流程试点一轮」那一步落地（见 §11） | `grep -n "proposals/sessions" .gitignore` |
-
-### 9.2 蓝图（触发条件出现才实现）
-
-| 机制 | 触发条件 | 此前的替代做法 |
-|---|---|---|
-| 稳态降频 `steady`（§2.3） | 某个范围真实收敛，连续两轮满足四个条件 | 停止条件里的「收敛」 |
-| 候选过期态 `stale`（§2.4） | 候选停留超过 8 周（参数待校准）且从未被采纳 | inbox 式标红 |
-| 策略记忆独立文件 `proposals/strategy-memory.yaml`（§5.1） | 季度自评跑通至少一轮 | 结构级教训并入 session context |
-| 冲突检测的机械检查（§5.2） | `affected_paths` 进卡 schema 后 | 读卡判断改动范围的交集 |
-| 会话协议与预算试点（§1、§2、§3） | 排在 golden 验证门与 S2 校准集之后（[pipeline.md](pipeline.md) §11.1 的「自演进执行流程试点一轮」） | 本轮之前不存在自演进会话 |
-
-### 9.3 已否决
-
-- 旧的 `estimated_cost` 字段：在没有 token 记账的情况下它不产生实际约束，已由 `actual_cost` 取代（§3.2，仓库里还有 6 张旧卡带这个字段）。
-- 用 token 换质量：把成本转移到没有预算科目的地方，违反原则九（§3.4）。
-- 靠无限扩池消化候选：积压率高说明产卡速度超过消化能力，动作是下调信号权重而不是扩池（§2.4）。
-- 把 `steady` 当永久关闭：稳态是数据触发的暂停，新信号或新降级态出现即自动解除（§2.3）。
-- 让 agent 改评分与指标定义：这等于被评的一方改写评分标准，是红线（§4）。
-
-## 10 代码与文档入口
-
-正文用白话。改脚本、查数据文件时，用这张表换成代码与文件里的实际名字：
-
-| 正文里说 | 代码与文件里的名字 |
-|---|---|
-| 会话状态 | `proposals/sessions/<SESSION-ID>.yaml`（运行时件，`.gitignore:67`） |
-| 会话级快照 | `proposals/sessions/<SESSION-ID>.context.yaml`（运行时件，gitignore） |
-| 策略记忆 | `proposals/strategy-memory.yaml`（资产，进 git；尚不存在，见 §9.2） |
-| 候选水位读数 | `scripts/ev_proposal.py --waterline`（默认上限在 `scripts/ev_proposal.py:244`） |
-| 候选水位判据 | `proposals/gates.yaml:41` 的 `backlog_over` |
-| 合入指针回写 | `scripts/ev_proposal.py --mark-merged --from-prs` |
-| 分子口径 | `scripts/ev_proposal.py:135` 的 `has_merge_pointer` |
-| 成本侧字段 | `predicted_effect.measure`、`actual_cost`（[pipeline.md](pipeline.md) 第 7 节的 schema） |
-| 知识库规模 | `python3 scripts/index_counts.py` |
-| 收尾评估 | `/skill:evolve-check` |
-
-相邻文档的分工：
-
-| 文档 | 管什么 |
-|---|---|
-| [pipeline.md](pipeline.md) | 机制总览：三层闭环、分级授权、状态机、落地节奏 |
-| [execution.md](execution.md) | 单张改进项卡的执行契约：记录什么、follow-up 怎么验证、沉淀效果怎么度量 |
-| [orchestration.md](orchestration.md) | 本文：单轮会话的边界、目标函数与停止条件、token 预算 |
-| [run.md](run.md) | 把一轮轮会话装配成长期持续运行：长期任务、issue 评测循环、执行记录、可视化 |
-| [evolution-user-guide.md](../guide/evolution-user-guide.md) | 面向使用者的指令、报告与干预语言 |
-| [rsi-mechanism.md](rsi-mechanism.md) | 对象层的闭环与机制地图 |
-| [design-principles.md](../spec/design-principles.md) | 原则一至原则十一的出处 |
-| [design-theory.md](../spec/design-theory.md) | 理论推导 |
-
-## 11 与 pipeline.md、execution.md 的关系与落地顺序
+## 10 与 pipeline.md、execution.md 的关系与落地顺序
 
 | 本文 | pipeline.md | execution.md |
 |---|---|---|
-| 会话生命周期，即一轮的边界 | pipeline.md §6「自演进执行流程」，即轮内步骤 | execution.md §2 到 §7，即单卡的执行契约 |
-| 目标函数与停止条件，即轮的判据 | pipeline.md §6.6「季度自评」，即多轮判据 | execution.md §5「follow-up」，即单卡判据 |
+| 会话生命周期，即一轮的边界 | pipeline.md 第 6 节「自演进执行流程」，即轮内步骤 | execution.md 第 2 节 到 第 7 节，即单卡的执行契约 |
+| 目标函数与停止条件，即轮的判据 | pipeline.md 第 6.6 节「季度自评」，即多轮判据 | execution.md 第 5 节「follow-up」，即单卡判据 |
 | token 预算，即轮的资源 | pipeline.md §6.2「流程总览」，没有预算维度 | execution.md 的卡 schema 成本字段 |
 
-三层嵌套关系是：会话（本文）包含多个卡（execution.md），多轮会话构成季度自评（pipeline.md §6.6）。整体落地总纲见 [pipeline.md](pipeline.md) §11。
+三层嵌套关系是：会话（本文）包含多个卡（execution.md），多轮会话构成季度自评（pipeline.md 第 6.6 节）。整体落地总纲见 [pipeline.md](pipeline.md) 第 11 节。
 
-本文所述的会话协议、预算与治理随 [pipeline.md](pipeline.md) §11.1「实现分级：第一批落地与蓝图」里的自演进执行流程试点一起落地，该试点排在 golden 验证门与 S2 校准集之后；本文不另立落地计划。
+本文所述的会话协议、预算与治理随 [pipeline.md](pipeline.md) 第 11 节里「自演进执行流程试点一轮（含分级授权试点）」那一阶段一起落地，该试点排在 golden 验证门与 S2 校准集之后；本文不另立落地计划。
 
-## 12 外部参考
+## 11 外部参考
 
-### 12.1 与 SkillOpt 的 meta-skill 思路对照
+### 11.1 与 SkillOpt 的 meta-skill 思路对照
 
 [SkillOpt](https://github.com/microsoft/SkillOpt)（微软开源，MIT）把优化对象从模型参数换成文本，并保留一份跨轮累积的 meta-skill。本文 §5.1 的策略记忆与它同源：把结构级教训持久化，供后续轮次当决策上下文读取，载体是词法文本，可 diff、可审，且由人确认后写入、进 git。
 

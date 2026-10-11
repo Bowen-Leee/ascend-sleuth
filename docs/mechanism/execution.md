@@ -4,7 +4,7 @@
 
 它的上一级是 [pipeline.md](pipeline.md) 的机制总览，三层闭环、分级授权与状态机在那篇定义。本文只补执行层的判定口径，做法是把每张改进项卡、每次沉淀当成一次带预期的实验；逐条判定口径都在这里，不必从脚本行为反推。
 
-范围含四条信息契约与判定口径、沉淀效果的两条度量通道、合入后的跟踪验证链路、metrics 分层与 agent 供给清单。范围不含机制总览、单轮会话的编排与长期运行的装配，这三件事分在相邻的三篇文档里（见第 12 节）。
+范围含四条信息契约与判定口径、沉淀效果的两条度量通道、合入后的跟踪验证链路、metrics 分层与 agent 供给清单。范围不含机制总览、单轮会话的编排与长期运行的装配，这三件事分在相邻的三篇文档里（见第 11 节）。
 
 读者是要改改进项信息契约或评审判据的人，读本文前先读 [pipeline.md](pipeline.md) 第 7 节（卡 schema 与状态机）。
 
@@ -29,7 +29,7 @@
 
 机制的主要构件是改进项卡（EV 卡）、case 与 reference 两类沉淀、观察窗、归因事件与 metrics 台账。
 
-对外的两个接口是卡 schema 与 case schema。权威处分别是 [pipeline.md](pipeline.md) 第 7 节与 [case-schema.md](../spec/case-schema.md)，代码入口见第 12 节。
+对外的两个接口是卡 schema 与 case schema。权威处分别是 [pipeline.md](pipeline.md) 第 7 节与 [case-schema.md](../spec/case-schema.md)，代码入口见第 11 节。
 
 ## 2 改进项信息契约（skill 与流程优化）
 
@@ -43,7 +43,7 @@
 - `baseline_behavior` 记在 `validation.baseline`，`edit_semantics` 记在 `hypothesis` 与 `decisions`。
 - `affected_paths` 目前没有对应字段。
 
-卡 schema 的必填字段清单见 `scripts/verify_proposals.py:90` 的 REQUIRED 列表。`target_component` 不在该列表里，由同一脚本的生效日闸门强制（`scripts/verify_proposals.py:224`，`TARGET_CUTOVER` 为 2026-09-17）。
+卡 schema 的必填字段清单见 `scripts/verify_proposals.py` 的 REQUIRED 列表（`grep -n "^REQUIRED" scripts/verify_proposals.py`）。`target_component` 不在该列表里，由同一脚本的生效日闸门强制（`grep -n "TARGET_CUTOVER" scripts/verify_proposals.py`，`TARGET_CUTOVER` 为 2026-09-17）。
 
 | 契约项 | 要写什么 | 缺了会怎样 |
 |---|---|---|
@@ -70,16 +70,16 @@
 | `source_evidence` | 来源（issue、trace 或 postmortem id），加现象、日志、根因的证据引用 | 判断证据是否充分；缺证据的沉淀置信度低 |
 | `sediment_form` | 新 case、variant 并入（作为已有 case 的一个变体并入，不新建）、reference、Tier 3 转正 | 决定验证方式与审批路径 |
 | `evidence_strength` | 症状、根因、fix 三类证据各自的强度：确证、推测或缺失 | 定初始置信度，也是标注的依据 |
-| `verification` | 来源验证档位，按来源形态分而不按 issue 分：`upstream-fix-merged`（关联的 fix PR 已合入）、`upstream-official-doc`（上游官方发布的案例或指南文档，含定位链与验证结论）、`upstream-maintainer-confirmed`、`investigation`、`engineer-report` | 定初始 score 的先验档位。它与 `evidence_strength` 分工不同：strength 是调查判断，verification 是外部证据强度。档位定义见 `skills/to-postmortem/SKILL.md:85` 到 `:91` |
+| `verification` | 来源验证档位，按来源形态分而不按 issue 分：`upstream-fix-merged`（关联的 fix PR 已合入）、`upstream-official-doc`（上游官方发布的案例或指南文档，含定位链与验证结论）、`upstream-maintainer-confirmed`、`investigation`、`engineer-report` | 定初始 score 的先验档位。它与 `evidence_strength` 分工不同：strength 是调查判断，verification 是外部证据强度。档位定义见 [to-postmortem](../../skills/to-postmortem/SKILL.md) 的「来源验证」一节（`grep -n "upstream-fix-merged" skills/to-postmortem/SKILL.md`） |
 | `discriminative_power` | quickly_check 能否把这条 case 与同 namespace 的相似 case 区分开，附对比候选 | 防重复沉淀，防低判别力的条目污染候选集 |
 | `predicted_value` | 预期命中场景：这条沉淀预计命中哪类未来问题，写成可检验的描述（见第 4 节）。当前是蓝图字段，未进 case schema | 沉淀效果度量的对比基准 |
 | `ref_knowledge` | 关联的 active reference，role 必须合法，由 `scripts/verify_references.py` 校验 | 已有机制，沉淀时一并评估 |
 
 这些契约项今天落进 case 文件的只有一部分。
 
-`verification` 落 case 的 `verification.source` 与 `verification.detail`。`ref_knowledge` 落 case 的同名字段（`docs/spec/case-schema.md:78`）。
+`verification` 落 case 的 `verification.source` 与 `verification.detail`。`ref_knowledge` 落 case 的同名字段（[case-schema.md](../spec/case-schema.md) 的 `ref_knowledge` 一节，`grep -n "ref_knowledge" docs/spec/case-schema.md`）。
 
-`source_evidence`、`sediment_form`、`evidence_strength`、`discriminative_power` 是沉淀契约要回答的问题项，case 文件里没有同名字段。case 的完整字段清单见 `docs/spec/case-schema.md:22`。
+`source_evidence`、`sediment_form`、`evidence_strength`、`discriminative_power` 是沉淀契约要回答的问题项，case 文件里没有同名字段。case 的完整字段清单见 [case-schema.md](../spec/case-schema.md) 的字段清单一节（`grep -n "^## " docs/spec/case-schema.md`）。
 
 ## 4 沉淀效果度量：两条通道
 
@@ -147,7 +147,7 @@
 
 ### 5.1a 观察窗超时降级
 
-完整机制设计保留，但它是蓝图：[pipeline.md](pipeline.md) §11.1 把它排在「触发后实现」一列，触发条件是 S1 断供真实持续两期以上。在那之前，观察窗到期而没有反馈时，用「标存疑加提醒人」的轻量方式处理，人可以补反馈或回滚。
+完整机制设计保留，但它是蓝图：[status.md](status.md) 的机制状态总表把它排在「触发后实现」一列，触发条件是 S1 断供真实持续两期以上。在那之前，观察窗到期而没有反馈时，用「标存疑加提醒人」的轻量方式处理，人可以补反馈或回滚。
 
 content 与 fix 两类的观察窗依赖 S1 现场反馈，而反馈可能长期断供（当前捕获率约为 0）。没有超时结算，已采纳改动的现场有效性会一直悬空，follow-up 机制停在等答案上。超时处理按观察窗长度分级：即时类不设超时；content 类按预期观察窗长度的两倍（`expected_window ×2`，该字段尚未落地，见第 4 节的蓝图说明）；fix 类按最长窗的两倍。参数等落地后校准。
 
@@ -201,7 +201,7 @@ content 与 fix 两类的观察窗依赖 S1 现场反馈，而反馈可能长期
 | 单次沉淀效果 | `validation_record`（S2 内容验证一致或不一致）加 `confidence`（S1 resolve） | 每次沉淀是否有效？哪个来源产出低质沉淀？ | `scripts/settle_s2_feedback.py` 加 groom |
 | skill 组件质量 | 归因事件簇（按需聚合）、每次 skill 变更前后的差 | 哪个组件反复出错？这次 skill 改动有效吗？ | `scripts/component_tally.py` 聚合加回测 |
 
-口径纪律沿用 `docs/guide/metrics.md`：比例带分母；分母小于 10 时显式标注；`source: live / replay / issue-replay` 必标；无数据时不写。回滚率是新增的指标，衡量合入闸门放错了多少。它是授权级别校准（[pipeline.md](pipeline.md) §6.3）与季度自评（[pipeline.md](pipeline.md) §6.6）的输入。
+口径纪律沿用 `docs/guide/metrics.md`：比例带分母；分母小于 10 时显式标注；`source: live / replay / issue-replay` 必标；无数据时不写。回滚率是新增的指标，衡量合入闸门放错了多少。它是授权级别校准（[pipeline.md](pipeline.md) 第 6.3 节）与季度自评（[pipeline.md](pipeline.md) 第 6.6 节）的输入。
 
 ## 7 agent 决策点的信息供给
 
@@ -216,7 +216,7 @@ content 与 fix 两类的观察窗依赖 S1 现场反馈，而反馈可能长期
 
 评审把手的判据强度（原则十）：`ev_measure --run` 证明效果，即改动是否产生了它声称的变化；它不证明价值，即这个变化是否值得。命令是否在测那件事，机器判不了，这条属于约定强度，靠人审抽查。退出码分三态：`0` 符合预测、`1` 预测被证伪、`2` 无法判定，避免「判不了」被读成「验证失败」。
 
-存量卡豁免强制要求：`created_at` 早于 `MEASURE_CUTOVER`（该常量在 `scripts/verify_proposals.py:63`，值为 2026-09-11）。豁免的理由是给已完成的决策补一条命令不恢复当时的判断，只造事后叙述。这类缺口由 `python3 scripts/ev_measure.py --audit` 报出，不静默跳过。
+存量卡豁免强制要求：`created_at` 早于 `MEASURE_CUTOVER`（该常量见 `grep -n "MEASURE_CUTOVER" scripts/verify_proposals.py`，值为 2026-09-11）。豁免的理由是给已完成的决策补一条命令不恢复当时的判断，只造事后叙述。这类缺口由 `python3 scripts/ev_measure.py --audit` 报出，不静默跳过。
 
 多人协作下这条尤其关键：评审者会变多，而完整心智模型只有一个。
 
@@ -261,47 +261,21 @@ content 与 fix 两类的观察窗依赖 S1 现场反馈，而反馈可能长期
 6. 不追求每个决策点都给全量证据。分层供给控预算（原则九）；信息不足与信息过载同样损害执行质量。
 7. 不把观察窗未确认的改动计入现场统计。只有排除它们，validated 计数与回滚率才反映真验证。
 
-## 10 现状与落地
-
-结论：卡 schema 与评审把手这批已落地，观察窗与效果字段按触发条件缓行。已落地的机制各自附一条可执行的确认方式；给不出确认方式的只标「已决定」。
-
-### 10.1 已落地
-
-| 机制 | 落地形态 | 确认方式 |
-|---|---|---|
-| 改进项卡 schema v3 | `proposals/ideas/` 模板加 `scripts/verify_proposals.py` 的结构校验 | `python3 scripts/verify_proposals.py --check` |
-| `predicted_effect.measure` 强制 | `MEASURE_CUTOVER`（2026-09-11）之后的卡必须有可复现测量口径，或声明 `reason` | `grep -n "MEASURE_CUTOVER" scripts/verify_proposals.py` |
-| 评审把手 | `ev_measure --run` 打印判据命令、实测输出与退出码；`--audit` 盘全库缺口与存量豁免 | `python3 scripts/ev_measure.py --audit` |
-| `target_component` 生效日闸门 | `TARGET_CUTOVER`（2026-09-17）之后的卡必须有目标组件键 | `grep -n "TARGET_CUTOVER" scripts/verify_proposals.py` |
-| `validation_record` 的 S2 结算 | groom 步骤 3.5b 跑 `scripts/settle_s2_feedback.py`（默认 dry-run） | `grep -n "3.5b" skills/knowledge-groom/SKILL.md` |
-| 现场置信只由 S1 写入 | `scripts/settle_trace_feedback.py` 结算 `confidence` | `ls scripts/settle_trace_feedback.py` |
-| 四层指标与 timeline 结构校验 | `scripts/verify_metrics.py` 校验 `metrics/timeline.yaml` 的结构 | `python3 scripts/verify_metrics.py --check` |
-
-### 10.2 蓝图（触发条件出现才实现）
-
-| 机制 | 触发条件 | 此前的替代做法 |
-|---|---|---|
-| `predicted_value` / `first_hit` / `expected_window` 三个字段 | 出现第一次真实沉淀批次，且 S1 反馈恢复 | 用 `validation_record` 与 `confidence` 两条通道 |
-| 观察窗超时降级态（`unconfirmed_valid` / `unconfirmed` / `rolled_back` 语义） | S1 断供真实持续两期以上 | 标存疑加提醒人（第 5.1a 节） |
-| follow-up 观察窗常态化（第 10.4 节步骤 3） | golden 回放或 S2 校准集可用 | 即时判定类在合入前结清 |
-| 回滚率、采纳率等机制健康指标进 timeline（步骤 4） | 自演进执行流程试点满一轮 | 人工读卡与抽审 |
-| agent 供给清单固化为执行 checklist（步骤 5） | 步骤 1 到 3 有真实执行记录 | 第 7 节的供给清单 |
-
-### 10.3 已否决
-
-无。这份契约至今没有整条否决的内容；被压缩掉的三个字段按触发条件缓行，属于蓝图，不算否决。
-
-### 10.4 落地顺序
+## 10 落地顺序
+### 10.1 落地顺序
 
 本表只回答本文所述契约内部先做什么。整体落地总纲见 [pipeline.md](pipeline.md) §11，以那份为准，本表与其不平行。
 
 | 步骤 | 内容 | 入口闸门 |
 |---|---|---|
-| 1 | 改进项 schema v3 落 `proposals/ideas/` 模板（与 pipeline.md §11.1 的第一批落地同批） | owner 确认（已完成：schema 加 `scripts/verify_proposals.py`） |
+| 1 | 改进项 schema v3 落 `proposals/ideas/` 模板（与 [status.md](status.md) 的机制状态总表里已落地的第一批同批） | owner 确认（已完成：schema 加 `scripts/verify_proposals.py`） |
 | 2 | `validation_record` 结算落地（`scripts/settle_s2_feedback.py` 加 groom 3.5b） | 已完成；真实 S2 result 批量后结算首轮 |
 | 3 | follow-up 观察窗常态化 | golden 回放或 S2 校准集可用（即时判定类） |
 | 4 | 回滚率、采纳率等机制健康指标进 timeline | 自演进执行流程试点满一轮 |
 | 5 | agent 供给清单固化为执行 checklist（将来由 skill 承载） | 步骤 1 到 3 有真实执行记录 |
+
+---
+
 
 ## 11 原则追溯
 
@@ -323,48 +297,7 @@ content 与 fix 两类的观察窗依赖 S1 现场反馈，而反馈可能长期
 
 ## 12 代码与文档入口
 
-正文里的每个脚本、字段与文档在这里给出准确落点。
-
-### 12.1 代码与文件
-
-| 正文里说 | 代码与文件里的名字 |
-|---|---|
-| 卡 schema 必填字段 | `scripts/verify_proposals.py:90`（`REQUIRED`） |
-| `target_component` 生效日闸门 | `scripts/verify_proposals.py:224`（`TARGET_CUTOVER` = 2026-09-17） |
-| `predicted_effect.measure` 强制与存量豁免 | `scripts/verify_proposals.py:63`（`MEASURE_CUTOVER` = 2026-09-11） |
-| 评审把手 | `scripts/ev_measure.py`（`--run` / `--audit`） |
-| S2 结算 `validation_record` | `scripts/settle_s2_feedback.py`、groom 3.5b（`skills/knowledge-groom/SKILL.md:80`） |
-| S1 结算 `confidence` | `scripts/settle_trace_feedback.py` |
-| `verification` 档位定义 | `skills/to-postmortem/SKILL.md:85` 到 `:91` |
-| case 完整字段清单与 `ref_knowledge` | `docs/spec/case-schema.md:22`、`docs/spec/case-schema.md:78` |
-| `ref_knowledge` 的 role 校验 | `scripts/verify_references.py` |
-| issue 源的价值启发式 | `scripts/issue_filter.py` |
-| 归因事件的按需聚合 | `scripts/component_tally.py` |
-| 四层指标口径与 timeline 校验 | `docs/guide/metrics.md`、`scripts/verify_metrics.py`、`scripts/trace_metrics.py`、`scripts/index_counts.py` |
-| 效果差与回滚率记录 | `metrics/timeline.yaml` |
-| 改进项卡目录 | `proposals/ideas/` |
-| 证据原文 | `traces/evidence/` |
-
-### 12.2 与现有机制的对接
-
-| 本文 | 对接的现有机制 | 关系 |
-|---|---|---|
-| 改进项契约（第 2、3 节） | pipeline.md 第 7 节的 schema | pipeline.md 定义状态机与最小字段，本文定义执行级完整字段；落地时以本文扩展 |
-| 沉淀效果度量（第 4 节） | case 的 `confidence` 与 `validation_record`、groom 的 R 轮次 | `confidence` 语义不变（只认 S1 resolve），`validation_record` 承接 S2 内容验证；groom 跑 `scripts/settle_s2_feedback.py` |
-| follow-up 验证（第 5 节） | golden fixture 回放（[roadmap.md](../plan/roadmap.md) 里的 fixture replay 半自动化与 fixture 自动生成两行）、S2 校准集、反馈结算 | 观察窗的即时判定依赖 golden 回放与 S2；S1 类依赖 `scripts/settle_trace_feedback.py` |
-| metrics 分层（第 6 节） | `metrics/timeline.yaml`、`scripts/trace_metrics.py` | 新指标进 timeline 要通过 `scripts/verify_metrics.py` 的结构校验扩展（按准入三条件评估） |
-| agent 供给（第 7 节） | 归因事件加 `scripts/component_tally.py` 的按需聚合（pipeline.md 第 2 节） | 归因事件是历史先例的载体 |
-
-### 12.3 相邻文档的分工
-
-| 文档 | 分工 |
-|---|---|
-| [pipeline.md](pipeline.md) | 机制总览：三层闭环、分级授权、卡 schema 与状态机、落地节奏；本文是它的执行级规范 |
-| [rsi-mechanism.md](rsi-mechanism.md) | 自演进元机制的唯一技术入口与机制地图；日常执行看它 |
-| [orchestration.md](orchestration.md) | 一轮自演进的会话边界、目标函数与停止条件、token 预算、自我指涉治理 |
-| [run.md](run.md) | 把一轮轮会话装配成长期持续运行（长期任务、issue 评测循环、执行记录、可视化） |
-| [evolution-user-guide.md](../guide/evolution-user-guide.md) | 面向使用者的指令、报告与干预语言 |
-| [design-theory.md](../spec/design-theory.md) | 本文推导依据的理论（§4.2–4.4） |
+[status.md](status.md) 的机制状态总表、未建与空转、代码与文件入口、相邻文档分工是全库唯一的一份；本节的机制状态表与代码入口表已并入其中，不再各留副本。
 
 ## 13 外部参考
 

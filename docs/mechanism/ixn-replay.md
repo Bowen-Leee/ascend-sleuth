@@ -8,7 +8,7 @@
 
 读者与前置：知道单发 S2 replay 是什么，读过 [pipeline.md](pipeline.md) §2.1 与 diagnose skill。本文属论证层，日常诊断不必读；执行规则与机制地图见 [rsi-mechanism.md](rsi-mechanism.md)。
 
-## 1. 解决什么问题与不解决什么
+## 1 解决什么问题与不解决什么
 
 单发 S2 replay（[pipeline.md](pipeline.md) §2.1）只测检索与内容面：给全量 issue 背景，看系统能否路由、命中、到达正确结论。diagnose 的交互面它测不了。那一面要回答三个问题：信息不足时会不会追问、问的是不是决定性字段、会不会过早下结论。ixn-replay 补的就是这一维。
 
@@ -26,7 +26,7 @@
 
 主要构件：`scripts/ixn_replay.py` 是评测工具，只负责数据与评分；`eval/ixn-arena/<issue>/` 存入库的评测规格（`gold.yaml` 标注、`stage-k.md` 分期输入、`registry.yaml` 样本清单）；`.ixn-replay/<issue>/` 存只在本地的真实正文与运行产物；diagnose skill 是被测的交互策略来源。
 
-## 2. 最小可执行模型
+## 2 最小可执行模型
 
 把一条 issue 做成一次评测只需要四样东西：一份分期输入、一个逐段运行的 agent、一份对照答案、一个算分脚本。
 
@@ -53,7 +53,7 @@
 
 后面的选样、分流、闸门都是在这个模型上加规则。
 
-## 3. 样本与评测规格：选样、入库、分流
+## 3 样本与评测规格：选样、入库、分流
 
 ### 3.1 选样：筛选制，不是全池可用
 
@@ -92,7 +92,7 @@
 
 验证集复用：issue 进入评测集不等于它被用掉。纪律是该 issue 不再沉淀，也不把评测反馈送回知识侧，也就是不从评测中学习扰动。允许验证集里的 issue 与现有 case 族冗余：该 issue 不再沉淀，冗余入库的代价不大。合成变体（用 case 派生，按 seed 重新生成）可以测表面鲁棒性，前提是 [roadmap.md](../plan/roadmap.md) 第 126 行的 fixture 自动生成落地。上游 issue 流只作自然扩池。
 
-## 4. 评分口径：双层指标加防过早
+## 4 评分口径：双层指标加防过早
 
 对每条样本，agent 按诊断协议逐段运行。每一步做三件事：读 `stage-k.md`；按 diagnose skill 判断路由、信息充分性、是否需要追问与能否下结论；写 `stage-k.result.yaml`（含 `questions`、`sufficient`、`premature_conclusion`）。最后一段结束后写 `conclusion.yaml`。
 
@@ -117,7 +117,7 @@
 1. `decisive_fields` 必须是能向报告者问到的信息（CANN、环境、版本组合、复现细节）。resolution 一侧的事实（fix PR 号、维护者的源码结论）只进 `resolution_ref`：诊断者不该问用户有没有某个 PR。#3325 曾把这类字段错设成决定性字段，导致评分失真。
 2. 每个字段条目下都有 `keywords`，它要包含别名的写法。`gold.yaml` 顶层只有 `issue`/`repo`/`held_out`/`resolution_ref`/`resolution_summary`/`maintainer_questions`/`decisive_fields`，字段名与关键词都写在列表项里。agent 的提问措辞与标注词面经常不一致：例如提问写成 `env=0`，标注是 `VLLM_ASCEND_ENABLE_TOPK_TOPP_OPTIMIZATION`；或者提问写成关闭优化。词面太窄会误伤召回，#2424 从 2/3 提到 3/3 就是这一类。评分工具只做机械匹配，所以召回率标注的是关键词口径，不是绝对语义。
 
-## 5. 运行协议（agent 侧）与运行时数据归属
+## 5 运行协议（agent 侧）与运行时数据归属
 
 ### 5.1 执行顺序
 
@@ -137,7 +137,7 @@
 
 评测规格（标注与分期输入）入库 `eval/ixn-arena/`，随 PR 审、可复用不重建。规格入库前曾放在临时检出里，清理 worktree 时整个目录被删除，需要重建；规格入库后重建只缺正文，正文可以按 issue 号用 `gh` 拉取。本地不进 git 的只有真实正文与运行件（`.ixn-replay/`、`.s2-replay/arena/`）。它们放在主检出，不放在会随 `git worktree remove` 删除的临时检出里。
 
-## 6. 边界与失败模式
+## 6 边界与失败模式
 
 缺素材、缺标注、词面不一致都只让单个样本不可评分，不中断整批；跨样本的风险只有一处——把规格放在临时检出，会连规格一起丢。
 
@@ -152,45 +152,14 @@
 | 结论一致的比较 | 只作参考分 | resolution 常是 workaround、版本要求与后续修复的多阶段结论，不是二元 |
 | 规格已入库后再次跑同一 issue | 规格复用不重建 | 重跑只重跑逐段运行与评分 |
 
-## 7. 成本（试点实测量级）
+## 7 成本（试点实测量级）
 
 - 分期运行一次约为单发的 1.5–2.5 倍 token（约 3–6K/条，含知识库检索）。
 - 标注一个样本约 3–8 分钟（用 `gh` 拉线程再勾选字段），可以半自动。
 - 样本库达到 3–5 条（含 `held_out` 与 `self_consistent` 两种分流）即可做第一轮阈值校准。这是校准门槛，与分数进 timeline 的样本门槛是两件事，见 §8。
 
-## 8. 现状与闸门
 
-机制决议是 EV-2026-012。第一阶段（本文档与 `scripts/ixn_replay.py` v1）已落地，首次出分见 §8.4。评分口径经 2026-09 的本地试点验证：N=3（vllm-ascend #2424、#9769、#9798），含 `held_out`（未沉淀、留作评测）与 `self_consistent`（自指隔离）两种分流。试点数据与结论写在 §4 与 §7，试点的运行留档是本地运行时件，不入库。评分阈值与筛选标准的校准是蓝图，触发条件见 §8.2。
-
-### 8.1 已落地
-
-| 机制 | 落地形态 | 确认方式 |
-|---|---|---|
-| 本文档 | `docs/mechanism/ixn-replay.md` 已登记进文档清单 | `grep -n 'ixn-replay.md' docs/_manifest.yaml`（第 94 行） |
-| 评测工具 v1 | `scripts/ixn_replay.py`，含 `prepare`/`score`/`aggregate` | `python3 scripts/ixn_replay.py --help`；源码入口 `scripts/ixn_replay.py:62`、`:121`、`:176` |
-| 评测规格入库 | `eval/ixn-arena/<issue>/` 的 `gold.yaml`、`stage-k.md` 与 `registry.yaml` | `ls eval/ixn-arena/`；`sed -n '1,4p' eval/ixn-arena/registry.yaml` |
-| 运行时件排除 | `.gitignore` 排除 `.ixn-replay/` | `sed -n '80,81p' .gitignore` |
-| 路线图条目 | 交互型 replay 评测（roadmap 里该事项的首级 2026-09-04 达成） | `sed -n '143p' docs/plan/roadmap.md` |
-| 首批出分记录 | 2026-W37 的 timeline 条目（EV-2026-018） | `sed -n '1,20p' metrics/timeline.d/2026-W37.yaml` |
-| 交互面闸门接线 | 交互/追问面改动走 ixn 对口样本（EV-2026-016） | `grep -n 'ixn' docs/guide/eval.md`（第 72–73 行）；触发条件：下一次 diagnose skill 改动时启用 |
-
-### 8.2 蓝图
-
-| 机制 | 触发条件 |
-|---|---|
-| 评分阈值与筛选标准固化 | `held_out` 样本达到 10 条后按实测校准；规则见 [roadmap.md](../plan/roadmap.md) 第 143 行 |
-| 交互面分数进 timeline | `held_out` ≥10 且带分母（当前 8 条，首批按小样本显式标注的规则带标注记录、不作趋势基准） |
-| 归因型 replay 工具化（用 PR 引用作标注） | 出现归因评测需求，且样本可追溯到 PR 引用；关系见 §12.2 |
-| 合成变体生成器（case 派生扰动加 seed） | [roadmap.md](../plan/roadmap.md) 第 126 行的 fixture 自动生成事项落地后；关系见 §12.3 |
-
-### 8.3 已否决
-
-| 做法 | 否决理由 |
-|---|---|
-| 全池选样 | 多数 issue 属详尽型或归因型，追问测不出差别，样本进去也不产生信号 |
-| 把评测规格放在临时检出 | `git worktree remove` 会连规格一起删除，已实际发生一次、需要重建 |
-
-### 8.4 首次出分与门槛
+## 8 首次出分与门槛
 
 首次出分（规格已入库 `eval/ixn-arena/`，记录见 2026-W37 的 timeline 条目，EV-2026-018）：staged N=10，其中 `held_out` 8 条、self 与回归 2 条；追问召回 9 条为 100%，1 条为 80%，决定性字段全部在链，零过早结论。条数与分数以 `scripts/ixn_replay.py --aggregate` 的输出为准，不要引用本文的数字。2026-W37 的条目按小样本规则带标注记录，不作趋势基准。
 
@@ -198,7 +167,10 @@
 
 `held_out` 样本数是否达到 10 条，只决定分数何时进 timeline 趋势，不决定评测集能否使用或入库：测试集规格随 PR 入库即可复用，与条数无关。分母小于 10 时，分数可以带小样本标注进本地报告，不进趋势；进趋势要求 `held_out` 达到 10 条且带分母，口径纪律同 [metrics.md](../guide/metrics.md)。出分结果作本地报告留档。
 
-## 9. 明确不做（防过度设计）
+---
+
+
+## 9 明确不做（防过度设计）
 
 - 不自动运行诊断与追问：工具只做数据与评分，读分期输入、走 diagnose skill、写结果都由 agent 执行。自动化的代价是把交互策略换成一份脚本，测的就不再是 skill。
 - 不把真实正文入库：公共仓只放评测规格，真实语料全文留本地。代价是换机器后要按 issue 号重新拉正文。
@@ -206,7 +178,7 @@
 - 不重建已入库的规格：`eval/ixn-arena/` 随 PR 审、可复用，重跑只重跑逐段运行与评分。
 - 不提前固化评分阈值与筛选标准：等 `held_out` 达到 10 条、按实测校准。提前定阈值等于用当前的 8 条样本拟合门槛。
 
-## 10. 原则追溯
+## 10 原则追溯
 
 下表的设计元素对应 [design-principles.md](../spec/design-principles.md) 的条文。
 
@@ -218,42 +190,24 @@
 | 工具只做数据与评分，agent 执行协议，人工核验字段 | 五（建议与决定分离） |
 | `self_consistent` 不计为外部验证，分数带分母 | 十、三 |
 
-## 11. 代码与文档入口
+## 11 代码与文档入口
 
-### 11.1 白话到代码名
+[status.md](status.md) 的机制状态总表、未建与空转、代码与文件入口、相邻文档分工是全库唯一的一份；本节的机制状态表与代码入口表已并入其中，不再各留副本。
 
-| 概念 | 文件或脚本 | 行号 |
-|---|---|---|
-| 评测工具 | `scripts/ixn_replay.py` | `:62` `cmd_prepare`、`:121` `cmd_score`、`:176` `cmd_aggregate`、`:198` `main` |
-| 对照答案与分期输入 | `eval/ixn-arena/<issue>/gold.yaml`、`stage-k.md` | 目录规范见 §3.2 |
-| 样本清单 | `eval/ixn-arena/registry.yaml` | `version: 2` |
-| 本地正文与运行件 | `.ixn-replay/<issue>/` | 排除规则见 `.gitignore:80-81` |
-| 单发 S2 先例 | `scripts/s2_replay.py`、`eval/s2/` | S2 口径见 [pipeline.md](pipeline.md) §2.1 |
-| 交互面改动门禁 | `docs/guide/eval.md` | `:72-73` |
+## 12 外部参考
 
-### 11.2 相邻文档分工
-
-| 文档 | 管什么 |
-|---|---|
-| [pipeline.md](pipeline.md) | 三层模型、S2 口径与评分源分级（§2.1） |
-| [eval-arena.md](eval-arena.md) | 评测台总览与兄弟台分工 |
-| [rsi-mechanism.md](rsi-mechanism.md) | 机制地图与权威归属 |
-| [metrics.md](../guide/metrics.md) | 指标定义与闸门口径 |
-| [roadmap.md](../plan/roadmap.md) | 交互型 replay 评测的路线状态与门槛规则 |
-| [design-principles.md](../spec/design-principles.md) | 原则条文 |
-
-## 12. 外部参考
+本节的分节标题沿用「已落地 / 蓝图 / 已否决」的说法，但内容不是机制状态表：它讲的是本评测与三种相邻做法的关系（借鉴什么、不取什么、为什么不取）。本评测自身的机制状态在 [status.md](status.md) 的机制状态总表里。
 
 ### 12.1 已落地：与单发 S2 replay 的关系（借鉴什么、不取什么）
 
 - 借鉴：工具只做数据与评分的分工、规格入库而结果留本地的持久化模型、`self_consistent` 不计为外部验证的纪律、分数带分母的口径纪律，都与 `eval/s2/` 一致；运行协议与 `scripts/s2_replay.py` 同构。
 - 不取：S2 一次给全量 issue 背景，ixn-replay 分期披露；S2 测检索与内容面，ixn-replay 测交互面。
 
-确认方式：`ls eval/s2/ scripts/s2_replay.py`；S2 口径见 [pipeline.md](pipeline.md) §2.1。
+确认方式：`ls eval/s2/ scripts/s2_replay.py`；S2 口径口径同 [pipeline.md](pipeline.md) 的 S2 评测台一节。
 
 ### 12.2 蓝图：与归因型 replay 的关系
 
-归因型 replay 是第三个维度，测源码归因深度，用 PR/commit 引用作标注。它不进本评测的样本池，工具化是蓝图，触发条件是出现归因评测需求且样本可追溯到 PR 引用；不取的理由见 §12.4。
+归因型 replay 是第三个维度，测源码归因深度，用 PR/commit 引用作标注。它不进本评测的样本池，工具化是蓝图，触发条件是出现归因评测需求且样本可追溯到 PR 引用；不取的理由见下面的「已否决」一行。
 
 ### 12.3 蓝图：与合成变体生成的关系
 
