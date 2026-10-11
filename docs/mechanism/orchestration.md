@@ -321,9 +321,9 @@ proposals/strategy-memory.yaml                  # 策略记忆（跨会话累积
 | 目标函数与停止条件，即轮的判据 | pipeline.md 第 6.6 节「季度自评」，即多轮判据 | execution.md 第 5 节「follow-up」，即单卡判据 |
 | token 预算，即轮的资源 | pipeline.md §6.2「流程总览」，没有预算维度 | execution.md 的卡 schema 成本字段 |
 
-三层嵌套关系是：会话（本文）包含多个卡（execution.md），多轮会话构成季度自评（pipeline.md 第 6.6 节）。整体落地总纲见 [pipeline.md](pipeline.md) 第 9 节。
+三层嵌套关系是：会话（本文）包含多个卡（execution.md），多轮会话构成季度自评（pipeline.md 第 6.6 节）。整体落地总纲见 [pipeline.md](pipeline.md) 第 11 节。
 
-本文所述的会话协议、预算与治理随 [status.md](status.md) 的机制状态总表「实现分级：第一批落地与蓝图」里的自演进执行流程试点一起落地，该试点排在 golden 验证门与 S2 校准集之后；本文不另立落地计划。
+本文所述的会话协议、预算与治理随 [pipeline.md](pipeline.md) 第 11 节里「自演进执行流程试点一轮（含分级授权试点）」那一阶段一起落地，该试点排在 golden 验证门与 S2 校准集之后；本文不另立落地计划。
 
 ## 11 外部参考
 

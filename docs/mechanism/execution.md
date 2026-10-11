@@ -268,7 +268,7 @@ content 与 fix 两类的观察窗依赖 S1 现场反馈，而反馈可能长期
 
 | 步骤 | 内容 | 入口闸门 |
 |---|---|---|
-| 1 | 改进项 schema v3 落 `proposals/ideas/` 模板（与 pipeline.md §11.1 的第一批落地同批） | owner 确认（已完成：schema 加 `scripts/verify_proposals.py`） |
+| 1 | 改进项 schema v3 落 `proposals/ideas/` 模板（与 [status.md](status.md) 的机制状态总表里已落地的第一批同批） | owner 确认（已完成：schema 加 `scripts/verify_proposals.py`） |
 | 2 | `validation_record` 结算落地（`scripts/settle_s2_feedback.py` 加 groom 3.5b） | 已完成；真实 S2 result 批量后结算首轮 |
 | 3 | follow-up 观察窗常态化 | golden 回放或 S2 校准集可用（即时判定类） |
 | 4 | 回滚率、采纳率等机制健康指标进 timeline | 自演进执行流程试点满一轮 |

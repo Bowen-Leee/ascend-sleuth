@@ -24,7 +24,7 @@
 | 积压量水位与超限停产 | [rsi-mechanism.md](rsi-mechanism.md) 「边界与失败模式」 | 已落地 | `python3 scripts/ev_proposal.py --waterline` |
 | 候选水位上限判据 `backlog_over` | [orchestration.md](orchestration.md) 「token 预算与成本侧」 | 已落地 | `grep -n "backlog_over" proposals/gates.yaml` |
 | 合入指针回写命令 `--mark-merged --from-prs` | [orchestration.md](orchestration.md) 「token 预算与成本侧」 | 已落地 | `grep -n "mark-merged" scripts/ev_proposal.py` |
-| 成本的分子口径单一实现 `has_merge_pointer` | [orchestration.md](orchestration.md) 「token 预算与成本侧」 | 已落地 | `grep -n "has_merge_pointer" scripts/ev_proposal.py`；`--waterline` 与 `ev_board_data()` 同源 import（`grep -n "def ev_board_data" scripts/ev_proposal.py`） |
+| 成本的分子口径单一实现 `has_merge_pointer` | [orchestration.md](orchestration.md) 「token 预算与成本侧」 | 已落地 | `grep -n "has_merge_pointer" scripts/ev_proposal.py`；`--waterline` 与统计函数 `collect_stats` 同源 import（脚本 `scripts/ev_proposal.py` 引模块 `scripts/ev_board_data.py`：`grep -n "import ev_board_data" scripts/ev_proposal.py`；函数定义：`grep -n "def collect_stats" scripts/ev_board_data.py`） |
 | 卡的成本侧字段 `actual_cost` | [orchestration.md](orchestration.md) 「token 预算与成本侧」 | 已落地 | `grep -n "actual_cost" docs/mechanism/pipeline.md` |
 | 会话状态文件的落盘位置与 gitignore 规则 | [orchestration.md](orchestration.md) 「全局上下文页与执行编排规则」 | 已落地 | `grep -n "proposals/sessions" .gitignore` |
 | 数字现算，不写进文档 | [rsi-mechanism.md](rsi-mechanism.md) 「从触发到落地」 | 已落地 | `python3 scripts/index_counts.py` |
@@ -38,7 +38,7 @@
 | reviews 与 experiments 独立目录 | [pipeline.md](pipeline.md) 「改进项的 schema 与状态机」 | 已落地 | `git ls-files proposals/reviews proposals/experiments` |
 | 改进项卡 schema v3 | [execution.md](execution.md) 「改进项信息契约」 | 已落地 | `python3 scripts/verify_proposals.py --check` |
 | `predicted_effect.measure` 强制 | [execution.md](execution.md) 「改进项信息契约」 | 已落地 | `grep -n "MEASURE_CUTOVER" scripts/verify_proposals.py`；不可度量时声明 `reason` 也是合法退化 |
-| 评审把手 `--run` / `--audit` | [execution.md](execution.md) 「改进项信息契约」 | 已落地 | `ev_measure --run` 打印判据命令、实测输出与退出码；`python3 scripts/ev_measure.py --audit` 盘全库缺口与存量豁免 |
+| 评审把手 `--run` / `--audit` | [execution.md](execution.md) 「改进项信息契约」 | 已落地 | `python3 scripts/ev_measure.py --run` 打印判据命令、实测输出与退出码；`python3 scripts/ev_measure.py --audit` 盘全库缺口与存量豁免 |
 | `target_component` 生效日闸门 | [execution.md](execution.md) 「改进项信息契约」 | 已落地 | `grep -n "TARGET_CUTOVER" scripts/verify_proposals.py` |
 | `validation_record` 的 S2 结算 | [execution.md](execution.md) 「知识沉淀契约」 | 已落地 | `grep -n "3.5b" skills/knowledge-groom/SKILL.md` |
 | 现场置信只由 S1 写入 | [execution.md](execution.md) 「知识沉淀契约」 | 已落地 | `ls scripts/settle_trace_feedback.py` |
@@ -99,7 +99,8 @@
 | agent 供给清单固化为执行 checklist | [execution.md](execution.md) 「agent 决策点的信息供给」 | 蓝图 | 落地顺序的步骤 1 到 3 有真实执行记录 |
 | 冲突检测的机械检查 | [orchestration.md](orchestration.md) 「全局上下文页与执行编排规则」 | 蓝图 | `affected_paths` 进卡 schema 后；此前靠读卡判断改动范围的交集 |
 | 会话协议与预算试点 | [orchestration.md](orchestration.md) 「全局上下文页与执行编排规则」 | 蓝图 | 排在 golden 验证门与 S2 校准集之后；见 [pipeline.md](pipeline.md) 「现状与落地节奏（闸门衔接，不按日历）」 |
-| arena test 分离 | [eval-arena.md](eval-arena.md) 「池构建」 | 蓝图 | 池子撑得起两半 |
+| arena test 分离 | [eval-arena.md](eval-arena.md) 「池构建」 | 蓝图 | 池子撑得起两半；这是 arena 池的口径 |
+| S2 单池校准集的 selection 与 test 分离 | [run.md](run.md) 「Issue 的三重角色与 S2 即时对照」 | 蓝图 | 判定池中未被本系统沉淀过的样本条数够支撑判定；与上一行的 arena test 分离是两处口径（S2 单池与 arena 池），各自独立 |
 | arena 归因层与交互层入台 | [eval-arena.md](eval-arena.md) 「池构建」 | 蓝图 | 两层各自有可用的评测集 |
 | arena 分数进 timeline | [eval-arena.md](eval-arena.md) 「评分口径」 | 蓝图 | 样本规模达标（带分母） |
 | arena 判定池扩容 | [eval-arena.md](eval-arena.md) 「池构建」 | 蓝图 | 规模或数据触发 |
@@ -108,11 +109,11 @@
 | 归因型 replay 工具化（用 PR 引用作标注） | [ixn-replay.md](ixn-replay.md) 「最小可执行模型」 | 蓝图 | 出现归因评测需求，且样本可追溯到 PR 引用 |
 | 合成变体生成器（case 派生扰动加 seed） | [ixn-replay.md](ixn-replay.md) 「样本与评测规格：选样、入库、分流」 | 蓝图 | [roadmap.md](../plan/roadmap.md) 的 fixture 自动生成事项落地后 |
 | arena 外部验证卡占比下限 1/3 | [eval-arena.md](eval-arena.md) 「门控协议：接受与回滚」 | 已否决 | 实测不可达，且原判据把自己的动作文案排除出分子却留在分母里；改为 `external_verification_stall` |
-| 全库体检的自动发起 | [status.md](status.md) 「代码与文件入口」末段的记账号规则 | 已否决 | 系统不知道业务上现在该关心什么；要重新放开先要有不依赖人的触发源 |
-| 由 agent 单独决定结构性改动 | [status.md](status.md) 「代码与文件入口」末段的记账号规则 | 已否决 | 骨架、路由、新 skill 立项的影响面无法局部验证，走两人双签 |
-| 系统改自己的评分口径与指标定义 | [status.md](status.md) 「代码与文件入口」末段的记账号规则 | 已否决 | 自己改评分标准，验证就不再是外部约束 |
-| 退休从没被选中的罕见条目 | [status.md](status.md) 「代码与文件入口」末段的记账号规则 | 已否决 | 过早退休会删掉正确的罕见知识 |
-| 旧的 `estimated_cost` 字段 | [orchestration.md](orchestration.md) 「token 预算与成本侧」 | 已否决 | 在没有 token 记账的情况下它不产生实际约束，已由 `actual_cost` 取代（仓库里还有旧卡带这个字段，复算：`grep -l "estimated_cost" proposals/ideas/*.yaml`） |
+| 全库体检的自动发起 | [rsi-mechanism.md](rsi-mechanism.md) 「哪一步需要人，哪一步可以交给 agent」（「发起全库体检」一行） | 已否决 | 系统不知道业务上现在该关心什么；要重新放开先要有不依赖人的触发源 |
+| 由 agent 单独决定结构性改动 | [rsi-mechanism.md](rsi-mechanism.md) 「哪一步需要人，哪一步可以交给 agent」（「结构性改动」一行）；[rsi-mechanism.md](rsi-mechanism.md) 「明确不做（防过度设计）」 | 已否决 | 骨架、路由、新 skill 立项的影响面无法局部验证，走两人双签 |
+| 系统改自己的评分口径与指标定义 | [rsi-mechanism.md](rsi-mechanism.md) 「哪一步需要人，哪一步可以交给 agent」（「指标口径与评分定义」一行）；[rsi-mechanism.md](rsi-mechanism.md) 「明确不做（防过度设计）」 | 已否决 | 自己改评分标准，验证就不再是外部约束 |
+| 退休从没被选中的罕见条目 | [rsi-mechanism.md](rsi-mechanism.md) 「五类演化动作与对应的护栏」（「退休与复活」一行） | 已否决 | 过早退休会删掉正确的罕见知识 |
+| 旧的 `estimated_cost` 字段 | [orchestration.md](orchestration.md) 「token 预算与成本侧」 | 已否决 | 在没有 token 记账的情况下它不产生实际约束，已由 `actual_cost` 取代 |
 | 用 token 换质量 | [orchestration.md](orchestration.md) 「token 预算与成本侧」 | 已否决 | 把成本转移到没有预算科目的地方，违反原则九 |
 | 靠无限扩池消化候选 | [orchestration.md](orchestration.md) 「token 预算与成本侧」 | 已否决 | 积压率高说明产卡速度超过消化能力，动作是下调信号权重而不是扩池 |
 | 把 `steady` 当永久关闭 | [orchestration.md](orchestration.md) 「目标函数与停止准则」 | 已否决 | 稳态是数据触发的暂停，新信号或新降级态出现即自动解除 |
@@ -141,7 +142,22 @@
 | 外部验证的第一条独立记录 | 知识条目的外部验证记录 | 需要外部验证类记录的条目数现算；`grep -rl "external_verification" knowledge/` | [rsi-mechanism.md](rsi-mechanism.md) 「已知缺口」列为蓝图 |
 | 现场反馈通道出数据 | 知识条目的 `confidence` 现场结算 | 捕获计数现算；`python3 scripts/settle_trace_feedback.py --help` | [rsi-mechanism.md](rsi-mechanism.md) 「已知缺口」列为蓝图 |
 
-## 3 代码与文件入口
+## 3 其他文档落地项的归属阶段
+
+落地阶段的定义、各阶段的内容与入口闸门在 [pipeline.md](pipeline.md) 第 11 节，落地的唯一权威总纲是那一节；[execution.md](execution.md) 第 10 节与 [run.md](run.md) 第 9 节是各自维度的细化，不是平行计划，只回答本层内部先做什么。本表把它们的各项归到 pipeline 的阶段：阶段用 [pipeline.md](pipeline.md) 第 11 节那张表的「内容」列指代（那张表里每个阶段还带一个字母代号，代号只在 pipeline.md 裸用），本表不重复它的代号。「第一批落地」指让机制第一次真实跑起来的最小组件集，即第 1 节机制状态总表里标「已落地」的那些行。
+
+| 其他文档的落地项 | 归属的阶段（内容见 [pipeline.md](pipeline.md) 第 11 节） |
+|---|---|
+| [execution.md](execution.md) 第 10 节：改进项 schema v3 落模板 | 归因事件字段落地（已完成：schema 加 `verify_proposals.py`） |
+| [execution.md](execution.md) 第 10 节：沉淀效果字段（predicted_value / first_hit） | 归因事件按需聚合跑通（归因事件与首条 L2 卡之后，随首批沉淀） |
+| [execution.md](execution.md) 第 10 节：follow-up 观察窗常态化 | golden 验证门常态化（依赖 fixture replay 与 S2 的即时判定） |
+| [execution.md](execution.md) 第 10 节：回滚率等机制指标进 timeline | 自演进执行流程试点满 1 轮后 |
+| [run.md](run.md) 第 9 节：统一执行记录 | 第一批已完成（schema、脚本、四个内容 skill 收尾接入：issue-ingest / to-reference / to-postmortem / knowledge-groom，evolve-check 自身也落记录）。收敛边界：只覆盖内容 skill 收尾，diagnose 走 trace 不重复落（见 [run.md](run.md) 第 4 节） |
+| [run.md](run.md) 第 9 节：supersede 字段与回滚语义 | 自演进执行流程试点（出现首个替代场景时，schema 已含字段） |
+| [run.md](run.md) 第 9 节：长期任务层试点 | 自演进执行流程试点（试点即含轮间调度） |
+| [run.md](run.md) 第 9 节：可视化 | auto 级扩权与参数校准常态化之后，或常设（任务层跑通 ≥1 轮） |
+
+## 4 代码与文件入口
 
 正文用白话。改脚本、查数据文件之前，用这张表把正文用词换成代码与文件里的名字。同一概念在多篇里有多种写法时都保留，用 `/` 或分号并列。
 
@@ -187,7 +203,7 @@
 | 证据原文 | `traces/evidence/` |
 | 会话状态 | `proposals/sessions/<SESSION-ID>.yaml`（运行时件，`grep -n "proposals/sessions" .gitignore`） |
 | 会话级快照 | `proposals/sessions/<SESSION-ID>.context.yaml`（运行时件，gitignore） |
-| 策略记忆 | `proposals/strategy-memory.yaml`（资产，进 git；尚不存在，见 §2） |
+| 策略记忆 | `proposals/strategy-memory.yaml`（资产，进 git；见 §2） |
 | 成本侧字段 | `predicted_effect.measure`、`actual_cost`（[pipeline.md](pipeline.md) 的「改进项的 schema 与状态机」） |
 | 知识库规模、知识库条数 | `python3 scripts/index_counts.py` |
 | 长期任务 | `proposals/tasks/<TASK-ID>.yaml` |
@@ -222,7 +238,7 @@
 | 单发 S2 先例 | `scripts/s2_replay.py`、`eval/s2/`；S2 口径见 [pipeline.md](pipeline.md) 的「评分源分级：反馈数据不只有工程师回报」 |
 | 交互面改动门禁 | [eval.md](../guide/eval.md) 的交互面对口样本一节（`grep -n 'ixn' docs/guide/eval.md`） |
 
-## 4 相邻文档分工
+## 5 相邻文档分工
 
 | 文档 | 管什么 |
 |---|---|

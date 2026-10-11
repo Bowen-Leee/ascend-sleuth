@@ -208,4 +208,4 @@ cross 样本（`eval/s2/vllm-ascend-cross.yaml`）是另一类：与某条 case 
 
 golden 无回归加 val 严格提升，与 SkillOpt/WikiSkill 的 `R_val > R_best` 是同一条验证语义，都要求留出样本上严格更好（[pipeline.md](pipeline.md) 第 13 节已吸收）。本台的配对检验与复用折减是在此之上把统计口径收紧：那些工作的闸门语义是 val 上更好就接受，本台进一步要求更好在配对意义上达到证据门槛。
 
-[pipeline.md](pipeline.md) 第 13.2 节（WikiSkill）：本台把第 13 节末句预留的类 SkillOpt 实验正式化，作用域是流程与 skill 层里可自动评分的子组件。
+[pipeline.md](pipeline.md) 第 13.2 节（WikiSkill）：本台把 [pipeline.md](pipeline.md) 第 13 节末句预留的类 SkillOpt 实验正式化，作用域是流程与 skill 层里可自动评分的子组件。
