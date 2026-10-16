@@ -62,7 +62,7 @@ flowchart LR
 
 图例：灰色是本机记录与源文件，橙色是生成物，蓝色是消费方。图里「知识整理时汇总」是一个动作，不是第四层记录。
 
-两块面板取同一份数据。单次诊断的面板摊开这一次：走对了没有、成本落在哪一步、哪些动作没有推进。累计读数的面板合并多期：被用得最多的案例与先验、最花成本的过程动作、正在变差的读数。
+单次诊断的面板读本机记录，摊开这一次：走对了没有、成本落在哪一步、哪些动作没有推进。累计读数的面板读生成物，合并多期：被用得最多的案例与先验、最花成本的过程动作、正在变差的读数。两份读数都不手写。
 
 ## 3 完整机制
 
@@ -102,7 +102,7 @@ flowchart LR
 
 | 字段 | 类型 | 取值 | 说明 |
 |---|---|---|---|
-| `strength` | 枚举 | `upstream-fix-merged`、`upstream-official-doc`、`upstream-maintainer-confirmed`、`engineer-report`、`investigation`，以及本文新增的 `self-report` | 结论靠什么证据站住。命中案例时取该案例的 `verification.source`；无案例、靠源码分析或现场推理得出结论取 `investigation`；来源会话自报解决取 `self-report`（这一档是本文新增的，现有三处出处都还没有它）。前五档的来源与判据见 `examples/sample-case.yaml:50-51`、`skills/knowledge-groom/SKILL.md:83-91`、`skills/to-postmortem/SKILL.md:85` |
+| `strength` | 枚举 | `upstream-fix-merged`、`upstream-official-doc`、`upstream-maintainer-confirmed`、`engineer-report`、`investigation`，以及本文新增的 `self-report` | 结论靠什么证据站住。命中案例时取该案例的 `verification.source`；无案例、靠源码分析或现场推理得出结论取 `investigation`；来源会话自证解决取 `self-report`（这一档是本文新增的，现有三处出处都还没有它）。前五档的来源与判据见 `examples/sample-case.yaml:50-51`、`skills/knowledge-groom/SKILL.md:83-91`、`skills/to-postmortem/SKILL.md:85` |
 | `route.routed` | 字符串 | 命名空间，如 `inference/vllm-ascend` | 路由判定结果，空表示没判出来 |
 | `route.hit_case` | 字符串或空 | 案例 id | 阶段一命中的案例，与最终沉淀的案例可以不同 |
 | `touched.cases` | 列表 | 案例 id | 含命中、被加载、被排除三种触达方式 |
@@ -484,7 +484,7 @@ VLLM-ASC-9005   选 1 · 解 0       cann-hdk        累计 5 · 解 2 · W42
 变差的读数
   inference/vllm-ascend interrupt 读入 16.4k tok（软上限 8k） → 拆分评估
   期文件断档 3 天（阈值 7）                                  → 跑一次知识整理
-  条目 VLLM-ASC-7635 连续 2 次未解决                          → 转人工
+  条目 VLLM-ASC-14277 连续 2 次未解决（示意）                 → 转人工
 ------------------------------------------------------------------
 本周该做   ① 复审 2 条高选中低解决  ② 补 507014 错误码词条  ③ 跑一次知识整理
 ```
