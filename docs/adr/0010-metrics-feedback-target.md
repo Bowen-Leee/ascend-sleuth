@@ -1,115 +1,71 @@
-# 诊断数据面：本地件锚定与指标上仓
+# 诊断数据面：只修静默失败与口径不一致，不扩充进仓库的指标
 
-## Status
+## 状态
 
 提议
 
-## Date
+## 背景
 
-2026-10-08
+本地件锚定已经覆盖一部分：跨检出复用的目录与游标收在 `scripts/exec_log_path.py:168-180` 的 `CHECKOUT_DIRS`，源码缓存与上游文档缓存走 `resolve_src_code`、`resolve_ref_docs`。
 
-## Tags
+验证回放产物 `.s2-replay/` 不在表里，`docs/guide/git-workflow.md` 的运行时件一节把它归为 dev 期产物、留在检出内。
 
-metrics, trace, local-artifacts, feedback-loop, knowledge-lifecycle
+验证回放的四个读端按当前工作目录解析 `.s2-replay/`：`scripts/settle_s2_feedback.py:130`、`scripts/component_tally.py:68`、`scripts/ev_board_data.py:843`、`scripts/evolution_health.py:88`。
 
-## Replaces
+目录不存在时 `scripts/settle_s2_feedback.py:136` 的 glob 返回空，脚本报 0 条结算并正常退出。读的人分不出「样本都没有结论」与「结果文件在另一个检出」。
 
-无
+事件列表的键名不是 `trace` 时按空处理（`scripts/trace_metrics.py:186`）。实测一份轨迹用 `events` 键，它的事件数读成 0，却仍计入会话总数，稀释了快照里所有比例的分母。
 
-## Context
+误诊归因比只读 `verdict`（`scripts/trace_metrics.py:240-243`）。仓内两处拼法不一致：权威写入点写 `verdict`（`skills/diagnose/references/diagnosis-procedure.md:331`），而 `scripts/component_tally.py:56-57` 的注释记着实测「4 条归因事件、0 条含 verdict」，并说明只认一套会让整条读数静默为零。本机现在没有归因事件，所以这是潜在不一致。
 
-诊断在每台机器上本地跑，产物一半不进版本库。这批本地件现在有几处结构与实现不一致，逐条如下。
+判定层没有数据。三期 live 快照的反馈捕获都是 0（`metrics/timeline.d/2026-W37-live.yaml:12`、`:33-36`；`docs/plan/roadmap.md:138`）。追问与清债的机制已经写在正文里：给完 fix 立刻写 `feedback` 与一条可复制的回报指令（`skills/diagnose/SKILL.md:65`），由续接按三种情形清债（`skills/resume-diagnosis/SKILL.md:26-34`）。缺口不在机制侧。
 
-**两处读数错误，都不报错。** 误诊归因比只读 `verdict`（`scripts/trace_metrics.py:240-243`），而 diagnose 实际写的是 `attribution_kind`（`scripts/component_tally.py:52-58`）。同一份注释里记着实测结果：4 条归因事件、0 条含 `verdict`，合计恒为零。
+案例级选中次数没有统计。`scripts/trace_metrics.py:285-296` 只按会话累计 `hit` 计数；`scripts/settle_trace_feedback.py:16-19` 记着「数据都在 traces 里，但没有任何脚本产出它」。
 
-事件列表的键名不是 `trace` 时按空处理（`scripts/trace_metrics.py:186`）：实测一份轨迹用 `events`，事件数读成 0，却仍计入会话总数，稀释了快照里所有比例的分母。
+改进项的实测记录 `metrics/ev-measure-log.yaml` 有实测数据，有演进看板与体检器两个消费者，没有进期文件的落点（`.gitignore:108`）。
 
-**本地件锚定只做了一半。** `traces/`、`postmortems/inbox/`、`proposals/{sessions,tasks,reviews,experiments}/`、`ref-docs/`、`.settle-state.json` 收进了 `CHECKOUT_DIRS`（`scripts/exec_log_path.py:168-180`），`src-code/` 与执行流水走对应的 `resolve_*`。
-
-`.s2-replay/` 没有：`scripts/settle_s2_feedback.py:48` 按当前工作目录解析，`scripts/component_tally.py:68` 与 `scripts/evolution_health.py:77` 同。在 worktree 里跑 S2 回放，主检出的 groom 读不到结果。
-
-**判定层没有数据。** 三期 live 快照的反馈捕获全为 0（`metrics/timeline.d/2026-W37-live.yaml:33-36` 记 12 个会话无一人回报；`docs/plan/roadmap.md:138` 记前两期同样为 0）。
-
-后果沿链条传下去：`confidence.hits` 不累积，候选排序不学习；误诊归因比的分母为 0；groom 的软退休判据没有输入；夹具自动生成与零执行评估的闸门都卡在「首个已回报的会话」。追问的时点是下一次诊断开屏，而修复是否生效只有现场知道。
-
-**案例级的选中次数没有统计。** `scripts/trace_metrics.py:285-296` 只累计 `hit` 计数，不按案例聚合。groom 需要区分的 `cold` 与 `tried-and-failed`（`skills/knowledge-groom/SKILL.md:92-94`）因此算不出来。
-
-**成本数据四处分离，一处都不进时序数据。** 真实账单读取器（`scripts/session_cost.mjs`）、skill 执行流水（`metrics/skill-exec-log.yaml`，成本字段允许标 `estimate`）、改进项卡的估算成本、上下文成本审计。
-
-而 `skills/self-evolve/SKILL.md:50` 让深度轮读 `metrics/timeline.yaml` 的「token 趋势」，那个字段不在字段白名单里（`scripts/verify_metrics.py:40-60`）。
-
-**有实测数据没有落点。** `metrics/ev-measure-log.yaml` 记录「声明了可复现判据的卡到底跑没跑过」，有演进看板与体检器两个消费者，没有进期文件的落点。
-
-**改进项的结局分布几乎没有拒绝。** 绝大多数卡判为采纳（现算：数 `proposals/ideas/*.yaml` 里 `status` 的取值分布）。`docs/mechanism/rsi-mechanism.md:143` 已经写明这个形态的判据：「不采纳一次都没有出现过，那么采纳记录不能单独用作质量结论」。提出方案、执行、判定有效由同一个 agent 完成，CI 只验结构，复核工具自述「证明效果、不证明价值」（`scripts/ev_measure.py:11-15`）。
+时序数据按部署分家，两种部署各自的读数为各自所有、不参与合并（`docs/guide/git-workflow.md` 的部署形态一节）。
 
 设计与规格在 `docs/mechanism/diagnosis-artifacts-and-metrics.md`，本文承载取舍。
 
-## Decision
+## 决定
 
-1. 修两处读数错误：归因比同时接受 `verdict` 与 `attribution_kind`；事件列表键名不认识时报「未记录」并单列计数，不按 0 事件静默收下。
-2. 把 `.s2-replay/` 收进 `CHECKOUT_DIRS`，与 `traces/` 同一条锚定语义。
-3. 反馈的出口放到报告尾部与诊断对话末尾，入口收成一行预填确认；没有回答就保持 `pending`，聚合成不可解读。
-4. 加四个不需要工程师多做动作的期文件字段：案例被选中次数、导出标签计数、改进项实测计数、改进项结局分布。
-5. 成本靠 `session_id` 与 step 号关联事件层与计费层，不把 token 写进轨迹事件。
-6. 给 case 的 `confidence` 加 `partials` 计数，`partial` 不再并进 `misdiagnoses`；不回填历史，`score` 公式本季度不动。
-7. 上仓保持在四种形态：单条知识的持久状态、周期聚合读数、判据数值、蒸馏结论。每次诊断的指标不单独开 PR。
-8. 拒绝域只做观测：连续若干轮不采纳为 0 就报「拒绝域为空」，不设配额。
+我们决定只修本地件与读数里的静默失败与口径不一致，并把案例选中次数留在本地由知识库整理流程消费，不扩充进仓库的指标字段。
 
-## Alternatives Considered
+## 被否决的替代方案
 
-**每次诊断的指标随知识修改 PR 一起上仓。** 好处是证据与结论同行，评审一次看完。代价是轨迹含客户现场信息，进 git 要先逐单脱敏；生成物里不写数字是本仓库的硬约束，指标数值进文件会在并发合并时撞行；PR 量从每周一次变成每单一次，而每周一次是当前能维持的门控节律。前两条各自足以否掉它。
+- 把四个新读数写进期文件（否决）。好处是闭环有了周期读端。代价是三个重复：`ev_outcomes` 与 `proposals/gates.yaml:32-39` 的 `negative_terminal` 维度重复，`ev_measure` 与 `:49-55` 重复，同一个数写进第三处会让两处定义先腐烂（ADR-0004）；`outcome_labels` 的五项里，反馈三态已经在 `feedback_capture` 里，归因二分已经在 `attribution_ratio` 里。
+- 给归因比加 `improvement` 与 `design` 两个桶（否决）。好处是归因分类完整。代价是仓内没有 skill 或文档定义这两个值，而 `skills/diagnose/SKILL.md:194` 要求流程改进走改进项卡、不写成轨迹事件。桶会一直是 0；一旦非 0，`metrics/gates.yaml:74-76` 的 `attribution_ratio: any_gt_0` 会被非误诊事件点亮，把「全 0 表示没有数据」这条可解读性规则弄坏。
+- 把 `.s2-replay/` 收进主检出锚定表（否决）。好处是跨 worktree 可见。代价是写入侧分散在 `scripts/s2_replay.py:54`、`scripts/eval_arena.py:102-104`、`scripts/rank_candidates.py:66` 与 `scripts/gate_diff.py` 的散文路径。只锚读侧会得到写进 worktree、读主检出、报 0 条结算，比现在各检出自洽更坏。改进项卡 EV-2026-066 也记过不接入 dev 期产物。
+- 把「任何机器都能用同一份输入重算」作为进 git 的判据（否决）。好处是读数可复核。代价是现行 live 字段没有一个合格：它们都由本地轨迹派生（`scripts/trace_metrics.py:336-347`），而部署形态一节规定读数按部署分家、不参与合并。改用两条判据：读数连同分母与来源一起写，以及定义在样本不完整时成立。
+- 每次诊断的指标单独开一个 PR 上仓（否决）。好处是证据与结论同行。代价是轨迹含客户现场信息、进 git 要先逐单脱敏；生成物里不写数字是本仓库的约束，指标数值进文件会在并发合并时撞行；PR 量从每周一次变成每单一次。
+- 把检索的查询串、topK 与分数写进轨迹（否决）。好处是检索质量在线可算。代价是这些值由 agent 自报，事后无法复算。可复算的观测在离线回放侧，那里有冻结的对照样本（`scripts/rank_candidates.py --eval`、`scripts/eval_arena.py --gate`）。
+- 把诊断标签扩成多个人工枚举（否决）。好处是语义完整。代价是单次回报的选择成本上升，而反馈捕获在三期 live 快照里都是 0。五个候选标签里有四个能从已写下的数据导出。
+- 给 case 加 `status` 字段表达生命周期（否决）。好处是与先验层对称，`references/` 有 `status` 字段（`references/README.md:38`）。代价是同一件事在案例层有两个表达：目录位置与字段值，不一致时没有判据。
+- 把 token 与耗时写进轨迹事件（否决）。好处是轨迹自足、不必关联。代价是复制而非关联：账单在会话日志里，轨迹里那份是自报值，不一致时以哪个为准没有判据。耗时跨机器、跨负载、跨并发度都不可比，写进事件后能站住的用法只剩判断是否逼近硬超时。
+- 重写反馈追问的时点（否决）。好处是捕获率可能上升。代价是与已有规则冲突：`skills/diagnose/SKILL.md:57` 明确不在开屏追旧单的反馈，`skills/resume-diagnosis/SKILL.md:26-34` 已经把清债放在续接里。机制已经完整，改动只会让两处规则互相矛盾。
+- 现在拆分 `confidence.partials`（推迟）。好处是「内容对但不完整」与「这条知识错了」不再混算。代价是涉及四处既有实现：回写函数 `scripts/settle_trace_feedback.py:211-216` 只改已存在的键，存量案例拿不到新字段；复核函数 `:474-476` 会把每个 `partial` 误报为「已结算但无效果」；`tests/test_settle_trace_feedback.py:105-109` 断言现状；`trace-status.yaml:68-71` 的 `counts_as` 与其余文档站点写着旧口径。闸门是反馈捕获大于 0。
+- 把知识库整理的变更摘要落成仓库文件（推迟）。好处是摘要不再只存在于会话里。代价是它不满足检查准入的第三条，复发证据还没有。
 
-**把检索的查询串、topK 与分数写进轨迹。** 好处是检索质量在线可算，不依赖回放。代价是这些值由 agent 自报，事后无法复算：同一次检索换一台机器跑不出同一串分数。强观测在离线侧，那里的对照是冻结的（`scripts/rank_candidates.py --eval`、`scripts/eval_arena.py --gate`）。按原则十的强度标注纪律，弱观测不顶替强观测。
+## 后果
 
-**把诊断标签扩成五个人工枚举。** 好处是语义完整，评审一眼看懂结局。代价是单次回报的选择成本上升，而反馈捕获在三期 live 快照里都是 0（见上文）：在一个捕获率为零的通道上增加单次成本，收效为负。五个标签里有四个能从已写下的数据导出：`miss` 加停止原因、流程冲突字段、归因二分、反馈三态。缺的是导出这一步的脚本。
+- 好，因为误诊归因比不再依赖单一拼法，两套写法都能计数，且改动由合成轨迹的单测固定。
+- 好，因为事件键名不认识时会报未记录并标出分母构成，不再静默稀释比例。
+- 好，因为验证回放的缺席与空结果分开了，读的人知道该去哪个检出找结果。
+- 好，因为案例选中次数不需要工程师回报，它的输入由诊断自动写下的事件提供。
+- 好，因为知识库整理的退休判断只读本机的选中历史，单机沉默不会变成全局结论。
+- 好，因为 `sources` 写明检出后，读时序数据的人知道这个数覆盖了谁。
+- 坏，因为归因比的两种拼法没有数据可区分，这条修复在出现归因事件之前无法在真实数据上验证。
+- 坏，因为两个新结局读数在计数非零之前只能报不可解读，短期看不到收益。
+- 坏，因为面板的轨迹读仍跟随会话工作目录，锚定不覆盖它，这一类事故对面板读没有关闭。
+- 坏，因为 `.s2-replay/` 的跨 worktree 可见性没有解决，只把静默改成了显式报错。
 
-**给 case 加 `status` 字段表达生命周期。** 好处是与先验层对称，`references/` 有 `status: active | pending-review | deprecated | draft`（`references/README.md:38`）。代价是同一件事在案例层有两个表达：目录位置（移入 `_archive/`）与字段值，两者不一致时没有判据。案例层缺的是降级信号的数据源，而那个数据源是本文第 1 条与第 2 条要修的东西。
+## 关联
 
-**把 token 与耗时写进轨迹事件。** 好处是轨迹一份文件自足，不必 join。代价是复制而非关联：账单在会话日志里，轨迹里那份是自报值，两者不一致时以哪个为准没有判据。耗时的可用面更窄，它跨机器、跨负载、跨并发度都不可比，写进事件后唯一站得住的用法是判断「是否逼近硬超时」，而那个量现在连采集面都没有。
+取代无，不被取代。
 
-**给「不采纳」设配额或硬性要求。** 好处是拒绝率立刻变成非零读数。代价是配额会诱导编造拒绝理由，一条编造的拒绝记录让拒绝域看起来存在，比没有拒绝更坏。`rsi-mechanism.md:143` 要的是「缺少拒绝路径」被看见。
+依赖的设计与规格：`docs/mechanism/diagnosis-artifacts-and-metrics.md`，其中 5.2 节按蓝图项列出每个改动的落点与确认方式。
 
-**把 groom 变更摘要落成仓库文件。** 好处是摘要不再只活在会话里，季度回顾可以直接回溯。代价是它不满足检查准入的第三条：复发证据还没有。记为待定项，闸门写在设计文档第 5.2 节。
+相关既有决定：改进项卡 EV-2026-066 决定不把 dev 期产物接入主检出锚定，本文与之一致；`docs/adr/0004` 的参数治理条款（同一个量不写两处）是本文否掉三个重复字段的依据；`docs/adr/0009` 关于单机历史不是完整样本的结论，是本文把案例选中次数留在本地的依据。
 
-## Consequences
-
-- 误诊归因比从结构上恒为零变成有事件就有读数，因为两套写法都收。
-- 案例被选中次数不需要任何人回报，因为它的输入全部来自诊断自动写下的事件。
-- 软退休判据拿到 `cold` 与 `hot_unresolved` 的区分，因为窗口计数可算；`cold` 不退休，避免删掉罕见但正确的知识。
-- 拒绝域从看不见变成可观测。不设配额，所以这个读数不会被填满。
-- 成本与事件靠 `session_id` 关联，不新增写侧纪律，因为关联键在两侧都已经写了。
-- S2 与元层评测台的产物跨 worktree 可见，因为锚定语义与 `traces/` 统一。
-- 新增脚本与期文件字段，维护面增加。缓解是新增产物只到计数级，不含原文。
-- `partial` 拆开会改变 `confidence.score` 的历史可比性，因为 score 由 `hits` 与 `misdiagnoses` 重算。缓解是不回填、公式本季度不动，先攒数据。
-- 反馈改问法要动两处 skill 正文与报告模板，短期读数不会立刻变好，它取决于人的习惯。
-- 归因比的分母构成变复杂，读的人要先看构成再看比例。
-
-## Open Questions
-
-本节不构成实现依据。
-
-- `partials` 何时进入 `score` 公式，以及进入后是否需要重新校准全部案例的初始先验。
-- 成本是否要做趋势通道。它要进字段白名单，按检查准入三条缺复发证据。
-- 反馈出口放几个入口（报告尾部、对话末尾、面板）既不漏也不烦。
-- 案例窗口是否要与软退休同步调整。现在是沿用 12 周，没有实测支撑。
-- `.ixn-replay/`、`.replay-input/`、`.auto-fetch/` 是否与 `.s2-replay/` 一并锚定。它们的生命周期更短，锚定的收益要单独算。
-
-## Implementation Plan
-
-按依赖顺序，每步给出可执行的确认方式。
-
-| # | 改什么 | 位置 | 确认方式 |
-|---|---|---|---|
-| 1 | 归因比接受两种写法 | `scripts/trace_metrics.py:240-243` | 存在归因事件时归因比非全 0 |
-| 2 | 事件键名不认识时报未记录 | `scripts/trace_metrics.py:186` | 对使用 `events` 键的轨迹，输出出现未记录计数，比例读数旁标出分母构成 |
-| 3 | 流程加载与跟随补实现 | `scripts/trace_metrics.py` 的指标表 | 指标表出现该字段，与 `docs/guide/metrics.md:63` 的定义对上 |
-| 4 | `.s2-replay/` 收进锚定表 | `scripts/exec_log_path.py:168-180`、`scripts/settle_s2_feedback.py:48`、`scripts/component_tally.py:68`、`scripts/evolution_health.py:77` | 在 worktree 里跑结算，读到主检出的 `.s2-replay/` |
-| 5 | 案例被选中次数聚合 | 新脚本，输入轨迹的候选相关事件 | 对现有轨迹跑一次，输出每个案例的选中、看过未取、排除三个计数 |
-| 6 | 诊断标签导出 | 新脚本，输入事件与反馈 | 输出五类标签的计数与各自对应的动作 |
-| 7 | `confidence` 加 `partials` | `scripts/settle_trace_feedback.py:12`、`docs/spec/case-schema.md:34` | 结算前后 diff 显示 `partials` 单独计数，`misdiagnoses` 不再增加 |
-| 8 | 四个期文件字段进白名单 | `scripts/verify_metrics.py:40-60`、`scripts/metrics_snapshot.py`、`docs/guide/metrics.md` | 组一期骨架，四个字段出现且 `verify_metrics.py --check` 通过 |
-| 9 | 反馈问法 | `skills/diagnose/SKILL.md` 追问节、`skills/resume-diagnosis/SKILL.md` 开屏节、报告模板尾部 | 产出一次报告，尾部出现回报指令；带 `feedback_pending_since` 的会话开屏出现一行预填确认 |
-| 10 | 拒绝率读数 | `scripts/evolution_health.py`、`proposals/gates.yaml` | 跑一次体检，输出采纳、换方向、不采纳三个计数 |
-| 11 | 两条流程间接上 | `skills/knowledge-groom/SKILL.md` 开头、`docs/guide/metrics.md` 周批收尾 | 两处各出现一行指向对方的命令 |
-
-第 1、2、4 步不动 schema，可以独立合入。第 3、5、6、7、8 步改脚本与一处 schema，按知识修改流程走。第 9 步改 skill 正文与报告模板，按方法论流程走。第 10、11 步改体检与周批，不碰知识内容。每一步独立提交，可以单独撤回。
+主要代码入口：`scripts/exec_log_path.py`、`scripts/shared_dir.py`、`scripts/trace_metrics.py`、`scripts/settle_s2_feedback.py`、`scripts/component_tally.py`、`scripts/ev_board_data.py`、`scripts/evolution_health.py`、`scripts/metrics_snapshot.py`。
