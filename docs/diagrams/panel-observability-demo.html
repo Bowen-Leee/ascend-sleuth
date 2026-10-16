@@ -50,9 +50,10 @@
 </head>
 <body>
   <h1>面板版式示意</h1>
-  <div class="note">数字为示意值，用于看版式与信息层级；这张累计卡取的是没有回报的那一期（`2026-W43-live-1019`），所以命中率与误诊率标不可解读；
-    跨期累计列来自历史记录，与
-    <span class="mono">docs/mechanism/diagnosis-observability.md</span> §3.3 的样例同名条目一致。字段与来源见该文 §3.1 与 §3.7。</div>
+  <div class="note">数字与条目标题为示意值，用于看版式与信息层级。这张累计卡取的是没有回报的那一期
+    （<span class="mono">2026-W43-live-1019</span>），所以误诊率与归因比标不可解读；
+    跨期累计列 =
+    <span class="mono">docs/mechanism/diagnosis-observability.md</span> §3.3 样例（W42）+ 本期增量（W43）。字段与来源见该文 §3.1 与 §3.7。</div>
 
   <div class="panel">
     <div class="ptitle"><span class="accent g"></span>诊断面板 · 单次诊断（展开一张卡）</div>
@@ -122,7 +123,7 @@
       <span class="k">覆盖</span><span class="mono">local-a2 · 2026-W43-live-1019</span>
       <span>本机 12 个会话 · 3 期（示意）</span>
     </div>
-    <div class="row"><span class="k">不可解读</span><span class="p">2 项</span><span>命中率、误诊率（反馈捕获 0）</span></div>
+    <div class="row"><span class="k">不可解读</span><span class="p">2 项</span><span>误诊率、归因比（反馈捕获 0）</span></div>
     <div class="row"><span class="k">需处理</span><span class="a">4 项</span><span>判据 5/5 已评估</span></div>
 
     <div class="sec">
@@ -131,8 +132,8 @@
         <div class="col">
           <table>
             <tr><th>本期增量</th><th>条目标题</th><th class="num">使用</th><th class="num">解</th></tr>
-            <tr><td class="mono">VLLM-ASC-12430</td><td>MC2 多节点卡死</td><td class="num">选 5</td><td class="num">0</td></tr>
-            <tr><td class="mono">VLLM-ASC-7635</td><td>算子下发超时</td><td class="num">选 1 · 排除 1</td><td class="num">0</td></tr>
+            <tr><td class="mono">VLLM-ASC-12430</td><td>4×A2 拉起 V4-Pro 卡死</td><td class="num">选 5</td><td class="num">0</td></tr>
+            <tr><td class="mono">VLLM-ASC-7635</td><td>Qwen3.5 开 expert-parallel 超限</td><td class="num">选 1 · 排除 1</td><td class="num">0</td></tr>
             <tr><td class="mono">cann-runtime-error-codes</td><td>CANN 运行时报错码</td><td class="num">查 6 次</td><td class="num">—</td></tr>
           </table>
           <div class="row m" style="font-size:12px">长期零选中 96 条（只算案例，不据此退休）</div>
@@ -140,10 +141,10 @@
         <div class="col">
           <table>
             <tr><th>跨期累计</th><th>条目标题</th><th class="num">累计</th><th class="num">解</th><th class="num">最后</th></tr>
-            <tr><td class="mono">VLLM-ASC-12430</td><td>MC2 多节点卡死</td><td class="num">选 5</td><td class="num">1</td><td class="num">W42</td></tr>
-            <tr><td class="mono">VLLM-ASC-7635</td><td>算子下发超时</td><td class="num">选 1 · 排除 1</td><td class="num">0</td><td class="num">—</td></tr>
-            <tr><td class="mono">VLLM-ASC-9005</td><td>HDK 版本不配套</td><td class="num">基线</td><td class="num">4</td><td class="num">W39</td></tr>
-            <tr><td class="mono">cann-runtime-error-codes</td><td>CANN 运行时报错码</td><td class="num">查 6 · 命中 5</td><td class="num">—</td><td class="num">—</td></tr>
+            <tr><td class="mono">VLLM-ASC-12430</td><td>4×A2 拉起 V4-Pro 卡死</td><td class="num">选 10</td><td class="num">1</td><td class="num">W42</td></tr>
+            <tr><td class="mono">VLLM-ASC-7635</td><td>Qwen3.5 开 expert-parallel 超限</td><td class="num">选 2 · 排除 2</td><td class="num">0</td><td class="num">—</td></tr>
+            <tr><td class="mono">VLLM-ASC-9005</td><td>4×A2 按文档拉起 V4-Pro 失败</td><td class="num">基线</td><td class="num">4</td><td class="num">W39</td></tr>
+            <tr><td class="mono">cann-runtime-error-codes</td><td>CANN 运行时报错码</td><td class="num">查 12 · 命中 10</td><td class="num">—</td><td class="num">W43</td></tr>
           </table>
           <div class="row a" style="font-size:12px">高选中低解决 2 条 → 复审</div>
         </div>
