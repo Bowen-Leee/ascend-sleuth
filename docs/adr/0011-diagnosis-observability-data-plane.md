@@ -1,4 +1,4 @@
-# 诊断观测：条目使用增量进期文件，结局分两条通道
+# 诊断观测：条目使用增量落独立记录文件，结局分两条通道
 
 ## 状态
 
@@ -12,8 +12,8 @@
 |---|---|
 | 三期 live 快照的反馈捕获都是 0，命中率、误诊率、校准只能标不可解读 | `metrics/timeline.yaml` 的三条 live 期 |
 | 面板的约三十个指标标签只有三个消费点 | `scripts/metrics_health.py`、`scripts/evolution_health.py`、`skills/self-evolve/SKILL.md` 的漂移判读 |
-| 十个指标有产出、在字段白名单里，8 期期文件一个都没写过 | `scripts/verify_metrics.py:35-58` 的白名单 29 项与 `metrics/timeline.d/` 求差得到：漏检类别、漏检会话、先验三态、先验消费点、停止原因分布、停止原因未记录、同批并发标记、候选全集事件、字段违规明细、字段违规总数 |
-| 归因比恒为 0 | 读端 `scripts/trace_metrics.py:240-243` 读 `verdict`，生产端写 `attribution_kind`，见 `scripts/component_tally.py:54-58` |
+| 十个指标有产出、在字段白名单里，8 期期文件一个都没写过 | `scripts/verify_metrics.py:40-60` 的白名单 29 项与 `metrics/timeline.d/` 求差得到：漏检类别、漏检会话、先验三态、先验消费点、停止原因分布、停止原因未记录、同批并发标记、候选全集事件、字段违规明细、字段违规总数 |
+| 归因比恒为 0 | 读端 `scripts/trace_metrics.py:240-242` 只读 `verdict`，生产端写 `attribution_kind`；`scripts/component_tally.py:54-58` 记的是修法（两套都收），不是读端 |
 |「命中」有三处定义 | 案例本体的 `confidence.hits`、期文件的 `tier2_hit`、`scripts/trace_metrics.py` 的现算值 |
 | 条目级观测只有先验侧有 | 期文件的 `metrics.reference_detail`；`scripts/settle_trace_feedback.py:16-19` 写着「数据都在 traces 里，但没有任何脚本产出它」 |
 | 没有一处统计一次诊断内部的无效步骤 | 轨迹里预留了 `stop_reason`、`parallel_group`、`considered_candidates`，打分代码未落地 |
@@ -65,7 +65,7 @@
 - 坏，因为多了一族文件：源文件、生成物、校验脚本、`.gitattributes` 的 union 行，以及 `docs/guide/metrics.md` 与路径归属表的同步。
 - 坏，因为使用记录按部署分家，跨机器的排行在第二台部署有数据之前看不到。
 - 坏，因为整体读数仍按周落期，一天跑多次整理时只有周界那一次产出期文件；想按天看趋势要另说。
-- 坏，因为要迁移：案例的 `confidence` 现有四种形态，切到记录后第一天全库分数退回初始值，搬运要分三步、跨三个 PR，中间有共存期。
+- 坏，因为要迁移：案例的 `confidence` 现有四种形态，搬运要跨三个 PR，中间有共存期；迁移期间分数先仍从案例读，切换到记录之后全库分数退回冷启动先验值。
 - 坏，因为记录按写入机器的本地 ISO 周归周，跨时区的两台部署在同一自然日可能落进不同周文件；汇总按部署分组，因此跨部署的排行仍然拼不出来。
 - 坏，因为分步成本要接 harness 会话日志，两个数据源按 `session_id` 关联；关联失败时该会话的成本缺席，不补估值。
 - 坏，因为外部自动对照只覆盖有上游锚点的案例，客户侧现网问题仍然等人工回报，学习环在那些问题上依旧没有分母。
@@ -77,7 +77,7 @@
 
 依赖的设计与规格：`docs/mechanism/diagnosis-observability.md`。
 
-相关既有决定：`docs/adr/0004-capacity-governance.md` 的索引字段拆分（案例内只留 score，动态字段留本体）与「同一个量不写两处」；`docs/adr/0009-counterfactual-replay-exploration-policy.md` 的零执行评估闸门；`docs/adr/0002-retrieval-no-rag-lightweight-index.md` 的词法检索。
+相关既有决定：`docs/adr/0004-capacity-governance.md` 的索引字段拆分与「同一个量不写两处」。其中「案例内只留 score」一条由本记录取代：索引仍只留 score，但 score 的来源从案例改为记录（`scripts/build_index.py:180-183` 的注释在第 2 阶段落地后即失效）；`docs/adr/0009-counterfactual-replay-exploration-policy.md` 的零执行评估闸门；`docs/adr/0002-retrieval-no-rag-lightweight-index.md` 的词法检索。
 
 读数的采集入口：`scripts/trace_metrics.py`、`scripts/session_cost.mjs`。
 

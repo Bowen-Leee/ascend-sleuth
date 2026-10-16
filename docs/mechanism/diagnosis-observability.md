@@ -20,7 +20,7 @@
 
 1. 轨迹里有事件，但没有脚本把它汇总成一次诊断的成本与用到的知识（`scripts/settle_trace_feedback.py:16` 记着「数据都在 traces 里，但没有任何脚本产出它」）。
 2. 仓库里的汇总只到条目级一处：期文件的 `metrics.reference_detail`（某条先验被引用几次），案例侧没有对应数据。
-3. 有十个指标有产出、也在字段白名单里，8 期期文件一次都没写过（复算：见 3.6 的说明；白名单在 `scripts/verify_metrics.py:35-58`）。
+3. 有十个指标有产出、也在字段白名单里，8 期期文件一次都没写过（复算：见 3.6 的说明；白名单在 `scripts/verify_metrics.py:40-60`）。
 4. 归因比读错了键，恒为 0（读端 `scripts/trace_metrics.py:240` 读 `verdict`，生产端写 `attribution_kind`）。
 5. 三期现场快照的反馈捕获都是 0（`metrics/timeline.d/` 的三条 live 期），命中率与误诊率因此没有分母。
 
@@ -42,7 +42,7 @@ flowchart LR
     TR["轨迹 traces/&lt;session_id&gt;.yaml"] --> EP["一次诊断的记录<br/>一行，留在本机"]
     LG["harness 会话日志<br/>token 与工具耗时"] --> EP
     EP -->|"知识整理时汇总"| PF["metrics/entry-activity.d/&lt;周&gt;.yaml<br/>源，进 git"]
-    PF --> EA["metrics/entry-activity.yaml<br/>生成物"]
+    PF --> EA["metrics/entry-activity/&lt;部署&gt;.yaml<br/>生成物"]
     EP -->|"周界那一次"| TD["metrics/timeline.d/&lt;期号&gt;.yaml<br/>源，进 git"]
     TD --> TI["metrics/timeline.yaml<br/>生成物"]
     TI --> V1["单次诊断的面板"]
@@ -90,13 +90,13 @@ flowchart LR
 | `detected` | 框架、平台、类别 | 按类别的会话数 | 轨迹顶层 | 现成 |
 | `route` | 路由到的命名空间、候选数量、加载条数、命中案例 | 路由准确率、漏检类别、候选数与候选超出预算的比例（这些指标的定义见 3.6） | `triage`、`load_index`、`load_full`、`hit` | 现成 |
 | `steps` | 步骤序列与各动作次数 | 各动作次数分布、步数中位数与 P90 | 事件计数 | 现成 |
-| `tool_calls` | 每次工具调用一条：工具名、耗时、成功与否、命令摘要 | 按工具的次数、耗时中位数与 P90、失败与超时数 | 会话日志 | 待接 |
+| `tool_calls` | 每次工具调用一条：工具名、耗时、成功与否、命令摘要（上仓后写成 `kind: tool` 的记录行） | 生成物里的 `tools` 段：按工具的次数、耗时中位数与 P90、失败与超时数 | 会话日志 | 待接 |
 | `touched` | 触达的案例 id 与先验 id，各带触达方式 | 条目使用记录 | `hit`、`load_full`、`reference_lookup`、`excluded_cases` | 现成 |
 | `outcome` | 最终状态、是否给出 fix、反馈结果 | 反馈捕获、误诊率、归因比 | 顶层 `status`、`resolved_at`、`feedback` | 现成 |
 | `sedimented` | 沉淀状态与案例 id | 沉淀漏斗 | 顶层 `sedimented` | 现成 |
 | `cost.tokens` | 未缓存输入、缓存读、缓存写、输出 | 会话成本中位数与 P90、按动作占比 | 会话日志按 `(turn, step)` 去重 | 待接 |
 | `cost.index_read_tok` | 一次诊断读进来的 token 账，四个分项 | 命名空间 × 类别格子的读入成本 | `scripts/index_read_cost.py` 按视图现算；按会话归属还没有产出方 | 待接 |
-| `strength` | 结论强度档 | 强度分布 | 见下表 | 待接 |
+| `strength` | 结论强度档（与 3.6 的指标强度不是一回事） | 强度分布 | 见下表 | 待接 |
 
 字段取值如下表。枚举值照原样写，改中文读者对不上数据。
 
@@ -138,7 +138,7 @@ tool_calls:
   - {step: 6, tool: Bash, ms: 9200, ok: false, args: "gh api repos/vllm-project/vllm-ascend/issues/12430", error: timeout}
 ```
 
-明细不上仓，原因是命令原文与文件路径含现场信息。上仓的是按工具聚合后的分布（形态见 3.3）。
+明细不上仓，原因是命令原文与文件路径含现场信息。上仓的是按工具聚合后的分布（形态见 3.3 生成物样例里的 `tools` 段）。
 
 明细不上仓不等于演进看不到它们。演进信号的读法分两层。第一层看仓库里的读数：哪些条目被选中却长期不解决、哪类漏检集中、哪个动作的成本占比在涨。第二层回本机明细：要判断某一类问题为什么贵、探索策略该改哪一处时，读本地记录里的步骤、工具调用与源码检索过程，这些细节只在产生它的那台机器上。
 
@@ -161,7 +161,7 @@ outcome: {status: resolved, fix_emitted: true, feedback: {case: VLLM-ASC-12430, 
 sedimented: {state: knowledge, case_id: VLLM-ASC-12430}
 cost: {tokens: {uncached: -, cache_read: -, cache_write: -, out: -}, index_read_tok: -}
 tool_calls:                        # 逐次，见上表
-strength: self-report              # 来源 session 自证，见 3.5
+strength: self-report              # 来源会话自证，取值见本节字段取值表
 ```
 
 改汇总脚本时要处理两件事。检索命中的案例（9005）与最终沉淀的案例（12430）不是同一个，两个 id 各算一次触达。被排除的五个案例（`excluded_cases`）也算触达，它们是「检索到但被排除」，与「命中」分开计数。
@@ -265,7 +265,7 @@ flowchart TB
 |---|---|---|---|---|
 | `metrics/entry-activity.d/<周>.yaml` | 源：条目使用记录，一周一个文件，每次运行追加若干行 | 汇总与结算脚本 | 是 | 聚合脚本 |
 | `metrics/timeline.d/<期号>.yaml` | 源：本期读数，一周一期 | 组装脚本产出，维护者复核分母 | 是 | 聚合脚本 |
-| `metrics/entry-activity.yaml` | 生成物：按 id 汇总 | `scripts/build_entry_activity.py` | 是 | 面板、知识整理 |
+| `metrics/entry-activity/<deployment>.yaml` | 生成物：本部署按 id 汇总，一个部署一份 | `scripts/build_entry_activity.py` | 是 | 面板、知识整理 |
 | `metrics/timeline.yaml` | 生成物：全部期文件合成一条时间线 | `scripts/build_timeline.py` | 是 | 面板、体检器、演进看板 |
 | `metrics/gates.yaml` | 判据数值，不是指标 | 人 | 是 | 体检器（`scripts/metrics_health.py`） |
 
@@ -275,16 +275,16 @@ flowchart TB
 # metrics/entry-activity.d/2026-W42.yaml（一周一个文件，每次知识整理追加若干行）
 - {run: 2026-10-16-0920, deployment: local-a2, checkout: a1b2c3d, kb_rev: 2a931ee, sessions: 3, kind: case, id: VLLM-ASC-12430, selected: 3, loaded: 2, resolved: 1, misdiagnosed: 0}
 - {run: 2026-10-16-0920, deployment: local-a2, checkout: a1b2c3d, kb_rev: 2a931ee, sessions: 3, kind: ref,  id: cann-runtime-error-codes, lookups: 6, hit: 5, miss: 1, skipped: 0}
-- {run: 2026-10-16-0920, deployment: local-a2, kind: tool, tool: Grep, calls: 41, p50_ms: 900, p90_ms: 9200, errors: 2, timeouts: 1}
+- {run: 2026-10-16-0920, deployment: local-a2, kind: tool, id: Grep, calls: 41, p50_ms: 900, p90_ms: 9200, errors: 2, timeouts: 1}
 - {run: 2026-10-17-1005, deployment: local-a2, checkout: a1b2c3d, kb_rev: 2a931ee, sessions: 2, kind: case, id: VLLM-ASC-12430, selected: 2, loaded: 1, resolved: 0, misdiagnosed: 0}
 ```
 
 `run` 是本次运行的时间戳（`YYYY-MM-DD-HHMM`），与期号无关：记录在第 3 步写，期文件在周界那一次的第 7 步才写，两者不是一回事。`deployment` 是部署标识，脚本取环境变量 `ASCEND_SLEUTH_DEPLOYMENT`，缺省取检出根目录名。同一周的多次运行共用一个文件，各写各的行。
 
-读侧是生成物，按 `(deployment, id)` 汇总，并保留每个 id 最近几次运行的结果，供面板显示本期增量与「连续未解决」：
+读侧是生成物，一个部署一份（`metrics/entry-activity/<deployment>.yaml`），文件内按 id 汇总，并保留每个 id 最近几次运行的结果，供面板显示本期增量与「连续未解决」：
 
 ```yaml
-# metrics/entry-activity.yaml（生成物，面板与知识整理只读它）
+# metrics/entry-activity/local-a2.yaml（生成物，面板与知识整理只读它）
 covered: {deployment: local-a2, runs: 2, weeks: ['2026-W42'], checkouts: [a1b2c3d]}
 cases:
   VLLM-ASC-12430:
@@ -295,35 +295,40 @@ references:
   cann-runtime-error-codes:
     totals: {lookups: 6, hit: 5, miss: 1, skipped: 0}
     by_week: {2026-W42: {lookups: 6, hit: 5, miss: 1, skipped: 0}}
-cold: {cases: 96, references: 12}     # 期内零活动的条目数 = 库总量减本表条目
+tools:
+  Grep: {calls: 41, p50_ms: 900, p90_ms: 9200, errors: 2, timeouts: 1}
+  Read: {calls: 12, p50_ms: 130, p90_ms: 400, errors: 0, timeouts: 0}
+cold: {cases: 96, references: 12}     # 本表覆盖的运行与周里零活动的条目数 = 库总量减本表条目
 ```
 
-一天跑一次甚至多次知识整理时，每次运行往 `metrics/entry-activity.d/<周>.yaml` 追加若干行，不改已经写下的行；一周七次运行就是同一个文件里的七组行。读侧按 `(deployment, id)` 求和，一个 id 在本周被选中几次就是各行之和。本期读数不跟着每次运行写进期文件：它一周一期，在周界那一次由第 7 步组装，维护者复核分母后写进 `metrics/timeline.d/<期号>.yaml`。理由是趋势要的是周粒度，日粒度里每次运行只有一两次诊断，比例读数全是 0/1 与 1/1，噪声盖过信号；而分母复核是人每周做一次的动作，不该跟着运行次数翻倍。
+一天跑一次甚至多次知识整理时，每次运行往 `metrics/entry-activity.d/<周>.yaml` 追加若干行，不改已经写下的行；一周七次运行就是同一个文件里的七组行。读侧按 id 求和，一个 id 在本周被选中几次就是各行之和。本期读数不跟着每次运行写进期文件：它一周一期，在周界那一次由第 7 步组装，维护者复核分母后写进 `metrics/timeline.d/<期号>.yaml`。理由是趋势要的是周粒度，日粒度里每次运行只有一两次诊断，比例读数全是 0/1 与 1/1，噪声盖过信号；而分母复核是人每周做一次的动作，不该跟着运行次数翻倍。
 
-多人同时跑时，各人往自己那一周的源文件里加行，不编辑别人写过的行。`metrics/entry-activity.d/` 计划配 `merge=union`（与 `triage-tree.d/` 同一种做法，该行尚未加进 `.gitattributes`）。两人同周各自追加时，两侧的行都保留；读侧按 `(deployment, id)` 求和，行序不影响结果。
+多人同时跑时，各人往自己那一周的源文件里加行，不编辑别人写过的行。`metrics/entry-activity.d/` 计划配 `merge=union`（与 `triage-tree.d/` 同一种做法，该行尚未加进 `.gitattributes`）。两人同周各自追加时，两侧的行都保留；读侧按 id 求和，行序不影响结果。
 
-汇总时按 `(run, kind, id)` 去重。同一行被重复保留只算一次，重复的 `run` 号在汇总时报出来。
+每一行都有 `run`、`kind`、`id` 三个键，去重与汇总都用这个三元组：`kind` 是 `case`、`ref`、`tool` 或 `baseline`，`id` 是条目 id 或工具名。同一行被重复保留只算一次，重复的 `run` 号在汇总时报出来。
 
 两份生成物进 git、也进 PR，但它们由脚本重建，人不手改，`--check` 与源比对（要接进 CI，见 5.2）。生成物存在的理由有三条。读侧只有一个入口，面板与体检器不必知道源分了几个文件、怎么追加。源可以换形状（这次就把条目使用记录从期文件里的一个段换成了独立的追加文件族，读端没改）。合并时重跑一次重建命令就够，不需要人工判断留哪一份。这套写法仓库里已有先例：`metrics/timeline.d/*` 合成 `timeline.yaml`，`knowledge/*.yaml` 合成 `_index.yaml`。
 
-读数的部署边界：记录里带 `deployment`，汇总按它分组，不同部署的数字不合并，面板默认显示本部署，跨部署只看各自的行。这样 `merge=union` 只解决同部署的并发，不会把两份部署的计数加成一条排行。
+读数的部署边界：记录里带 `deployment`，汇总按它分组，一个部署出一份生成物，两个部署各自重建、互不覆盖；面板只读本部署那一份。这样 `merge=union` 只解决同部署的并发，不会把两份部署的计数加成一条排行。
+
+`deployment` 由脚本取，优先级是环境变量 `ASCEND_SLEUTH_DEPLOYMENT`、其次是主检出的目录名（`scripts/exec_log_path.py:93` 的 `main_checkout()`，同一克隆的所有 worktree 得到同一个值）。不取当前目录名：本项目要求改动走 worktree，缺省取当前目录会把同一部署拆成多条排行。
 
 ### 3.4 与知识库解耦
 
-观测数据写 `metrics/` 下的记录文件；知识条目只写内容与存续，不写计数、也不写分数。分数是派生值，只出现在索引生成物里。案例里原有的 `confidence` 块整体迁出：三个计数进记录，分数进索引，自证计数进记录。
+观测数据写 `metrics/` 下的记录文件；知识条目只写内容与存续，不写计数、也不写分数。分数是派生值，只出现在索引生成物里。案例里原有的 `confidence` 块整体迁出：计数（含自证）进记录，分数进索引，`last_hit` 不单独存、由记录里最近一次 `resolved` 或 `misdiagnosed` 运行所处的周推出。
 
 | 数据 | 写在哪 | 写入方（知识整理里的步骤） | 何时写 |
 |---|---|---|---|
 | 被选中、被加载、检索三态、被排除 | `metrics/entry-activity.d/<周>.yaml` 的追加行 | 3 汇总 | 每次运行 |
 | 现场确认解决、自证解决 | 同一份记录 | 2 结算 | 每次运行，按游标（已结算位置的记录）只结算新事件 |
 | 外部验证记录 | 案例的 `validation_record` | 2b S2 验证结算 | 每次运行 |
-| 排序分数 | `knowledge/_index.yaml` 生成物 | 6 索引重建（第 4 步算出来） | 随知识变更 |
+| 排序分数 | `knowledge/_index.yaml` 与 `knowledge/_index/*.list` 生成物 | 6 索引重建（第 4 步算出来） | 随知识变更 |
 | 案例内容与存续 | `knowledge/` 下的案例文件或 `_archive/` | 5 复审与退休 | 每周一次，只改有信号的条目 |
 | 人工覆盖分数 | 案例的可选字段 `score_override` | 人，两人复核 | 罕见 |
 
 三条规则。
 
-1. 计数只进记录。案例文件里不再有 `hits`、`misdiagnoses`、`last_hit`、`self_resolved`。这些字段跟着结算走，结算一次就改一次知识文件，并与记录重复定义同一个量。
+1. 计数只进记录。案例文件里不再有 `hits`、`misdiagnoses`、`last_hit`、`self_resolved`；其中 `last_hit` 由记录推出，不需要单独存。这些字段跟着结算走，结算一次就改一次知识文件，并与记录重复定义同一个量。
 2. 分数是派生值，不落案例。输入是记录里的计数与案例的冷启动先验，算出来的分数写进索引生成物。冷启动先验取自案例的 `verification`（内容被外部验证的强度）与 `investigation_quality`（调查质量）；后者在 `skills/knowledge-groom/SKILL.md:81` 的正文里写作「confidence（调查质量）」，是同一个判据。案例文件因此只为内容层的决定而改，不因观测而改。
 3. 人工覆盖优先于算分，走显式字段。`score_override` 写 `{score, reason, by}`，按高风险改动的两人复核走。第 4 步算完后用覆盖值替换该条目的分数，第 5 步的退休判断用替换后的值。条目退休或改 id 时覆盖随条目失效，重新启用要重写。
 
@@ -403,7 +408,9 @@ flowchart LR
 | 预测实测三态 | 评审者，判卡可不可信 | 补跑判据或补预期 | 卡片数 | 确定性 | 已落地 |
 | 采纳与拒绝比 | 维护者，判系统有没有拒绝路径 | 拒绝为 0 时质疑采纳记录 | 终态卡片 | 确定性 | 已落地 |
 
-「现状」一列只取三个值：已落地、部分落地、蓝图。部分落地的具体差别是：先验三态、漏检类别等十项有产出、在字段白名单里，但 8 期期文件一次都没写过；停止原因的覆盖面不足；现场解决计数样本少；归因比读错键、恒为 0；反馈捕获当前为 0。
+「现状」一列只取三个值：已落地、部分落地、蓝图（蓝图后面跟一句缺什么）。部分落地的差别逐条是：先验三态、漏检类别等十项有产出、在字段白名单里，但 8 期期文件一次都没写过；停止原因同样没有落点，区别是它下面的轨迹字段已经开始记，覆盖面不足；现场解决计数样本少；归因比读错键、恒为 0；反馈捕获当前为 0。
+
+表的「现状」列是行级判断，「8 期没写过」是字段级事实，两者可以同时成立：一行可以因为上游数据已开始记而判部分落地，而它的指标字段从未进过期文件。
 
 其中「有产出、在字段白名单里、8 期没写过」的那十项，是 `scripts/verify_metrics.py` 的白名单里有、`scripts/trace_metrics.py` 也产出、但 8 期期文件一次都没写过的十项：漏检类别、漏检会话、先验三态、先验消费点、停止原因分布、停止原因未记录、同批并发标记、候选全集事件、字段违规明细、字段违规总数。
 
@@ -511,19 +518,22 @@ VLLM-ASC-9005   选 1 · 解 0       cann-hdk        累计 5 · 解 2 · W42
 
 阶段之间是共存期：加记录那一步之后，案例与记录各有一份计数，读端仍从案例取分；切换之后案例不再有分数，记录成为唯一来源，面板取分改读索引。共存期超过两周就应当把删字段排上前。
 
+搬运累计计数要一行特殊记录。`confidence` 里的 `hits` 与 `misdiagnoses` 是生命周期累计值，而记录是「一次运行一行」，两者不同量纲。搬运时写 `kind: baseline` 的行（`run: baseline-<日期>`，带累计值与来源说明）：聚合把 baseline 算进 `totals`，但不计入 `by_week`、本周增量与 `cold`，否则排行与「本周增量」会被这份人造基线污染。
+
 | 蓝图项 | 改哪里 | 确认方式 |
 |---|---|---|
-| 一次诊断的记录汇总成一行 | 新增汇总脚本 | 对最近一次诊断跑一次，字段与 3.1 的表对齐 |
+| 一次诊断的记录汇总成一行 | 新增 `scripts/trace_entry_activity.py` | 对最近一次诊断跑一次，字段与 3.1 的表对齐 |
 | 记录文件族（源） | 新增 `metrics/entry-activity.d/<周>.yaml`，由汇总与结算脚本追加 | 跑两次汇总，文件里出现两组 `run`，前一组内容不变 |
-| 记录的生成物 | `scripts/build_entry_activity.py` 产出 `metrics/entry-activity.yaml` | 排行与各行增量逐条对得上；`recent` 能给出「连续未解决」 |
+| 记录的生成物 | `scripts/build_entry_activity.py` 产出 `metrics/entry-activity/<deployment>.yaml` | 排行与各行增量逐条对得上；`recent` 能给出「连续未解决」；两个部署各产一份、互不覆盖 |
 | 记录的校验 | 新增校验脚本并接进 CI 的 `metrics-validation` job | 源与生成物一致；`(run,kind,id)` 重复、孤儿 id、周号与文件名不符都报红 |
 | `.gitattributes` 加 union | `metrics/entry-activity.d/* merge=union` | 构造两侧同时追加，合并后两侧的行都在 |
 | 记录格式改成一行一条 | 汇总脚本的输出格式 | 造两段并发追加，合并后的文件能被 YAML 解析 |
 | 分数的算分脚本 | 新增算分脚本；替换 `skills/knowledge-groom/SKILL.md` 第 4 步的 agent 判断 | 全库跑一次，结果与逐条手算一致；与索引里的 score 一致 |
-| `confidence` 块迁出案例 | 迁移三步（见上） | 第 1 步后计数两处一致；第 3 步后全库不再出现 `confidence` |
+| `confidence` 块迁出案例 | 迁移三个阶段（见上）；`docs/spec/case-schema.md` 要改四处：必需字段表里的 `confidence` 行（`:34`）、`confidence.self_resolved` 子节（`:52`、`:54`）与正文引用（`:101`） | 第 1 阶段后计数两处一致；第 3 阶段后全库不再出现 `confidence`。注意 `scripts/verify_case_draft.py` 的 `REQUIRED_FIELDS` 里本来就没有 `confidence`，schema 的「必填」与脚本口径本就不一致 |
 | 人工覆盖字段 | `docs/spec/case-schema.md` 加可选 `score_override{score, reason, by}` | 造一条覆盖，索引用覆盖值；不带理由时校验报错 |
+| `self-report` 进枚举 | `docs/spec/case-schema.md` 与 `skills/to-postmortem/SKILL.md` 的 `verification.source` 枚举 | 造一条 `strength: self-report` 的会话，强度分布里出现它 |
 | 条目 id 的唯一性门 | `scripts/build_index.py --check` 或新校验脚本 | 全库 id 唯一；案例侧文件名与 id 一致；造一条重名条目，门报红 |
-| 工具调用明细与按工具的分布 | 汇总脚本与记录里的 `tool_profile` | 对最近一次诊断跑一次，明细逐次列出，聚合里出现按工具的 p50/p90 与失败数 |
+| 工具调用明细与按工具的分布 | 汇总脚本写 `kind: tool` 的记录行；生成物出 `tools` 段 | 对最近一次诊断跑一次，明细逐次列出，生成物的 `tools` 段里出现按工具的 p50/p90 与失败数 |
 | 期文件的产出并入知识整理收尾 | `skills/knowledge-groom/SKILL.md` 加一步，复用 `scripts/metrics_snapshot.py` | 跑一次整理，期文件出现在同一个 PR 里；不跑整理时仓库不新增期 |
 | 面板读记录生成物与五块 | `dsh-plugins/ascend-panel/` 前端与 host | 排行与计数正确显示；期文件的手写解析器不再经手条目 |
 | 面板的轨迹读跟随会话工作目录 | `panel-host.js` 的 `resolveCwd` | 在 worktree 里开面板，看读到的是哪一份 `traces/` |
@@ -539,7 +549,7 @@ VLLM-ASC-9005   选 1 · 解 0       cann-hdk        累计 5 · 解 2 · W42
 | `docs/guide/metrics.md` | 来源表加条目使用记录与工具分布两行；「周批」表述改为知识整理收尾；命令链加聚合与校验脚本 |
 | `docs/spec/case-schema.md` | 删掉 `confidence` 一节，新增可选 `score_override` 与 `upstream` |
 | `docs/mechanism/rsi-mechanism.md` | 第 4.4 节的四个写入点里，「知识条目」换成「条目使用记录」（净额仍是四条）；第 11 节把落期归入知识整理 |
-| `docs/guide/git-workflow.md` | 目录归属表加两条新路径（该表的规则是「没列到的路径按只接收处理」） |
+| `docs/guide/git-workflow.md` | 目录归属表加两条新路径，并给记录文件族选一个档：它是「追加型共享源」（允许同周并发追加、配 `merge=union`、读侧按部署分组）。该表现有分档没有这一档，要先加一档，否则只加路径会被「没列到的路径按只接收处理」挡住 |
 | `docs/mechanism/status.md` | 加条目使用记录与工具分布两行状态 |
 | `docs/guide/handoff.md` | 交接时说明接手方看不到上家的本机明细 |
 
@@ -573,7 +583,7 @@ VLLM-ASC-9005   选 1 · 解 0       cann-hdk        累计 5 · 解 2 · W42
 |---|---|
 | 轨迹字段与事件词表 | `skills/diagnose/references/diagnosis-trace.md`、`diagnosis_state.yaml.example`、`trace-status.yaml` |
 | 诊断记录的汇总（新增） | `scripts/trace_entry_activity.py` |
-| 记录与生成物（新增） | `metrics/entry-activity.d/<周>.yaml`、`scripts/build_entry_activity.py`、`metrics/entry-activity.yaml` |
+| 记录与生成物（新增） | `metrics/entry-activity.d/<周>.yaml`、`scripts/build_entry_activity.py`、`metrics/entry-activity/<deployment>.yaml` |
 | 期文件组装、体检与白名单 | `scripts/metrics_snapshot.py`、`scripts/metrics_health.py`、`scripts/verify_metrics.py`、`metrics/gates.yaml` |
 | 期文件与生成物重建 | `scripts/build_timeline.py` |
 | 一次诊断读入账 | `scripts/index_read_cost.py` |
