@@ -375,7 +375,7 @@ flowchart LR
 
 ### 3.6 指标清单
 
-留下的指标都要先答出五个问题，答不出来的删掉。面板上现有约三十个指标标签（`dsh-plugins/ascend-panel/panel-client.js` 的 `METRIC_LABELS`），其中三个有决定在读（`scripts/metrics_health.py`、`scripts/evolution_health.py`、`skills/self-evolve/SKILL.md` 的漂移判读），其余只在面板上占位。
+留下的指标都要先答出五个问题，答不出来的删掉。面板上现有约三十个指标标签（`dsh-plugins/ascend-panel/panel-client.js` 的 `METRIC_LABELS`），其中只有三个有决定在读：`scripts/metrics_health.py`、`scripts/evolution_health.py`、`skills/self-evolve/SKILL.md` 的漂移判读。其余只在面板上占位。
 
 五个问题是：谁读它；他据此做什么决定；读数为坏时下一步做什么；分子分母各是什么、覆盖哪些会话与哪份检出；这个数怎么来的。
 
@@ -412,7 +412,7 @@ flowchart LR
 
 表的「现状」列是行级判断，「8 期没写过」是字段级事实，两者可以同时成立：一行可以因为上游数据已开始记而判部分落地，而它的指标字段从未进过期文件。
 
-其中「有产出、在字段白名单里、8 期没写过」的那十项，是 `scripts/verify_metrics.py` 的白名单里有、`scripts/trace_metrics.py` 也产出、但 8 期期文件一次都没写过的十项：漏检类别、漏检会话、先验三态、先验消费点、停止原因分布、停止原因未记录、同批并发标记、候选全集事件、字段违规明细、字段违规总数。
+其中「有产出、在字段白名单里、8 期没写过」的十项是：漏检类别、漏检会话、先验三态、先验消费点、停止原因分布、停止原因未记录、同批并发标记、候选全集事件、字段违规明细、字段违规总数。每一项都在 `scripts/verify_metrics.py` 的白名单里，也由 `scripts/trace_metrics.py` 产出。
 
 复算：
 
@@ -514,7 +514,7 @@ VLLM-ASC-9005   选 1 · 解 0       cann-hdk        累计 5 · 解 2 · W42
 
 ### 5.2 蓝图
 
-先做迁移，再做新口径。`confidence` 在库里现有四种形态（四个键 / 只有 `hits` 与 `misdiagnoses` / 三个键 / 带 `self_resolved`），一部分条目没有 `score`，因此迁移要跨三个 PR，按「加记录与新聚合 → 切换算分与读端 → 删除旧字段」的顺序走，每个 PR 一个阶段。
+先做迁移，再做新口径。`confidence` 在库里现有四种形态（四个键 / 只有 `hits` 与 `misdiagnoses` / 三个键 / 带 `self_resolved`），一部分条目没有 `score`。因此迁移要跨三个 PR，一个 PR 一个阶段：加记录与新聚合、切换算分与读端、删除旧字段。
 
 阶段之间是共存期：加记录那一步之后，案例与记录各有一份计数，读端仍从案例取分；切换之后案例不再有分数，记录成为唯一来源，面板取分改读索引。共存期超过两周就应当把删字段排上前。
 
