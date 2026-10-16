@@ -10,15 +10,21 @@
 
 验证回放产物 `.s2-replay/` 不在表里，`docs/guide/git-workflow.md` 的运行时件一节把它归为 dev 期产物、留在检出内。
 
-验证回放的四个读端按当前工作目录解析 `.s2-replay/`：`scripts/settle_s2_feedback.py:130`、`scripts/component_tally.py:68`、`scripts/ev_board_data.py:843`、`scripts/evolution_health.py:88`。
+验证回放的四个读端都不锚主检出，取根的方式分两种。
 
-目录不存在时 `scripts/settle_s2_feedback.py:136` 的 glob 返回空，脚本报 0 条结算并正常退出。读的人分不出「样本都没有结论」与「结果文件在另一个检出」。
+`scripts/settle_s2_feedback.py:130`、`scripts/component_tally.py:68`、`scripts/ev_board_data.py:843` 按当前工作目录解析。
+
+`scripts/evolution_health.py:88` 按脚本所在检出解析，`--root` 默认 `Path(__file__).resolve().parents[1]`（`:558`），读的是 `.s2-replay/arena/impact.yaml`（`:77`）。
+
+目录不存在时 `scripts/settle_s2_feedback.py:136` 的 glob 返回空，脚本报 0 条结算并正常退出。
+
+另两个读端读的是 `.s2-replay/attributions.yaml`，缺席时同样静默为空。读的人分不出「样本都没有结论」与「结果文件在另一个检出」。
 
 事件列表的键名不是 `trace` 时按空处理（`scripts/trace_metrics.py:186`）。实测一份轨迹用 `events` 键，它的事件数读成 0，却仍计入会话总数，稀释了快照里所有比例的分母。
 
 误诊归因比只读 `verdict`（`scripts/trace_metrics.py:240-243`）。仓内两处拼法不一致：权威写入点写 `verdict`（`skills/diagnose/references/diagnosis-procedure.md:331`），而 `scripts/component_tally.py:56-57` 的注释记着实测「4 条归因事件、0 条含 verdict」，并说明只认一套会让整条读数静默为零。本机现在没有归因事件，所以这是潜在不一致。
 
-判定层没有数据。三期 live 快照的反馈捕获都是 0（`metrics/timeline.d/2026-W37-live.yaml:12`、`:33-36`；`docs/plan/roadmap.md:138`）。追问与清债的机制已经写在正文里：给完 fix 立刻写 `feedback` 与一条可复制的回报指令（`skills/diagnose/SKILL.md:65`），由续接按三种情形清债（`skills/resume-diagnosis/SKILL.md:26-34`）。缺口不在机制侧。
+判定层没有数据。三期 live 快照的反馈捕获都是 0（`metrics/timeline.yaml:92-95`、`:167-170`、`:261-264`；`docs/plan/roadmap.md:138`）。追问与清债的机制已经写在正文里：给完 fix 立刻写 `feedback` 与一条可复制的回报指令（`skills/diagnose/SKILL.md:65`），由续接按三种情形清债（`skills/resume-diagnosis/SKILL.md:26-34`）。缺口不在机制侧。
 
 案例级选中次数没有统计。`scripts/trace_metrics.py:285-296` 只按会话累计 `hit` 计数；`scripts/settle_trace_feedback.py:16-19` 记着「数据都在 traces 里，但没有任何脚本产出它」。
 
@@ -35,8 +41,9 @@
 ## 被否决的替代方案
 
 - 把四个新读数写进期文件（否决）。好处是闭环有了周期读端。代价是三个重复：`ev_outcomes` 与 `proposals/gates.yaml:32-39` 的 `negative_terminal` 维度重复，`ev_measure` 与 `:49-55` 重复，同一个数写进第三处会让两处定义先腐烂（ADR-0004）；`outcome_labels` 的五项里，反馈三态已经在 `feedback_capture` 里，归因二分已经在 `attribution_ratio` 里。
-- 给归因比加 `improvement` 与 `design` 两个桶（否决）。好处是归因分类完整。代价是仓内没有 skill 或文档定义这两个值，而 `skills/diagnose/SKILL.md:194` 要求流程改进走改进项卡、不写成轨迹事件。桶会一直是 0；一旦非 0，`metrics/gates.yaml:74-76` 的 `attribution_ratio: any_gt_0` 会被非误诊事件点亮，把「全 0 表示没有数据」这条可解读性规则弄坏。
-- 把 `.s2-replay/` 收进主检出锚定表（否决）。好处是跨 worktree 可见。代价是写入侧分散在 `scripts/s2_replay.py:54`、`scripts/eval_arena.py:102-104`、`scripts/rank_candidates.py:66` 与 `scripts/gate_diff.py` 的散文路径。只锚读侧会得到写进 worktree、读主检出、报 0 条结算，比现在各检出自洽更坏。改进项卡 EV-2026-066 也记过不接入 dev 期产物。
+- 给归因比加 `improvement` 与 `design` 两个桶（否决）。好处是归因分类完整。两个值在仓内有定义，`scripts/component_tally.py:54` 与 `:96` 已按 `execution|improvement|design` 处理。代价是没有任何写入动作会产生它们：`skills/diagnose/SKILL.md:194` 要求流程改进走改进项卡、不写成轨迹事件。桶会一直是 0。
+- 把 `improvement` 与 `design` 映射进归因比（否决）。好处是桶与字段一一对应。代价是 `metrics/gates.yaml:74-76` 的 `attribution_ratio: any_gt_0` 会被非误诊事件点亮，把「全 0 表示没有数据」这条可解读性规则弄坏。归因比只映射 `execution`。
+- 把 `.s2-replay/` 收进主检出锚定表（否决）。好处是跨 worktree 可见。代价是写入侧分散在 `scripts/s2_replay.py:54`、`scripts/eval_arena.py:102-104`、`scripts/rank_candidates.py:66` 与 `scripts/gate_diff.py` 的散文路径。只锚读侧会得到写进 worktree、读主检出、报 0 条结算，比现在各检出自洽更坏。改进项卡 EV-2026-066（不把 dev 期产物接入主检出锚定）也记过这条。
 - 把「任何机器都能用同一份输入重算」作为进 git 的判据（否决）。好处是读数可复核。代价是现行 live 字段没有一个合格：它们都由本地轨迹派生（`scripts/trace_metrics.py:336-347`），而部署形态一节规定读数按部署分家、不参与合并。改用两条判据：读数连同分母与来源一起写，以及定义在样本不完整时成立。
 - 每次诊断的指标单独开一个 PR 上仓（否决）。好处是证据与结论同行。代价是轨迹含客户现场信息、进 git 要先逐单脱敏；生成物里不写数字是本仓库的约束，指标数值进文件会在并发合并时撞行；PR 量从每周一次变成每单一次。
 - 把检索的查询串、topK 与分数写进轨迹（否决）。好处是检索质量在线可算。代价是这些值由 agent 自报，事后无法复算。可复算的观测在离线回放侧，那里有冻结的对照样本（`scripts/rank_candidates.py --eval`、`scripts/eval_arena.py --gate`）。
@@ -49,7 +56,7 @@
 
 ## 后果
 
-- 好，因为误诊归因比不再依赖单一拼法，两套写法都能计数，且改动由合成轨迹的单测固定。
+- 好，因为归因比不再依赖单一拼法：`execution` 无论写成 `verdict` 还是 `attribution_kind` 都计数，且改动由合成轨迹的单测固定。
 - 好，因为事件键名不认识时会报未记录并标出分母构成，不再静默稀释比例。
 - 好，因为验证回放的缺席与空结果分开了，读的人知道该去哪个检出找结果。
 - 好，因为案例选中次数不需要工程师回报，它的输入由诊断自动写下的事件提供。

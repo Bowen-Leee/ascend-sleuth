@@ -22,7 +22,7 @@
 
 本地件与仓库资产的分界只有一条判据：这份文件换到另一份检出、另一台机器上还有没有意义。有意义的是仓库资产，没有意义的是本地件。
 
-本地件只有一种落点被允许：锚在同一个克隆的主检出。同一份检出可能同时开着多个 worktree（同一个仓库的第二份检出）在并发干活，而周批与结算脚本读的是主检出那一份。锚定之后，记录落在哪个目录不再取决于当时人在哪个目录。这条保证的适用范围是「同一克隆且能取到 git」：`scripts/exec_log_path.py:110-123` 在没有 git 环境时退化为检出内，多份克隆之间也互不可见，两种情况都在输出里标出退化形态。
+跨检出复用的本地件锚在同一个克隆的主检出；生命周期短的批次产物留在检出内，两类在 3.1 的清单里逐行标出。同一份检出可能同时开着多个 worktree（同一个仓库的第二份检出）在并发处理任务，而周批与结算脚本读的是主检出那一份。锚定之后，记录落在哪个目录不再取决于当时人在哪个目录。这条保证的适用范围是「同一克隆且能取到 git」：`scripts/exec_log_path.py:110-123` 在没有 git 环境时退化为检出内，多份克隆之间也互不可见，两种情况都在输出里标出退化形态。
 
 锚定由三部分组成，缺任何一部分都会重新出现第一类事故。
 
@@ -38,7 +38,7 @@
 
 ### 3.1 本地件清单
 
-锚定一列写「主检出」的走 `CHECKOUT_DIRS` 或对应的 `resolve_*` 函数；写「检出内」的按当前工作目录解析。
+锚定一列写「主检出」的走 `CHECKOUT_DIRS` 或对应的 `resolve_*` 函数。写「检出内」的不锚主检出，取根的方式有两种：多数读端按当前工作目录解析，`scripts/evolution_health.py` 按脚本所在检出解析（`--root` 默认 `Path(__file__).resolve().parents[1]`，`:558`）。
 
 | 本地件 | 路径 | 谁写 | 谁读 | 锚定 | 进 git |
 |---|---|---|---|---|---|
@@ -63,7 +63,7 @@
 
 `traces/` 与 `diagnosis_state*.yaml` 在 `.gitignore:7-8`，其余见 `.gitignore` 里各自的注释行。
 
-### 3.2 消费关系
+### 3.2 谁在什么时候读哪份本地件
 
 本地件被消费有两种模式。脚本读的读法确定、输入确定、输出确定，可以配门；agent 读的读法随现场变化，只能靠正文约束。这条区分决定哪些改动能进 CI：`scripts/` 下的确定性读端可以，skill 正文里的读法只能靠评审。
 
@@ -206,10 +206,10 @@ notes: |
 
 | 蓝图项 | 落点 | 确认方式 | 闸门 |
 |---|---|---|---|
-| 事件列表键名不可读时如实报出 | `scripts/trace_metrics.py:186` | 对使用 `events` 键的那份轨迹跑 `python3 scripts/trace_metrics.py`，输出里出现未记录计数，比例读数旁标出分母构成 | 无 |
-| 归因比接受两种字段拼法 | `scripts/trace_metrics.py:240-243` | 用含 `attribution_kind` 的合成轨迹跑单测，断言两个桶都计数 | 无 |
-| 验证回放结果文件缺席时如实报出 | `scripts/settle_s2_feedback.py:130`、`scripts/component_tally.py:68`、`scripts/ev_board_data.py:843`、`scripts/evolution_health.py:88` | 在 worktree 里跑 `python3 scripts/settle_s2_feedback.py`，输出里出现本检出没有结果文件 | 无 |
-| 诊断结局的两个新读数 | 新脚本，输入轨迹的 `miss` 与 `procedure_follow` 事件 | 对现有轨迹跑一次，输出 `no_solution` 与 `conflicting_evidence` 两个计数 | 计数非零前按不可解读报 |
+| 事件列表键名不可读时单列计数 | `scripts/trace_metrics.py:186` | 对使用 `events` 键的那份轨迹跑 `python3 scripts/trace_metrics.py`，输出里出现未记录计数，比例读数旁标出分母构成 | 无 |
+| 归因比接受两种字段拼法，只映射 `execution` | `scripts/trace_metrics.py:240-243` | 用分别含 `attribution_kind: execution` 与 `attribution_kind: improvement` 的合成轨迹跑单测，断言只有前者进 `execution_error` | 无 |
+| 验证回放结果文件缺席时单列报出 | `scripts/settle_s2_feedback.py:130`、`scripts/component_tally.py:68`、`scripts/ev_board_data.py:843`、`scripts/evolution_health.py:88` | 在 worktree 里跑 `python3 scripts/settle_s2_feedback.py`，输出里出现本检出没有结果文件；另三个读端同法各确认一次 | 无 |
+| 诊断结局的两个新读数 | 新脚本，输入轨迹事件。`no_solution` = `miss` 事件且顶层 `stop_reason` 为 `escalated_tier3` 或 `abandoned`；`conflicting_evidence` = `procedure_follow.conflict` 非空 | 对现有轨迹跑一次，输出两个计数，各自对上一个触发动作 | 计数非零前按不可解读报 |
 | 案例选中次数的本地读数 | 新脚本，输入轨迹的候选相关事件，由 knowledge-groom 在运行期读 | 对现有轨迹跑一次，输出每个案例的选中次数 | 无 |
 | 期文件的 `sources` 写明部署身份 | `scripts/metrics_snapshot.py` 的 `sources.diagnose_side` 文案 | 组一期骨架，该字段出现检出根 | 无 |
 | 面板的轨迹读跟随会话工作目录 | `dsh-plugins/ascend-panel/panel-host.js:58-65` 的 `resolveCwd` | 在 worktree 里开面板，看读到的是哪一份 `traces/` | 先定面板服务哪个读者 |
@@ -255,4 +255,4 @@ notes: |
 
 ## 7 外部参考
 
-无。本文的判据都在仓库内：原则二（不变量写进结构，锚定表是它的实例）、原则八（可观测先于改进）、原则十（诚实退化）。外部研究的适用性判断见 [rsi-mechanism.md](rsi-mechanism.md) 最后一节。
+无。本文的判据都在仓库内：原则二（不变量写进结构，锚定表是它的实例）、原则八（可观测先于改进）、原则十（诚实退化）。原则原文见 [design-principles.md](../spec/design-principles.md)。外部研究的适用性判断见 [rsi-mechanism.md](rsi-mechanism.md) 最后一节。
