@@ -22,7 +22,7 @@
 2. 仓库里的汇总只到条目级一处：期文件的 `metrics.reference_detail`（某条先验被引用几次），案例侧没有对应数据。
 3. 有十个指标有产出、也在字段白名单里，8 期期文件一次都没写过（复算：见 3.6 的说明；白名单在 `scripts/verify_metrics.py:40-60`）。
 4. 归因比读错了键，恒为 0。读端只读 `verdict`（`scripts/trace_metrics.py:240-242`），规范也要求写 `verdict`（`skills/diagnose/references/diagnosis-procedure.md:331`）。复算：`python3 scripts/component_tally.py --json` 统计归因事件的两种键；当前主检出的轨迹里 7 条归因事件中 4 条写 `attribution_kind`、3 条两个键都没有。
-5. 三期现场快照的反馈捕获都是 0（`metrics/timeline.d/` 的三条 live 期），命中率与误诊率因此没有分母。
+5. 三期现场快照的反馈捕获都是 0（`metrics/timeline.d/` 的三条 live 期），误诊率与归因比因此没有分母。
 
 本文不解决四件事。诊断流程内部的执行规则在 `skills/diagnose/` 正文里。检索不上向量库（见 [ADR-0002](../adr/0002-retrieval-no-rag-lightweight-index.md)）。指标算法与评分定义只有人能改。读数不做跨部署合并。
 
@@ -294,6 +294,7 @@ covered: {deployment: local-a2, runs: 2, weeks: ['2026-W42'], checkouts: [a1b2c3
 cases:
   VLLM-ASC-12430:
     totals: {selected: 5, loaded: 3, resolved: 1, misdiagnosed: 0}
+    last_hit: '2026-W42'                                     # 由最近一次 resolved 的周推出
     by_week: {2026-W42: {selected: 5, loaded: 3, resolved: 1, misdiagnosed: 0}}
     recent: [{run: 2026-10-16-0920, resolved: 1, misdiagnosed: 0}, {run: 2026-10-17-1005, resolved: 0, misdiagnosed: 0}]
   VLLM-ASC-7635:
@@ -410,7 +411,7 @@ flowchart LR
 | 停止原因 | 维护者，判断该不该停在这里 | 未记录的会话先补记录 | 全部诊断会话 | 确定性 | 蓝图：字段已有产出，指标无落点 |
 | 无效探索 | 维护者，换探索策略 | 在历史决策树上离线打分，见下段 | 历史决策树，同策略对照 | 代理 | 蓝图：缺打分代码 |
 | 词表合规 | 维护者，补词表或改记法 | 违规事件逐条看 | 全部事件 | 确定性 | 已落地 |
-| 反馈捕获 | 维护者，判学习环有没有输入 | 为 0 时命中率、误诊率标不可解读 | 给出结论的会话 | 确定性 | 已落地 |
+| 反馈捕获 | 维护者，判学习环有没有输入 | 为 0 时误诊率、归因比标不可解读 | 给出结论的会话 | 确定性 | 已落地 |
 | 现场解决计数 | 排序与退休，降置信或退休 | 连续两次未解决转人工 | 已回报的会话 | 人工 | 蓝图：字段已有产出，指标无落点 |
 | 外部对照闭环 | 维护者，确认内容是否正确 | 没有上游 issue 或 PR 关联的案例标不可对照 | 有上游关联的案例 | 确定性 | 蓝图：缺锚点字段与查证脚本 |
 | 归因比 | 维护者，误诊修复前先读 | 先补归因事件再修 | 已归因的误诊 | 自报 | 蓝图：字段已有产出，指标无落点 |
@@ -469,8 +470,8 @@ EOF
 | 覆盖 | 部署、期号、覆盖的会话数与期数 |
 | 不可解读 | 哪些读数因为缺少分母读不了，缺的是哪个分母；样本不足的按「小样本」标出 |
 | 需处理 | 有几项待处理，判据评估到哪一步 |
-| 条目使用 | 本期增量与跨期累计两张榜；每条显示 id、条目标题与计数；累计榜另有「最后」一列：案例行读 `last_hit`，先验行读生成物 `references.<id>.recent` 里最近一次运行所处的周；来自搬运基线行的条目在累计榜上标「基线」，其计数取自搬运行、不计入本期增量 |
-| 长期零选中 | 本期与跨期都没有被选中的案例条目数（与 3.3 的 `cold` 定义不同：`cold` 按有没有任何记录行算，这里按有没有被选中算），以及「不据此退休」这一条 |
+| 条目使用 | 本期增量与跨期累计两张榜；每条显示 id、条目标题与计数；累计榜另有「最后」一列：案例行读生成物里的 `last_hit`（由最近一次 `resolved` 或 `misdiagnosed` 运行的周推出，搬运行则透传它自带的值），先验行读 `references.<id>.recent` 里最近一次运行所处的周；来自搬运基线行的条目在累计榜上标「基线」，其计数取自搬运行、不计入本期增量 |
+| 长期零选中 | 本期与跨期都没有被选中的案例条目数（与 3.3 的 `cold` 不是同一个集合：`cold` 按有没有非 baseline 记录行算，这里按有没有被选中算），以及「不据此退休」这一条 |
 | 过程动作成本 | 按动作的成本占比 |
 | 变差的读数 | 每条给出读数、阈值或对照，以及一条动作 |
 | 本期该做 | 三到五条，每条对应上面的一个动作 |
@@ -485,7 +486,7 @@ EOF
 
 | 情形 | 行为 |
 |---|---|
-| 反馈捕获为 0 | 命中率、误诊率标不可解读，不写 0；面板写明是没数据，不是零问题 |
+| 反馈捕获为 0 | 误诊率、归因比标不可解读，不写 0；面板写明是没数据，不是零问题 |
 | 某个指标本期没有数据 | 不写该键，面板显示本期未采集 |
 | 某一周没有记录文件 | 该周不参与累计，聚合脚本报出缺哪几周，不按 0 计 |
 | 某个 id 在知识库里查不到 | 报出该 id 与所在的运行，不计入排行，列入清理清单 |
@@ -540,13 +541,13 @@ EOF
 | `confidence` 块迁出案例 | 迁移三个阶段（见上）；`docs/spec/case-schema.md` 有五个位置要改：`:34`（必需字段表行）、`:52` 与 `:68`（两处正文引用）、`:54`（子节标题）、`:101`（有意保留的例外）；另 `examples/sample-case.yaml:20` 的示例也要改 | 第 1 阶段后计数两处一致；第 3 阶段后全库不再出现 `confidence`。注意 `scripts/verify_case_draft.py` 的 `REQUIRED_FIELDS` 里本来就没有 `confidence`，schema 的「必填」与脚本口径本就不一致 |
 | 人工覆盖字段 | `docs/spec/case-schema.md` 加可选 `score_override{score, reason, by}`；校验脚本（`scripts/verify_case_draft.py` 或新校验）加一条必带 `reason` | 造一条覆盖，索引用覆盖值；不带理由时校验报错 |
 | `self-report` 不进 `verification.source` | 只写进本文的观察记录（3.1 的取值表） | 造一条来源会话自证解决的诊断，记录的 `strength` 是 `self-report`；案例的 `verification.source` 枚举不变（它在 `examples/sample-case.yaml:50-51`、`skills/to-postmortem/SKILL.md:86-90`、`skills/knowledge-groom/SKILL.md:85-89`、`docs/mechanism/execution.md:73`） |
-| 先验的零查询统计 | 汇总脚本输出全库从未被查询过的先验清单，落在生成物的 `cold_never_looked_up` | 造一条从未被查询的先验，跑一次整理后它出现在该清单里 | 造一条从未被查询的先验，跑一次整理后它出现在清单里；生成的 `cold` 只含案例 |
+|  先验的零查询统计  |  汇总脚本输出全库从未被查询过的先验清单，落在生成物的 `cold_never_looked_up`  |  造一条从未被查询的先验，跑一次整理后它出现在该清单里  |
 | 条目 id 的唯一性门 | `scripts/build_index.py --check` 或新校验脚本 | 全库 id 唯一；案例侧文件名与 id 一致；造一条重名条目，门报红 |
 | 工具调用明细与按工具的分布 | 汇总脚本写 `kind: tool` 的记录行；生成物出 `tools` 段 | 对最近一次诊断跑一次，明细逐次列出，生成物的 `tools` 段里出现按工具的 p50/p90 与失败数 |
 | 期文件的产出并入知识整理收尾 | `skills/knowledge-groom/SKILL.md` 加一步，复用 `scripts/metrics_snapshot.py` | 跑一次整理，期文件出现在同一个 PR 里；不跑整理时仓库不新增期 |
 | 面板读记录生成物与五块 | `dsh-plugins/ascend-panel/` 前端与 host | 排行与计数正确显示；期文件的手写解析器不再经手条目 |
 | 面板的轨迹读跟随会话工作目录 | `panel-host.js` 的 `resolveCwd` | 在 worktree 里开面板，期望读到的是主检出的那一份 `traces/`（与 `scripts/exec_log_path.py` 同一处取值） |
-| 案例加上游关联字段 | `docs/spec/case-schema.md` 加 `upstream[{repo, issue|pr, url}]`；沉淀流程写它 | 造一条带锚点的案例，外部对照脚本能读到它 |
+| 案例加上游关联字段 | `docs/spec/case-schema.md` 加 `upstream[{repo, issue\|pr, url}]`；沉淀流程写它 | 造一条带锚点的案例，外部对照脚本能读到它 |
 | 外部对照自动查证 | 新增脚本，复用 `gh api` 外壳与结算回写通道 | 对一个有上游关联的案例跑一次，写出结局并留在 `validation_record` |
 | 指标强度档写进数据 | 期文件与面板 | 每个指标能读出强度档，面板标明自报 |
 | 无效探索的离线打分 | 尚未立项，闸门见 3.6 | 闸门满足后另行起卡 |
