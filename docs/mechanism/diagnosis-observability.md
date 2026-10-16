@@ -75,22 +75,33 @@ flowchart LR
 
 其余本地件（源码缓存、上游文档缓存、回放产物、调研物料等）的落点见 [git-workflow.md](../guide/git-workflow.md) 的目录归属表，本文不重复。
 
-这一行的字段如下。标「现成」的今天已能从轨迹取到，标「待接」的需要新增汇总代码。
+这一行的字段如下。明细留本机，上仓只放聚合值；标「待接」的需要新增汇总代码。
 
-| 字段 | 内容 | 来源 | 状态 |
-|---|---|---|---|
-| `session_id` | 会话号 | 轨迹顶层 | 现成 |
-| `window` | 起止时间 | `created_at`、`updated_at` | 现成 |
-| `detected` | 框架、平台、类别 | 轨迹顶层 | 现成 |
-| `route` | 路由到的命名空间、候选数量、实际加载条数、检索命中的案例 | `triage`、`load_index`、`load_full`、`hit` 事件汇总 | 现成 |
-| `steps` | 步数与各动作次数 | 事件列表计数 | 现成 |
-| `touched.cases` / `touched.references` | 这次诊断碰到的全部案例 id 与先验 id | `hit`、`load_full`、`reference_lookup`、`excluded_cases` | 现成 |
-| `outcome` | 最终状态、是否给出 fix、反馈结果 | 顶层 `status`、`resolved_at`、`feedback` | 现成 |
-| `sedimented` | 沉淀状态与案例 id | 顶层 `sedimented` | 现成 |
-| `cost.tokens` | 未缓存输入、缓存读、缓存写、输出 | 会话日志按 `(turn, step)` 去重 | 待接 |
-| `cost.tool_ms` | 工具耗时合计与最慢几步 | 会话日志 | 待接 |
-| `cost.index_read_tok` | 一次诊断的读入账四个分项 | `index_read_cost.py` 现算 | 现成 |
-| `strength` | 本次结论的强度档 | `verification.source` 或事件类型 | 待接 |
+| 字段 | 明细（本机，每会话） | 上仓形态（期文件） | 来源 | 状态 |
+|---|---|---|---|---|
+| `session_id` | 会话号 | 只做关联键 | 轨迹顶层 | 现成 |
+| `window` | 起止时间 | 会话时长分布 | `created_at`、`updated_at` | 现成 |
+| `detected` | 框架、平台、类别 | 按类别的会话数 | 轨迹顶层 | 现成 |
+| `route` | 路由到的命名空间、候选数量、加载条数、命中案例 | 路由准确率、漏检类别、候选数与溢出率 | `triage`、`load_index`、`load_full`、`hit` | 现成 |
+| `steps` | 步骤序列与各动作次数 | 各动作次数分布、步数中位数与 P90 | 事件计数 | 现成 |
+| `tool_calls` | 每次工具调用一条：工具名、耗时、成功与否、命令摘要 | 按工具的次数、耗时中位数与 P90、失败与超时数 | 会话日志 | 待接 |
+| `touched` | 触达的案例 id 与先验 id，各带触达方式 | 台账按 id 的增量，见 3.2 | `hit`、`load_full`、`reference_lookup`、`excluded_cases` | 现成 |
+| `outcome` | 最终状态、是否给出 fix、反馈结果 | 反馈捕获、误诊率、归因比 | 顶层 `status`、`resolved_at`、`feedback` | 现成 |
+| `sedimented` | 沉淀状态与案例 id | 沉淀漏斗 | 顶层 `sedimented` | 现成 |
+| `cost.tokens` | 未缓存输入、缓存读、缓存写、输出 | 会话成本中位数与 P90、按动作占比 | 会话日志按 `(turn, step)` 去重 | 待接 |
+| `cost.index_read_tok` | 一次诊断读入账的四个分项 | 格子读入成本 | `index_read_cost.py` 现算 | 现成 |
+| `strength` | 结论强度档 | 强度分布 | `verification.source` 或事件类型 | 待接 |
+
+工具调用按次记，不合成一个总耗时。一次诊断里的工具调用几十次，单次耗时从几十毫秒到几万毫秒都有，失败与重试也各占一部分。要判「哪个工具该设硬超时」「失败集中在哪一步」「哪些调用读了却没被引用」，只用总耗时答不了，所以明细逐次留：
+
+```yaml
+tool_calls:
+  - {step: 5, tool: Grep, ms: 1820, ok: true,  args: "hidden in should be|smaller|lora"}
+  - {step: 5, tool: Read, ms: 240,  ok: true,  file: references/tools/msprobe-compare.yaml}
+  - {step: 6, tool: Bash, ms: 9200, ok: false, args: "gh api repos/vllm-project/vllm-ascend/issues/12430", error: timeout}
+```
+
+明细不上仓，原因是命令原文与文件路径含现场信息。上仓的是按工具聚合后的分布（见 3.2 期文件样例里的 `tool_profile`），它够回答工具层的取舍，也够做 harness 演进的输入：耗时分位、失败率、超时数、按动作的成本占比。
 
 一条真实轨迹折出来的样子（取自 `traces/2026-09-16-12430-dsv4pro-mc2.yaml`，`cost` 段为待接字段，未填数值）。
 
@@ -117,7 +128,32 @@ strength: self-report              # 来源 session 自证，见 3.5
 
 本机十次诊断产生十个轨迹文件与十行诊断记录，都不进仓库。进仓库的是一次汇总后的当期增量。
 
-1. 工程师正常跑诊断，收尾时轨迹落盘。
+```mermaid
+%%{init: {'themeVariables':{'fontSize':'14px'},'flowchart':{'curve':'basis','nodeSpacing':40,'rankSpacing':50,'padding':10}}}%%
+flowchart LR
+    E1["诊断 1<br/>一行记录"] --> SUM
+    E2["诊断 2<br/>一行记录"] --> SUM
+    E3["…"] --> SUM
+    E10["诊断 10<br/>一行记录"] --> SUM
+    SUM["周批汇总<br/>按 id 折算当期增量"] --> SRC["期文件<br/>metrics/timeline.d/&lt;期号&gt;.yaml"]
+    SRC --> AGG["跨期求和"]
+    AGG --> RANK["metrics/entry-activity.yaml<br/>按条目排行"]
+    RANK --> PANEL["面板：本期增量 / 跨期累计"]
+    RANK --> GR["knowledge-groom：复审、退休"]
+
+    classDef local fill:#f1f3f5,stroke:#868e96,stroke-width:1.5px,color:#343a40
+    classDef src fill:#fff4e6,stroke:#e8590c,stroke-width:1.5px,color:#7a2e00
+    classDef out fill:#e7f5ff,stroke:#1971c2,stroke-width:1.5px,color:#0b3d66
+    class E1,E2,E3,E10 local
+    class SUM,SRC,AGG src
+    class RANK,PANEL,GR out
+```
+
+图 2　十次诊断到一份上仓读数（类型：数据流图；范围：从本机记录到面板与知识整理）
+
+图例：灰色是本机记录，橙色是汇总与源文件，蓝色是生成物与消费方。十行记录只被读一次，写进仓库的是一个期文件。
+
+步骤：
 2. 周批里跑一次汇总脚本，逐份读轨迹（并行读，不改轨迹）。
 3. 脚本把十行记录里 `touched` 的每个 id 折算成当期增量，同一个 id 在十次里出现几次就是几。
 4. 增量写进一个期文件的 `metrics.entry_activity` 段：`metrics/timeline.d/<期号>.yaml`。
@@ -129,10 +165,17 @@ strength: self-report              # 来源 session 自证，见 3.5
 # metrics/timeline.d/2026-W42-live-1016.yaml（片段）
 metrics:
   entry_activity:
-    VLLM-ASC-12430: {selected: 3, loaded: 2, resolved: 1, misdiagnosed: 0}
-    VLLM-ASC-9005: {selected: 1, loaded: 1, resolved: 0, misdiagnosed: 0}
-    cann-runtime-error-codes: {lookups: 6, hit: 5, miss: 1, purpose: {signature: 2, background: 1, fix: 1}}
+    cases:                              # 键 = 案例的 id 字段
+      VLLM-ASC-12430: {selected: 3, loaded: 2, resolved: 1, misdiagnosed: 0}
+      VLLM-ASC-9005:  {selected: 1, loaded: 1, resolved: 0, misdiagnosed: 0}
+    references:                         # 键 = 先验词条的 id 字段
+      cann-runtime-error-codes: {lookups: 6, hit: 5, miss: 1, purpose: {signature: 2, background: 1, fix: 1}}
+  tool_profile:                         # 按工具聚合，明细留本机
+    Grep: {calls: 41, p50_ms: 900, p90_ms: 9200, errors: 2, timeouts: 1}
+    Read: {calls: 63, p50_ms: 120, p90_ms: 640,  errors: 0, timeouts: 0}
 ```
+
+台账分 `cases` 与 `references` 两段，键取条目自己的 `id` 字段。不用文件名：先验侧的文件名与 id 常不一致（`references/errors/acl.yaml` 的 id 是 `acl-error-codes`），案例侧虽然一致，但一致是现状而不是约束。两段分开还让「id 在库里查不到」这个检查能各自对准自己的库。
 
 跨期求和后，面板看到的是一行排行：`VLLM-ASC-12430` 本期被选中 3 次、累计 11 次、解决 4 次、最后一次是本期。
 
@@ -140,30 +183,45 @@ metrics:
 
 ### 3.3 与知识库解耦
 
-观测计数全部落在期文件的台账里，知识条目不因观测而改变。案例文件里只保留参与下次排序的分数，以及知识自身的状态（自证记录与外部验证记录）。
+观测数据写期文件，知识条目只写一个派生字段。三类写入方各写一处，互不重叠。
 
-| 数据 | 写在哪 | 谁写 |
-|---|---|---|
-| 被选中、被加载、检索三态、被排除 | 期文件 `metrics.entry_activity` | 周批汇总脚本 |
-| 现场确认解决、自证解决 | 同一段台账的 `resolved` / `misdiagnosed` / `self_resolved` 三列 | 反馈结算 |
-| 排序分数 `confidence.score` | `knowledge/` 下的案例文件 | 周批的重算脚本，只写值变了的条目 |
-| 分数的索引副本 | `knowledge/_index.yaml` 生成物 | 索引重建 |
+```mermaid
+%%{init: {'themeVariables':{'fontSize':'14px'},'flowchart':{'curve':'basis','nodeSpacing':40,'rankSpacing':50,'padding':10}}}%%
+flowchart LR
+    A["周批汇总脚本<br/>读本机诊断记录"] --> L["期文件 metrics.entry_activity<br/>被选中、被加载、检索三态"]
+    B["结算脚本<br/>读轨迹 feedback 事件"] --> L
+    C["重算脚本<br/>读台账计数与案例的 verification、investigation_quality"] --> S["案例文件<br/>confidence.score"]
+    S --> I["生成物索引<br/>阶段一排序读它"]
+    L --> G["knowledge-groom<br/>复审、退休、降置信"]
 
-现状不是这样。`confidence.hits`、`misdiagnoses`、`last_hit` 现在写在案例文件里，每一次结算就改一次知识文件。计数搬到台账之后，案例文件一周最多被改一次，而且只落到分数真的变了的那些条目上。
+    classDef w fill:#e7f5ff,stroke:#1971c2,stroke-width:1.5px,color:#0b3d66
+    classDef f fill:#fff4e6,stroke:#e8590c,stroke-width:1.5px,color:#7a2e00
+    classDef c fill:#f1f3f5,stroke:#868e96,stroke-width:1.5px,color:#343a40
+    class A,B,C w
+    class L,S,I f
+    class G c
+```
 
-分数为什么不一起搬走。候选排序在阶段一读的是生成物索引，索引只在知识变更时重建。若把分数也改成构建时从台账现算，索引构建就多一条对台账的硬依赖：台账缺失或过期时，排序会静默地按没有分数处理。现在的写法是台账缺席时，案例里的分数停在上一次算出来的值，排序退化但不静默归零。计数在台账里、分数在案例里，是这两条约束下的分工。
+图 3　写入方与落点（类型：数据流图；范围：周批里的三类写入方与它们各自改的文件）
 
-分数由谁算、什么时候变，要说清，不然「解耦」和「周批重算」看起来是打架的。
+图例：蓝色是写入方，橙色是被写的文件，灰色是消费方。只有重算脚本碰知识条目，改的字段只有 `score`。
 
-重算写成一个脚本，随周批跑。输入是台账里该条目的计数、案例的 `verification` 与 `investigation_quality`，输出是 `confidence.score`。新升格的条目取 `skills/knowledge-groom/SKILL.md` 第 4 步那张表的初始值。已有条目按后验加时间衰减计算。脚本全量算，只写值真的变了的条目。
+| 数据 | 写在哪 | 写入方 | 何时写 |
+|---|---|---|---|
+| 被选中、被加载、检索三态、被排除 | 期文件 `metrics.entry_activity` | 周批汇总脚本 | 每周一次 |
+| 现场确认解决、自证解决 | 同一段的 `resolved` / `misdiagnosed` / `self_resolved` | 结算脚本 | 每周一次，按游标只结算新事件 |
+| 排序分数 `confidence.score` | `knowledge/` 下的案例文件 | 重算脚本 | 每周一次，只写值变了的条目 |
+| 分数的索引副本 | `knowledge/_index.yaml` 生成物 | 索引重建 | 随知识变更 |
 
-分数只在两种情况下变：这一期该条目有结算（`resolved` 或 `not_resolved`），或者它本轮新升格。两种都没有时分数不动，PR 里看不到这一条的变化。
+三条规则。
 
-今天缺的一环在这里。重算现在是 groom 的 agent 判断，「按时间衰减」没有公式、没有脚本；`scripts/settle_trace_feedback.py` 写回 `confidence` 块时会连带重写 `score`，但值取自原值，等于没改。这条要补成代码，参数进 roadmap 的参数治理。
+1. 计数只进台账。案例文件里不再有 `hits`、`misdiagnoses`、`last_hit`。这三个字段跟着结算走，结算一次就改一次知识文件，并与台账重复定义同一个量。
+2. 分数留在案例里。候选排序读的是生成物索引，索引只在知识变更时重建。分数若改成构建时从台账现算，索引构建就多一条对台账的硬依赖：台账缺失或过期时，排序按没有分数处理。留在案例里，台账缺席时分数停在上一次的值，排序退化但不静默归零。
+3. 重算写成脚本。输入是台账计数、案例的 `verification` 与 `investigation_quality`。新升格的条目取 `skills/knowledge-groom/SKILL.md` 第 4 步那张表的初始值，已有条目按后验加时间衰减。脚本全量计算，只写值变了的条目。分数只在两种情况下变：这一期该条目有结算，或者它本轮新升格。
 
-代价有两条。计数与分数分居两处，读的人要认这个分工：台账是原始观测，分数是它的派生值。周批多一步重算，这一步只对分数变了的条目写文件。
+现状与目标的差别有两处。重算今天是 groom 的 agent 判断，「按时间衰减」没有公式也没有脚本。结算脚本写回 `confidence` 块时会连带重写 `score`，值取自原值。
 
-解耦还带来一条约束：台账里的 id 必须能在库里找到。汇总时对不上的 id 报出来并列入清理清单，不静默丢弃，也不写进排行。
+台账的键取条目自己的 `id` 字段，不取文件名：先验侧两者常不一致，案例侧目前一致但没有门保证。两库的 id 目前互不重复，同样是实测结果。因此台账分两段，并加一条门：全库 id 唯一，案例侧文件名与 id 一致。
 
 ### 3.4 并发与冲突
 
@@ -189,6 +247,26 @@ metrics:
 2. 周批跑 `settle_trace_feedback.py --apply`。它按 `.settle-state.json` 的游标，把事件折进当期台账对应 id 行的 `resolved`、`misdiagnosed`、`self_resolved` 三列。
 3. 同一次周批跑分数重算，把台账里的计数折成案例的 `confidence.score`，只写分数变了的条目。
 4. 台账与案例都在 git 里，反馈照样入库；改变下次排序的是第 3 步，与今天一致。
+
+```mermaid
+%%{init: {'themeVariables':{'fontSize':'14px'},'flowchart':{'curve':'basis','nodeSpacing':40,'rankSpacing':50,'padding':10}}}%%
+flowchart LR
+    R1["1 工程师回报<br/>解决 / 没解决"] --> T["2 轨迹<br/>feedback 事件"]
+    T --> S["3 结算脚本<br/>按游标折算，事件哈希幂等"]
+    S --> L["4 期文件台账<br/>resolved / misdiagnosed / self_resolved"]
+    L --> C["5 重算脚本<br/>写案例 score"]
+    C --> O["6 下一轮候选排序"]
+
+    classDef step fill:#e7f5ff,stroke:#1971c2,stroke-width:1.5px,color:#0b3d66
+    classDef store fill:#fff4e6,stroke:#e8590c,stroke-width:1.5px,color:#7a2e00
+    class R1,S,C step
+    class T,L store
+    class O step
+```
+
+图 4　一次回报的落点（类型：数据流图；范围：从回报到下次排序，不含跨机与迟到回报的处置）
+
+图例：蓝色是动作与下游消费，橙色是记录。两次写文件各由一次运行产生，因此不存在两处读数对不上的情况。
 
 准确性靠三点。事件按哈希结算一次，重跑不重复计数。回报迟到的，跟着它实际落盘的那一期走，不回填历史期。跨机器时台账按部署分家，另一台的回报由那一台的游标处理。
 
@@ -233,7 +311,7 @@ metrics:
 
 同一个量只允许一处定义。加新指标前先看它是表里哪一行的另一个说法，是同一个就改那一行，不新增一行。
 
-「无效探索」是表里需要新算法的指标，分两半做。可以离线重算的一半是探索策略本身：展开几个候选、按什么顺序、哪些同批并行、在哪里停。原料是轨迹顶层的 `stop_reason` 与事件里的 `parallel_group`、`considered_candidates`，读数是同一棵历史决策树上两种策略到达命中各需要展开多少。另一半只能在线判断，即哪个假设被哪条证据推翻，记在事件或 `reason` 里，不参与上面那个差值。打分代码等闸门：任一部署机的轨迹到 30 条且反馈捕获率大于 0（[ADR-0009](../adr/0009-counterfactual-replay-exploration-policy.md) 的重评条件，当前 18 条、反馈捕获 0）。
+「无效探索」是表里需要新算法的指标，分两半做。可以离线重算的一半是探索策略本身：展开几个候选、按什么顺序、哪些同批并行、在哪里停。原料是轨迹顶层的 `stop_reason` 与事件里的 `parallel_group`、`considered_candidates`。读数是同一棵历史决策树上，两种策略到达命中各需要展开多少。另一半只能在线判断，即哪个假设被哪条证据推翻，记在事件或 `reason` 里，不参与上面那个差值。打分代码等闸门：任一部署机的轨迹到 30 条且反馈捕获率大于 0（[ADR-0009](../adr/0009-counterfactual-replay-exploration-policy.md) 的重评条件，当前 18 条、反馈捕获 0）。
 
 ### 3.7 面板
 
@@ -323,6 +401,8 @@ VLLM-ASC-9005   选 1 · 解 0       cann-hdk        累计 5 · 解 2 · W42
 | 期文件新增 `metrics.entry_activity` 段 | `scripts/metrics_snapshot.py`、`scripts/verify_metrics.py` 白名单 | 组装一期骨架，段内出现当期有活动的条目 |
 | 跨期求和的生成物 | 新增 `scripts/build_entry_activity.py`，产出 `metrics/entry-activity.yaml` | 排行与期文件增量逐条对得上 |
 | 查不到的 id 与缺期报出 | 同上 | 造一个不存在的 id，聚合时报出该 id 与所在的期 |
+| 条目 id 的唯一性门 | `scripts/build_index.py --check` 或新校验脚本 | 全库 id 唯一；案例侧文件名与 id 一致；造一条重名条目，门报红 |
+| 工具调用明细与按工具的分布 | 汇总脚本与期文件 `metrics.tool_profile` | 对最近一次诊断跑一次，明细逐次列出，期文件里出现按工具的 p50/p90 与失败数 |
 | 面板支持条目段与五块 | `dsh-plugins/ascend-panel/` 前端与 host | 喂一期含 `entry_activity` 的文件，条目不被当成指标行渲染 |
 | 外部对照自动查证（开源 issue 类） | 新增脚本，复用 `gh api` 外壳与结算回写通道 | 对一个有上游锚点的案例跑一次，写出结局并留在 `validation_record` |
 | 无效探索的离线打分 | 尚未立项，闸门见 3.6 | 闸门满足后另行起卡 |
