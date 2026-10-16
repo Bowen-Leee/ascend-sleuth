@@ -469,8 +469,8 @@ EOF
 | 覆盖 | 部署、期号、覆盖的会话数与期数 |
 | 不可解读 | 哪些读数因为缺少分母读不了，缺的是哪个分母；样本不足的按「小样本」标出 |
 | 需处理 | 有几项待处理，判据评估到哪一步 |
-| 条目使用 | 本期增量与跨期累计两张榜；每条显示 id、条目标题与计数；累计榜另有「最后」一列，读该条目的 `last_hit`；来自搬运基线行的条目在累计榜上标「基线」，其计数取自搬运行、不计入本期增量 |
-| 长期零选中 | 本期与跨期都没有被选中的案例条目数，以及「不据此退休」这一条 |
+| 条目使用 | 本期增量与跨期累计两张榜；每条显示 id、条目标题与计数；累计榜另有「最后」一列，读该条目的 `last_hit`（先验行暂无此字段，显示为空，见 5.2）；来自搬运基线行的条目在累计榜上标「基线」，其计数取自搬运行、不计入本期增量 |
+| 长期零选中 | 从来没进过候选集的案例条目数（口径同 3.3 的 `cold`），以及「不据此退休」这一条 |
 | 过程动作成本 | 按动作的成本占比 |
 | 变差的读数 | 每条给出读数、阈值或对照，以及一条动作 |
 | 本期该做 | 三到五条，每条对应上面的一个动作 |
@@ -540,7 +540,7 @@ EOF
 | `confidence` 块迁出案例 | 迁移三个阶段（见上）；`docs/spec/case-schema.md` 有五个位置要改：`:34`（必需字段表行）、`:52` 与 `:68`（两处正文引用）、`:54`（子节标题）、`:101`（有意保留的例外）；另 `examples/sample-case.yaml:20` 的示例也要改 | 第 1 阶段后计数两处一致；第 3 阶段后全库不再出现 `confidence`。注意 `scripts/verify_case_draft.py` 的 `REQUIRED_FIELDS` 里本来就没有 `confidence`，schema 的「必填」与脚本口径本就不一致 |
 | 人工覆盖字段 | `docs/spec/case-schema.md` 加可选 `score_override{score, reason, by}`；校验脚本（`scripts/verify_case_draft.py` 或新校验）加一条必带 `reason` | 造一条覆盖，索引用覆盖值；不带理由时校验报错 |
 | `self-report` 不进 `verification.source` | 只写进本文的观察记录（3.1 的取值表） | 造一条来源会话自证解决的诊断，记录的 `strength` 是 `self-report`；案例的 `verification.source` 枚举不变（它在 `examples/sample-case.yaml:50-51`、`skills/to-postmortem/SKILL.md:86-90`、`skills/knowledge-groom/SKILL.md:85-89`、`docs/mechanism/execution.md:73`） |
-| 先验的零查询统计 | 汇总脚本输出全库从未被查询过的先验清单 | 造一条从未被查询的先验，跑一次整理后它出现在清单里；生成的 `cold` 只含案例 |
+| 先验的零查询统计 | 汇总脚本输出全库从未被查询过的先验清单，落在生成物的 `cold_never_looked_up`；先验行的「最后」也用它 | 造一条从未被查询的先验，跑一次整理后它出现在清单里；生成的 `cold` 只含案例 |
 | 条目 id 的唯一性门 | `scripts/build_index.py --check` 或新校验脚本 | 全库 id 唯一；案例侧文件名与 id 一致；造一条重名条目，门报红 |
 | 工具调用明细与按工具的分布 | 汇总脚本写 `kind: tool` 的记录行；生成物出 `tools` 段 | 对最近一次诊断跑一次，明细逐次列出，生成物的 `tools` 段里出现按工具的 p50/p90 与失败数 |
 | 期文件的产出并入知识整理收尾 | `skills/knowledge-groom/SKILL.md` 加一步，复用 `scripts/metrics_snapshot.py` | 跑一次整理，期文件出现在同一个 PR 里；不跑整理时仓库不新增期 |
