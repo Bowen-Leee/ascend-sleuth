@@ -146,12 +146,20 @@ metrics:
 |---|---|---|
 | 被选中、被加载、检索三态、被排除 | 期文件 `metrics.entry_activity` | 周批汇总脚本 |
 | 现场确认解决、自证解决 | 同一段台账的 `resolved` / `misdiagnosed` / `self_resolved` 三列 | 反馈结算 |
-| 排序分数 `confidence.score` | `knowledge/` 下的案例文件 | groom 由台账重算，只写分数变了的条目 |
+| 排序分数 `confidence.score` | `knowledge/` 下的案例文件 | 周批的重算脚本，只写值变了的条目 |
 | 分数的索引副本 | `knowledge/_index.yaml` 生成物 | 索引重建 |
 
 现状不是这样。`confidence.hits`、`misdiagnoses`、`last_hit` 现在写在案例文件里，每一次结算就改一次知识文件。计数搬到台账之后，案例文件一周最多被改一次，而且只落到分数真的变了的那些条目上。
 
 分数为什么不一起搬走。候选排序在阶段一读的是生成物索引，索引只在知识变更时重建。若把分数也改成构建时从台账现算，索引构建就多一条对台账的硬依赖：台账缺失或过期时，排序会静默地按没有分数处理。现在的写法是台账缺席时，案例里的分数停在上一次算出来的值，排序退化但不静默归零。计数在台账里、分数在案例里，是这两条约束下的分工。
+
+分数由谁算、什么时候变，要说清，不然「解耦」和「周批重算」看起来是打架的。
+
+重算写成一个脚本，随周批跑。输入是台账里该条目的计数、案例的 `verification` 与 `investigation_quality`，输出是 `confidence.score`。新升格的条目取 `skills/knowledge-groom/SKILL.md` 第 4 步那张表的初始值。已有条目按后验加时间衰减计算。脚本全量算，只写值真的变了的条目。
+
+分数只在两种情况下变：这一期该条目有结算（`resolved` 或 `not_resolved`），或者它本轮新升格。两种都没有时分数不动，PR 里看不到这一条的变化。
+
+今天缺的一环在这里。重算现在是 groom 的 agent 判断，「按时间衰减」没有公式、没有脚本；`scripts/settle_trace_feedback.py` 写回 `confidence` 块时会连带重写 `score`，但值取自原值，等于没改。这条要补成代码，参数进 roadmap 的参数治理。
 
 代价有两条。计数与分数分居两处，读的人要认这个分工：台账是原始观测，分数是它的派生值。周批多一步重算，这一步只对分数变了的条目写文件。
 
@@ -310,7 +318,7 @@ VLLM-ASC-9005   选 1 · 解 0       cann-hdk        累计 5 · 解 2 · W42
 |---|---|---|
 | 一次诊断的记录汇总成一行 | 新增汇总脚本 | 对最近一次诊断跑一次，字段与 3.1 的表对齐 |
 | 案例的计数字段迁到台账 | `docs/spec/case-schema.md`、`scripts/settle_trace_feedback.py`、`skills/knowledge-groom/SKILL.md` | 结算后案例文件里不再出现 `hits`、`misdiagnoses`、`last_hit`；重算只改 `score` |
-| 分数重算只写变了的条目 | `skills/knowledge-groom/SKILL.md` 的置信度重算一节 | 造一次只影响一条案例的结算，看只有那一条被写 |
+| 分数重算从 agent 判断改成脚本 | 新增重算脚本，替换 `skills/knowledge-groom/SKILL.md` 第 4 步的 agent 判断 | 对全库跑一次，全量计算结果与逐条手算一致；值没变的条目不被写 |
 | 分步成本接入 | `scripts/session_cost.mjs` 与汇总脚本 | 输出三分 token 与工具耗时，关联不上的会话标缺席 |
 | 期文件新增 `metrics.entry_activity` 段 | `scripts/metrics_snapshot.py`、`scripts/verify_metrics.py` 白名单 | 组装一期骨架，段内出现当期有活动的条目 |
 | 跨期求和的生成物 | 新增 `scripts/build_entry_activity.py`，产出 `metrics/entry-activity.yaml` | 排行与期文件增量逐条对得上 |
