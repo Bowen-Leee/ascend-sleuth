@@ -129,46 +129,79 @@ strength: self-report              # 来源 session 自证，见 3.5
 
 改汇总脚本时要处理两件事。检索命中的案例（9005）与最终沉淀的案例（12430）不是同一个，两个 id 各算一次触达。被排除的五个案例（`excluded_cases`）也算触达，它们是「检索到但被排除」，与「命中」分开计数。
 
-### 3.2 十次诊断怎么进仓库
+### 3.2 什么时候汇总、谁触发
 
-诊断结束时只在本机留记录，仓库里不会出现单次诊断的痕迹。把这些记录折成能进仓库的读数，发生在每周一次的知识整理里：owner 跑一次 groom，它在同一次运行里结算现场回报、汇总本机的使用记录、重算分数，并把这一期的读数连同知识变更一起提一个 PR。
-
-与读数有关的部分是：
-
-1. owner 跑 groom（`/skill:knowledge-groom`），本轮的知识变更照旧处理。
-2. 收尾时跑汇总脚本，读本机全部诊断记录。只读，不改轨迹。
-3. 脚本把每条记录里触达的 id 折算成当期增量：同一个 id 在多少份记录里出现，就算多少次。
-4. 增量与按工具的分布写进一个期文件的 `metrics.entry_activity` 与 `metrics.tool_profile` 段（前者下称条目使用记录）。
-5. 重建生成物，面板与后续整理只读生成物。
-6. 这一期期文件随 groom 的知识变更 PR 一起提交。
+三个动作、两个 PR 流，顺序固定。
 
 ```mermaid
 %%{init: {'themeVariables':{'fontSize':'14px'},'flowchart':{'curve':'basis','nodeSpacing':40,'rankSpacing':50,'padding':10}}}%%
-flowchart LR
-    E1["诊断 1<br/>一行记录"] --> SUM
-    E2["诊断 2<br/>一行记录"] --> SUM
-    E3["…"] --> SUM
-    E10["诊断 10<br/>一行记录"] --> SUM
-    G0["owner 每周跑一次 groom"] -.-> SUM
-    SUM["groom 收尾：汇总本机记录<br/>按 id 折算当期增量"] --> SRC["期文件<br/>metrics/timeline.d/&lt;期号&gt;.yaml"]
-    SRC --> AGG["跨期求和"]
-    AGG --> RANK["metrics/entry-activity.yaml<br/>按条目排行"]
-    RANK --> PANEL["面板：本期增量 / 跨期累计"]
-    RANK --> GR["knowledge-groom：复审、退休"]
+flowchart TB
+    D1["工程师：出问题时跑一次诊断"] --> L[("本机记录<br/>轨迹、账单")]
+    L -->|"每周一次，owner 跑 groom"| G1["一次 groom：升格草稿 → 结算回报 → 汇总本机记录 → 重算分数 → 复审与退休 → 容量与索引 → 组装本期读数"]
+    G1 --> P1["PR 1：知识变更 + 本期读数"]
+    L -->|"内容流程收尾 / 深度轮"| V1["evolve-check 或 self-evolve<br/>读上仓读数，需要时回本机明细"]
+    P1 --> V1
+    V1 -->|"有信号"| V2["EV 卡 → 执行 → 验证"]
+    V2 --> P2["PR 2：机制改动<br/>skill 正文、脚本、流程"]
+    P2 -.->|"下一轮生效"| D1
+    P2 -.->|"下一轮生效"| G1
 
-    classDef local fill:#f1f3f5,stroke:#868e96,stroke-width:1.5px,color:#343a40
-    classDef src fill:#fff4e6,stroke:#e8590c,stroke-width:1.5px,color:#7a2e00
-    classDef out fill:#e7f5ff,stroke:#1971c2,stroke-width:1.5px,color:#0b3d66
-    class E1,E2,E3,E10 local
-    class SUM,SRC,AGG src
-    class RANK,PANEL,GR out
+    classDef human fill:#e7f5ff,stroke:#1971c2,stroke-width:1.5px,color:#0b3d66
+    classDef store fill:#fff4e6,stroke:#e8590c,stroke-width:1.5px,color:#7a2e00
+    classDef pr fill:#f1f3f5,stroke:#868e96,stroke-width:1.5px,color:#343a40
+    class D1,G1,V1,V2 human
+    class L store
+    class P1,P2 pr
 ```
 
-图 2　十次诊断到一份上仓读数（类型：数据流图；范围：从本机记录到面板与知识整理）
+图 2　三个触发点与两个 PR 流（类型：数据流图；范围：诊断、知识整理、机制演进三条时间线）
 
-图例：灰色是本机记录，橙色是整理时的汇总与源文件，蓝色是生成物与消费方。十行记录只被读一次，写进仓库的是一个期文件。
+图例：蓝色是动作，橙色是本机记录，灰色是 PR。实线传数据，虚线是下一轮生效。
 
-十次诊断里三次碰到 `VLLM-ASC-12430`、一次解决，汇总后是这样的：
+这张图回答三件事。诊断只在本机留记录，不进仓库。知识面的动作——升格草稿、结算回报、汇总记录、重算分数、复审与退休、组装读数——都在**同一个 groom 运行**里，一次运行出一个 PR，不需要跑两次 groom。机制面的动作走另一条线：`evolve-check` 在内容流程收尾时自动跑，`self-evolve` 在人要求做深度轮时跑，两者先读上仓读数、需要定位原因时回本机明细，有信号才产 EV 卡，卡攒批进一个 PR。两条线各出一个 PR，知识面的动作不会因为机制面而多跑一次。
+
+一次 groom 内部的顺序如下。七个步骤，前六步改知识或记录，第七步把本期读数落盘，全部进同一个 PR。
+
+```mermaid
+%%{init: {'themeVariables':{'fontSize':'14px'},'flowchart':{'curve':'basis','nodeSpacing':30,'rankSpacing':46,'padding':10}}}%%
+flowchart TB
+    S1["1 处理 inbox<br/>草稿升格为 case"] --> S2["2 结算现场回报"]
+    S2 --> S3["3 汇总本机诊断记录"]
+    S3 --> R[("期文件的条目使用记录<br/>被选中、被加载、检索三态、工具分布")]
+    R --> S4["4 重算分数"]
+    R --> S5["5 复审与退休"]
+    S4 --> S6["6 容量与索引重建"]
+    S5 --> S6
+    S6 --> S7["7 组装本期读数"]
+    S7 --> PR["同一个 PR<br/>知识变更 + 本期读数"]
+    S4 --> C[("案例 confidence.score")]
+    S5 --> C2[("案例内容或 _archive/")]
+
+    classDef step fill:#e7f5ff,stroke:#1971c2,stroke-width:1.5px,color:#0b3d66
+    classDef store fill:#fff4e6,stroke:#e8590c,stroke-width:1.5px,color:#7a2e00
+    classDef pr fill:#f1f3f5,stroke:#868e96,stroke-width:1.5px,color:#343a40
+    class S1,S2,S3,S4,S5,S6,S7 step
+    class R,C,C2 store
+    class PR pr
+```
+
+图 3　一次 groom 运行内部的顺序（类型：数据流图；范围：七个步骤与每步写的文件）
+
+图例：蓝色是步骤，橙色是被写的文件，灰色是最终 PR。第 3 步写的使用记录，第 4、5 步在同一次运行里就读它。
+
+| 步骤 | 做什么 | 入口 | 写哪里 |
+|---|---|---|---|
+| 1 处理 inbox | 草稿升格为 case | `knowledge-groom` 的 intake 步骤 | `knowledge/<ns>/…yaml` |
+| 2 结算现场回报 | 把 `feedback` 事件折成计数 | `scripts/settle_trace_feedback.py --apply` | 期文件的条目使用记录 |
+| 3 汇总本机记录 | 按 id 折算当期增量与工具分布 | 新增汇总脚本 | 期文件的条目使用记录 |
+| 4 重算分数 | 读计数，算出排序分数 | 新增重算脚本 | 案例的 `confidence.score` |
+| 5 复审与退休 | 按记录与分数改内容或存续 | `knowledge-groom` 的复审步骤 | 案例文件或 `_archive/` |
+| 6 容量与索引 | 容量表、重建索引 | `scripts/index_read_cost.py`、`scripts/build_index.py` | `knowledge/_index*` 生成物 |
+| 7 组装本期读数 | 出期文件读侧生成物 | `scripts/metrics_snapshot.py`、`scripts/build_entry_activity.py` | `metrics/timeline.d/<期号>.yaml`、生成物 |
+
+「降置信」不是单独一步。分数由第 4 步算出来，低分就是降置信的结果；第 5 步做的是内容层的事：复审、合并、退休、补样例。
+
+十次诊断折成当期增量的例子：一个 id 在多少份记录里出现，就算多少次。
 
 ```yaml
 # metrics/timeline.d/2026-W42-live-1016.yaml（片段）
@@ -184,53 +217,33 @@ metrics:
     Read: {calls: 63, p50_ms: 120, p90_ms: 640,  errors: 0, timeouts: 0}
 ```
 
-条目使用记录分 `cases` 与 `references` 两段，键取条目自己的 `id` 字段。不用文件名：先验侧的文件名与 id 常不一致（`references/errors/acl.yaml` 的 id 是 `acl-error-codes`），案例侧虽然一致，但一致是现状而不是约束。两段分开还让「id 在库里查不到」这个检查能各自对准自己的库。
-
 跨期求和后，面板看到的是一行排行：`VLLM-ASC-12430` 本期被选中 3 次、累计 11 次、解决 4 次、最后一次是本期。
 
 不做成十条独立上仓记录，原因有三条。轨迹含客户现场信息，逐单上仓要先逐单脱敏。PR 量会从每周一次变成每单一次，而每周一次是当前能维持的节律。同一个 id 的历史分散在十条记录里，读端要自己拼，拼错了看不出来。
 
 ### 3.3 与知识库解耦
 
-观测数据写期文件，知识条目只写一个派生字段。三类写入方各写一处，互不重叠。
+观测数据写期文件，知识条目只写两样：排序分数与内容本身。写入方与文件的关系见图 3，顺序是第 3 步汇总、第 4 步重算、第 5 步复审。
 
-```mermaid
-%%{init: {'themeVariables':{'fontSize':'14px'},'flowchart':{'curve':'basis','nodeSpacing':40,'rankSpacing':50,'padding':10}}}%%
-flowchart LR
-    A["groom 收尾：汇总脚本<br/>读本机诊断记录"] --> L["期文件 metrics.entry_activity<br/>被选中、被加载、检索三态"]
-    B["groom 收尾：结算脚本<br/>读轨迹 feedback 事件"] --> L
-    C["groom 收尾：重算脚本<br/>读使用记录与案例的 verification、investigation_quality"] --> S["案例文件<br/>confidence.score"]
-    S --> I["生成物索引<br/>阶段一排序读它"]
-    L --> G["knowledge-groom<br/>复审、退休、降置信"]
-
-    classDef w fill:#e7f5ff,stroke:#1971c2,stroke-width:1.5px,color:#0b3d66
-    classDef f fill:#fff4e6,stroke:#e8590c,stroke-width:1.5px,color:#7a2e00
-    classDef c fill:#f1f3f5,stroke:#868e96,stroke-width:1.5px,color:#343a40
-    class A,B,C w
-    class L,S,I f
-    class G c
-```
-
-图 3　写入方与被写的文件（类型：数据流图；范围：一次 groom 运行里的三类写入方）
-
-图例：蓝色是写入方，橙色是被写的文件，灰色是消费方。三者都在同一次 groom 运行里跑；只有重算脚本碰知识条目，改的字段只有 `score`。
-
-| 数据 | 写在哪 | 写入方 | 何时写 |
+| 数据 | 写在哪 | 写入方（groom 里的步骤） | 何时写 |
 |---|---|---|---|
-| 被选中、被加载、检索三态、被排除 | 期文件 `metrics.entry_activity` | groom 收尾的汇总脚本 | 每周一次 |
-| 现场确认解决、自证解决 | 同一段的 `resolved` / `misdiagnosed` / `self_resolved` | 结算脚本 | 每周一次，按游标只结算新事件 |
-| 排序分数 `confidence.score` | `knowledge/` 下的案例文件 | 重算脚本 | 每周一次，只写值变了的条目 |
-| 分数的索引副本 | `knowledge/_index.yaml` 生成物 | 索引重建 | 随知识变更 |
+| 被选中、被加载、检索三态、被排除 | 期文件的条目使用记录 | 3 汇总 | 每周一次 |
+| 现场确认解决、自证解决 | 同一段记录 | 2 结算 | 每周一次，按游标只结算新事件 |
+| 排序分数 `confidence.score` | `knowledge/` 下的案例文件 | 4 重算 | 每周一次，只写值变了的条目 |
+| 案例内容与存续 | `knowledge/` 下的案例文件或 `_archive/` | 5 复审与退休 | 每周一次，只改有信号的条目 |
+| 分数的索引副本 | `knowledge/_index.yaml` 生成物 | 6 索引重建 | 随知识变更 |
 
 三条规则。
 
-1. 计数只进条目使用记录。案例文件里不再有 `hits`、`misdiagnoses`、`last_hit`。这三个字段跟着结算走，结算一次就改一次知识文件，并与条目使用记录重复定义同一个量。
-2. 分数留在案例里。候选排序读的是生成物索引，索引只在知识变更时重建。分数若改成构建时从条目使用记录现算，索引构建就多一条对条目使用记录的硬依赖：条目使用记录缺失或过期时，排序按没有分数处理。留在案例里，条目使用记录缺席时分数停在上一次的值，排序退化但不静默归零。
-3. 重算写成脚本。输入是条目使用记录计数、案例的 `verification` 与 `investigation_quality`。新升格的条目取 `skills/knowledge-groom/SKILL.md` 第 4 步那张表的初始值，已有条目按后验加时间衰减。脚本全量计算，只写值变了的条目。分数只在两种情况下变：这一期该条目有结算，或者它本轮新升格。
+1. 计数只进条目使用记录。案例文件里不再有 `hits`、`misdiagnoses`、`last_hit`。这三个字段跟着结算走，结算一次就改一次知识文件，并与使用记录重复定义同一个量。
+2. 分数留在案例里。候选排序读的是索引生成物，索引只在知识变更时重建。分数若改成构建时从使用记录现算，索引构建就多一条对使用记录的硬依赖：使用记录缺失或过期时，排序按没有分数处理。留在案例里，使用记录缺席时分数停在上一次的值，排序退化但不静默归零。
+3. 重算写成脚本。输入是使用记录里的计数、案例的 `verification` 与 `investigation_quality`。新升格的条目取 `skills/knowledge-groom/SKILL.md` 第 4 步那张表的初始值，已有条目按后验加时间衰减。脚本全量计算，只写值变了的条目。分数只在两种情况下变：这一期该条目有结算，或者它本轮新升格。
 
 现状与目标的差别有两处。重算今天是 groom 的 agent 判断，「按时间衰减」没有公式也没有脚本。结算脚本写回 `confidence` 块时会连带重写 `score`，值取自原值。
 
-条目使用记录的键取条目自己的 `id` 字段，不取文件名：先验侧两者常不一致，案例侧目前一致但没有门保证。两库的 id 目前互不重复，同样是实测结果。因此条目使用记录分两段，并加一条门：全库 id 唯一，案例侧文件名与 id 一致。
+记录里的键取条目自己的 `id` 字段，不取文件名：先验侧两者常不一致，案例侧目前一致但没有门保证。两库的 id 目前互不重复，同样是实测结果。因此记录分两段，并加一条门：全库 id 唯一，案例侧文件名与 id 一致。
+
+id 本身可读。案例侧是 `VLLM-ASC-12430` 这类短标识，先验侧是 `cann-runtime-error-codes` 这类英文短语，面板一行放得下；个别长的行内截断，悬停给全名。
 
 ### 3.4 并发与冲突
 
