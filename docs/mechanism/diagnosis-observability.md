@@ -274,9 +274,11 @@ flowchart TB
 ```yaml
 # metrics/entry-activity.d/2026-W42.yaml（一周一个文件，每次知识整理追加若干行）
 - {run: 2026-10-16-0920, deployment: local-a2, checkout: a1b2c3d, kb_rev: 2a931ee, sessions: 3, kind: case, id: VLLM-ASC-12430, selected: 3, loaded: 2, resolved: 1, misdiagnosed: 0}
-- {run: 2026-10-16-0920, deployment: local-a2, checkout: a1b2c3d, kb_rev: 2a931ee, sessions: 3, kind: ref,  id: cann-runtime-error-codes, lookups: 6, hit: 5, miss: 1, skipped: 0}
+- {run: 2026-10-16-0920, deployment: local-a2, checkout: a1b2c3d, kb_rev: 2a931ee, sessions: 3, kind: ref,  id: cann-runtime-error-codes, lookups: 6, hit: 5, miss: 1, skipped: 0, purpose: {signature: 2, background: 1, fix: 1}}
 - {run: 2026-10-16-0920, deployment: local-a2, checkout: a1b2c3d, kb_rev: 2a931ee, kind: tool, id: Grep, calls: 41, p50_ms: 900, p90_ms: 9200, errors: 2, timeouts: 1}
+- {run: 2026-10-16-0920, deployment: local-a2, checkout: a1b2c3d, kb_rev: 2a931ee, sessions: 3, kind: case, id: VLLM-ASC-7635, selected: 1, loaded: 0, resolved: 0, misdiagnosed: 0, excluded: 1}
 - {run: 2026-10-17-1005, deployment: local-a2, checkout: a1b2c3d, kb_rev: 2a931ee, sessions: 2, kind: case, id: VLLM-ASC-12430, selected: 2, loaded: 1, resolved: 0, misdiagnosed: 0}
+- {run: baseline-2026-10-20, deployment: local-a2, kind: baseline, id: VLLM-ASC-9005, hits: 4, misdiagnoses: 1, self_resolved: 0, last_hit: '2026-W39'}   # 迁移期的历史累计值
 ```
 
 `run` 是本次运行的时间戳（`YYYY-MM-DD-HHMM`），与期号无关：记录在第 3 步写，期文件在周界那一次的第 7 步才写，两者不是一回事。`deployment` 是部署标识，脚本取环境变量 `ASCEND_SLEUTH_DEPLOYMENT`，缺省取检出根目录名。同一周的多次运行共用一个文件，各写各的行。
@@ -291,9 +293,12 @@ cases:
     totals: {selected: 5, loaded: 3, resolved: 1, misdiagnosed: 0}
     by_week: {2026-W42: {selected: 5, loaded: 3, resolved: 1, misdiagnosed: 0}}
     recent: [{run: 2026-10-16-0920, resolved: 1, misdiagnosed: 0}, {run: 2026-10-17-1005, resolved: 0, misdiagnosed: 0}]
+  VLLM-ASC-7635:
+    totals: {selected: 1, loaded: 0, resolved: 0, misdiagnosed: 0, excluded: 1}
+    by_week: {2026-W42: {selected: 1, loaded: 0, resolved: 0, misdiagnosed: 0, excluded: 1}}
 references:
   cann-runtime-error-codes:
-    totals: {lookups: 6, hit: 5, miss: 1, skipped: 0}
+    totals: {lookups: 6, hit: 5, miss: 1, skipped: 0, purpose: {signature: 2, background: 1, fix: 1}}
     by_week: {2026-W42: {lookups: 6, hit: 5, miss: 1, skipped: 0}}
 tools:
   Grep: {calls: 41, p50_ms: 900, p90_ms: 9200, errors: 2, timeouts: 1}
@@ -336,7 +341,7 @@ cold: {cases: 96, references: 12}     # 本表覆盖的运行与周里零活动�
 
 现状与目标的差别有三处。计数与 `last_hit` 现在写在案例的 `confidence` 里，跟着结算走：结算一次就改一次知识文件，并与记录重复定义同一个量。分数也写在案例里（多数条目有、也有条目没有，`build_index.py:183` 读的是这个键），由知识整理的 agent 判断重算，「按时间衰减」没有公式也没有脚本，结算脚本写回 `confidence` 块时还会连带重写它、值取自原值。人工覆盖现在没有专门字段。
 
-记录里的键取条目自己的 `id` 字段，不取文件名：先验侧两者常不一致，案例侧目前一致但没有门保证。两库的 id 目前互不重复，同样是实测结果。因此记录分 `cases` / `references` 两种 `kind`，并加一条门：全库 id 唯一，案例侧文件名与 id 一致。
+记录里的键取条目自己的 `id` 字段，不取文件名：先验侧两者常不一致，案例侧目前一致但没有门保证。两库的 id 目前互不重复，同样是实测结果。因此记录用 `kind` 区分 `case` 与 `ref`（生成物里再分成 `cases` 与 `references` 两段），并加一条门：全库 id 唯一，案例侧文件名与 id 一致。
 
 id 本身可读。案例侧是 `VLLM-ASC-12430` 这类短标识，先验侧是 `cann-runtime-error-codes` 这类英文短语，面板一行放得下；个别长的行内截断，悬停给全名。
 
@@ -345,7 +350,7 @@ id 本身可读。案例侧是 `VLLM-ASC-12430` 这类短标识，先验侧是 `
 回报只改一处，不存在两处读数对不上的问题。
 
 1. 工程师回报时，轨迹记一条 `feedback{case, outcome, confirmed_at}`。渠道是续接时的追问，不改诊断流程。
-2. 知识整理收尾跑 `settle_trace_feedback.py --apply`。它按 `.settle-state.json` 的游标，把事件折进当期条目使用记录的对应 id，写 `resolved`、`misdiagnosed`、`self_resolved` 三列。
+2. 知识整理收尾跑 `settle_trace_feedback.py --apply`。它按 `.settle-state.json` 的游标，把事件折进当期记录里对应 id 的行，累加 `resolved`、`misdiagnosed`、`self_resolved` 三个计数。
 3. 同一次整理里算分并重建索引，分数落在索引生成物里，案例文件不动。
 4. 记录与索引都在 git 里，反馈照样入库；改变下次排序的是第 3 步。
 
@@ -520,7 +525,7 @@ VLLM-ASC-9005   选 1 · 解 0       cann-hdk        累计 5 · 解 2 · W42
 
 门跟着阶段走：第 1 阶段不动读端，现有门照旧全绿；第 2 阶段改 `build_index.py` 的算分，`build_index.py --check` 与 `verify_metrics.py --check` 要在同一个 PR 里通过；第 3 阶段删字段前先确认没有脚本再读它（`grep -rn confidence scripts/` 应为空），否则会出现「脚本读一个已经不存在的键」的静默降级。
 
-搬运累计计数要一行特殊记录。`confidence` 里的 `hits` 与 `misdiagnoses` 是生命周期累计值，而记录是「一次运行一行」，两者不同量纲。搬运时写 `kind: baseline` 的行（`run: baseline-<日期>`，带累计值与来源说明）：聚合把 baseline 算进 `totals`，但不计入 `by_week`、本周增量与 `cold`，否则排行与「本周增量」会被这份人造基线污染。
+搬运累计计数要一行特殊记录。`confidence` 里的 `hits` 与 `misdiagnoses` 是生命周期累计值，而记录是「一次运行一行」，两者不同量纲。搬运时写 `kind: baseline` 的行（`run: baseline-<日期>`，带 `hits`、`misdiagnoses`、`self_resolved`、`last_hit` 与来源说明；`last_hit` 只有这一种行会带）。聚合把 baseline 算进 `totals`，但不计入 `by_week`、本周增量与 `cold`，否则排行与「本周增量」会被这份人造基线污染。
 
 | 蓝图项 | 改哪里 | 确认方式 |
 |---|---|---|
