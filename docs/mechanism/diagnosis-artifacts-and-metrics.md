@@ -22,7 +22,9 @@
 
 本地件与仓库资产的分界只有一条判据：这份文件换到另一份检出、另一台机器上还有没有意义。有意义的是仓库资产，没有意义的是本地件。
 
-跨检出复用的本地件锚在同一个克隆的主检出；生命周期短的批次产物留在检出内，两类在 3.1 的清单里逐行标出。同一份检出可能同时开着多个 worktree（同一个仓库的第二份检出）在并发处理任务，而周批与结算脚本读的是主检出那一份。锚定之后，记录落在哪个目录不再取决于当时人在哪个目录。这条保证的适用范围是「同一克隆且能取到 git」：`scripts/exec_log_path.py:110-123` 在没有 git 环境时退化为检出内，多份克隆之间也互不可见，两种情况都在输出里标出退化形态。
+本地件的落点分两种，3.1 的清单逐行标出：要被同一克隆的多个检出共读的锚在主检出；一次批次用完即弃的留在检出内（验证回放产物、交互回放产物、回放输入、自动抓取候选、调研物料）。
+
+同一份检出可能同时开着多个 worktree（同一个仓库的第二份检出）在并发处理任务，而周批与结算脚本读的是主检出那一份。锚定之后，记录落在哪个目录不再取决于当时人在哪个目录。这条保证的适用范围是「同一克隆且能取到 git」：`scripts/exec_log_path.py:110-123` 在没有 git 环境时退化为检出内，多份克隆之间也互不可见，两种情况都在输出里标出退化形态。
 
 锚定由三部分组成，缺任何一部分都会重新出现第一类事故。
 
@@ -38,7 +40,7 @@
 
 ### 3.1 本地件清单
 
-锚定一列写「主检出」的走 `CHECKOUT_DIRS` 或对应的 `resolve_*` 函数。写「检出内」的不锚主检出，取根的方式有两种：多数读端按当前工作目录解析，`scripts/evolution_health.py` 按脚本所在检出解析（`--root` 默认 `Path(__file__).resolve().parents[1]`，`:558`）。
+锚定一列写「主检出」的走 `CHECKOUT_DIRS` 或对应的 `resolve_*` 函数。写「检出内」的不锚主检出，解析路径的基准有两种：多数读端按当前工作目录解析，`scripts/evolution_health.py` 按脚本所在检出解析（`--root` 默认 `Path(__file__).resolve().parents[1]`，`:558`）。
 
 | 本地件 | 路径 | 谁写 | 谁读 | 锚定 | 进 git |
 |---|---|---|---|---|---|
@@ -207,7 +209,7 @@ notes: |
 | 蓝图项 | 落点 | 确认方式 | 闸门 |
 |---|---|---|---|
 | 事件列表键名不可读时单列计数 | `scripts/trace_metrics.py:186` | 对使用 `events` 键的那份轨迹跑 `python3 scripts/trace_metrics.py`，输出里出现未记录计数，比例读数旁标出分母构成 | 无 |
-| 归因比接受两种字段拼法，只映射 `execution` | `scripts/trace_metrics.py:240-243` | 用分别含 `attribution_kind: execution` 与 `attribution_kind: improvement` 的合成轨迹跑单测，断言只有前者进 `execution_error` | 无 |
+| 归因比接受两种字段拼法，只映射 `execution` | `scripts/trace_metrics.py:240-243` | 用三份合成轨迹跑单测：`verdict: execution_error` 与 `verdict: case_error` 各进一桶，`attribution_kind: improvement` 不进比值 | 无 |
 | 验证回放结果文件缺席时单列报出 | `scripts/settle_s2_feedback.py:130`、`scripts/component_tally.py:68`、`scripts/ev_board_data.py:843`、`scripts/evolution_health.py:88` | 在 worktree 里跑 `python3 scripts/settle_s2_feedback.py`，输出里出现本检出没有结果文件；另三个读端同法各确认一次 | 无 |
 | 诊断结局的两个新读数 | 新脚本，输入轨迹事件。`no_solution` = `miss` 事件且顶层 `stop_reason` 为 `escalated_tier3` 或 `abandoned`；`conflicting_evidence` = `procedure_follow.conflict` 非空 | 对现有轨迹跑一次，输出两个计数，各自对上一个触发动作 | 计数非零前按不可解读报 |
 | 案例选中次数的本地读数 | 新脚本，输入轨迹的候选相关事件，由 knowledge-groom 在运行期读 | 对现有轨迹跑一次，输出每个案例的选中次数 | 无 |
