@@ -168,7 +168,7 @@ strength: self-report              # 来源 session 自证，见 3.5
 %%{init: {'themeVariables':{'fontSize':'14px'},'flowchart':{'curve':'basis','nodeSpacing':40,'rankSpacing':50,'padding':10}}}%%
 flowchart TB
     D1["工程师：出问题时跑一次诊断"] --> L[("本机记录<br/>轨迹、账单")]
-    L -->|"每次知识整理，追加一段使用记录"| G1["groom：升格草稿 → 结算回报 → 汇总本机记录 → 重算分数 → 复审与退休 → 容量与索引"]
+    L -->|"每次知识整理，追加一段使用记录"| G1["groom：升格草稿 → 结算回报 → 汇总本机记录 → 算分 → 复审与退休 → 容量与索引"]
     G1 -->|"周界那一次"| G2["组装本期整体读数"]
     G1 --> P1["PR 1：知识变更 + 使用记录"]
     G2 --> P1
@@ -193,6 +193,21 @@ flowchart TB
 
 三件事。诊断只在本机留记录，不进仓库。知识面的动作都在同一次 groom 里，一次运行追加一段使用记录，不重写已经写下的内容；整体读数只在周界那一次组装，一周一期。机制面的动作走另一条线：`evolve-check` 在内容流程收尾时自动跑，`self-evolve` 在人要求做深度轮时跑，两者先读上仓读数、要定位原因时回本机明细，有信号才产 EV 卡，卡攒批进一个 PR。两条线各出一个 PR。
 
+三类动作的边界如下。判据强度、失败代价与节律都不同，因此不合并。
+
+| | 知识整理（groom） | 收尾评估（evolve-check） | 深度轮（self-evolve） |
+|---|---|---|---|
+| 触发 | owner 每周跑，一天多次也行 | groom 收尾自动跑 | 人显式要求 |
+| 做什么 | 按规则处理：升格、结算、汇总、算分、复审与退休、索引与落期 | 读本轮数据对照信号表，判断有没有机制面信号 | 跨轮聚合观察，提出并执行机制改动 |
+| 判据 | 规则与记录，不需要假设 | 触发条件表（`skills/evolve-check/SKILL.md`） | 假设加前后对照与判据 |
+| 产出 | 案例变更 + 使用记录 + 周界读数 | 有信号才产 EV 卡，不直接改机制 | EV 卡执行、验证、攒批 |
+| 进哪个 PR | PR 1：知识变更 | 攒批后 PR 2：机制改动 | 同 PR 2 |
+| 并行度 | 一个主 agent 顺序跑完，不并行（改的是同一批文件） | 轻量，同会话或另起都行 | 卡之间可并行，撞同一写面的串行；合入判断留给人 |
+
+分开的三条理由。判据不同：groom 是照规则处理，evolve 是提出假设并验证，评审者不该在同一个 diff 里同时判这两类事。失败代价不同：groom 错了是知识库错，能软退休、能 revert；机制错了会影响之后每一次诊断，要对照集与回滚路径。节律不同：groom 每周必做，evolve 有信号才做，可以跨周攒批。
+
+两条不做的事：不在 groom 里跑实验，那会把未验证的机制改动混进知识 PR，也拖长知识整理的时间；不把两个 PR 合成一个，它们的模板、评审人与回退粒度都不同。
+
 一次 groom 内部的顺序如下。七个步骤里前六步每次运行都做，第七步只在周界做。
 
 ```mermaid
@@ -201,36 +216,35 @@ flowchart TB
     S1["1 处理 inbox<br/>草稿升格为 case"] --> S2["2 结算现场回报"]
     S2 --> S3["3 汇总本机诊断记录"]
     S3 --> R[("metrics/entry-activity.d/&lt;周&gt;.yaml<br/>追加一段 run")]
-    R --> S4["4 重算分数"]
-    R --> S5["5 复审与退休"]
-    S4 --> S6["6 容量与索引重建"]
-    S5 --> S6
-    S6 --> S7["7 周界：组装本期整体读数"]
-    S4 --> C[("案例 confidence.score")]
+    R --> S4["4 算分<br/>记录计数 + 冷启动先验"]
+    S4 --> S5["5 复审与退休"]
+    S5 --> S6["6 容量与索引重建<br/>分数落在索引生成物"]
+    S4 --> S6
     S5 --> C2[("案例内容或 _archive/")]
-    S7 --> PR["同一个 PR<br/>知识变更 + 使用记录 + 本期读数"]
-    S6 --> PR
+    S6 --> S7["7 周界：组装本期整体读数"]
+    S6 --> PR["同一个 PR<br/>知识变更 + 使用记录 + 本期读数"]
+    S7 --> PR
 
     classDef step fill:#e7f5ff,stroke:#1971c2,stroke-width:1.5px,color:#0b3d66
     classDef store fill:#fff4e6,stroke:#e8590c,stroke-width:1.5px,color:#7a2e00
     classDef pr fill:#f1f3f5,stroke:#868e96,stroke-width:1.5px,color:#343a40
     class S1,S2,S3,S4,S5,S6,S7 step
-    class R,C,C2 store
+    class R,C2 store
     class PR pr
 ```
 
 图 3　一次 groom 运行内部的顺序（类型：数据流图；范围：七个步骤与每步写的文件）
 
-图例：蓝色是步骤，橙色是被写的文件，灰色是最终 PR。第 3 步追加的使用记录，第 4、5 步在同一次运行里就读它。
+图例：蓝色是步骤，橙色是被写的文件，灰色是最终 PR。第 3 步追加的使用记录，第 4、5 步在同一次运行里就读它；分数不在源文件里，只由第 6 步写进索引生成物。
 
 | 步骤 | 做什么 | 入口 | 写哪里 |
 |---|---|---|---|
 | 1 处理 inbox | 草稿升格为 case | `knowledge-groom` 的 intake 步骤 | `knowledge/<ns>/…yaml` |
 | 2 结算现场回报 | 把 `feedback` 事件折成计数 | `scripts/settle_trace_feedback.py --apply` | 追加进使用记录 |
 | 3 汇总本机记录 | 按 id 折算本次增量与工具分布 | 新增汇总脚本 | 追加进使用记录 |
-| 4 重算分数 | 读计数，算出排序分数 | 新增重算脚本 | 案例的 `confidence.score` |
+| 4 算分 | 读记录计数与冷启动先验，算出每个条目的分数 | 新增算分脚本 | 不落盘，作为第 5、6 步的输入 |
 | 5 复审与退休 | 按记录与分数改内容或存续 | `knowledge-groom` 的复审步骤 | 案例文件或 `_archive/` |
-| 6 容量与索引 | 容量表、重建索引 | `scripts/index_read_cost.py`、`scripts/build_index.py` | `knowledge/_index*` 生成物 |
+| 6 容量与索引 | 容量表、重建索引并把分数写进生成物 | `scripts/index_read_cost.py`、`scripts/build_index.py` | `knowledge/_index*` 生成物 |
 | 7 组装本期读数 | 只做整体读数，周界那一次 | `scripts/metrics_snapshot.py` | `metrics/timeline.d/<期号>.yaml` |
 
 「降置信」不是单独一步。分数由第 4 步算出来，低分就是降置信的结果；第 5 步做的是内容层的事：复审、合并、退休、补样例。
@@ -281,23 +295,25 @@ cold: {cases: 96, references: 12}     # 期内零活动的条目数 = 库总量�
 
 ### 3.3 与知识库解耦
 
-观测数据写 `metrics/` 下的追加型文件，知识条目只写两样：排序分数与内容本身。写入方与文件的关系见图 3，顺序是第 3 步汇总、第 4 步重算、第 5 步复审。
+观测数据写 `metrics/` 下的记录文件；知识条目只写内容与存续，不写任何计数、也不写分数。分数是派生值，只出现在索引生成物里。
 
 | 数据 | 写在哪 | 写入方（groom 里的步骤） | 何时写 |
 |---|---|---|---|
 | 被选中、被加载、检索三态、被排除 | `metrics/entry-activity.d/<周>.yaml` 的追加段 | 3 汇总 | 每次运行 |
 | 现场确认解决、自证解决 | 同一份追加段 | 2 结算 | 每次运行，按游标只结算新事件 |
-| 排序分数 `confidence.score` | `knowledge/` 下的案例文件 | 4 重算 | 每周一次，只写值变了的条目 |
+| 排序分数 | `knowledge/_index.yaml` 生成物 | 6 索引重建（第 4 步算出来） | 随知识变更 |
 | 案例内容与存续 | `knowledge/` 下的案例文件或 `_archive/` | 5 复审与退休 | 每周一次，只改有信号的条目 |
-| 分数的索引副本 | `knowledge/_index.yaml` 生成物 | 6 索引重建 | 随知识变更 |
+| 人工覆盖分数 | 案例的可选字段 `score_override` | 人，双签 | 罕见 |
 
 三条规则。
 
-1. 计数只进条目使用记录。案例文件里不再有 `hits`、`misdiagnoses`、`last_hit`。这三个字段跟着结算走，结算一次就改一次知识文件，并与使用记录重复定义同一个量。
-2. 分数留在案例里。候选排序读的是索引生成物，索引只在知识变更时重建。分数若改成构建时从使用记录现算，索引构建就多一条对使用记录的硬依赖：使用记录缺失或过期时，排序按没有分数处理。留在案例里，使用记录缺席时分数停在上一次的值，排序退化但不静默归零。
-3. 重算写成脚本。输入是使用记录里的计数、案例的 `verification` 与 `investigation_quality`。新升格的条目取 `skills/knowledge-groom/SKILL.md` 第 4 步那张表的初始值，已有条目按后验加时间衰减。脚本全量计算，只写值变了的条目。分数只在两种情况下变：这一期该条目有结算，或者它本轮新升格。
+1. 计数只进记录。案例文件里不再有 `hits`、`misdiagnoses`、`last_hit`。这三个字段跟着结算走，结算一次就改一次知识文件，并与记录重复定义同一个量。
+2. 分数是派生值，不落案例。输入是记录里的计数与案例的冷启动先验（`verification` 与 `investigation_quality`），算出来的分数写进索引生成物。案例文件因此在一周里只为内容层的决定而改，不因观测而改。
+3. 人工覆盖走显式字段。人为调高或调低某条的排序，写在案例的 `score_override` 里，带理由与作者，按高风险改动的双签走。分数默认由记录算，覆盖是例外。
 
-现状与目标的差别有两处。重算今天是 groom 的 agent 判断，「按时间衰减」没有公式也没有脚本。结算脚本写回 `confidence` 块时会连带重写 `score`，值取自原值。
+索引构建因此多了一条对使用记录的依赖。缺记录或记录过期时，分数退化为冷启动先验值，构建脚本与索引头注如实标出这一次用的是先验值。这个退化的代价可测：阶段一排序的主键是字面量与 token 交集，分数只作破平，退化前后的名次可以用 `scripts/rank_candidates.py --eval` 对照。
+
+现状与目标的差别有三处。分数现在写在案例的 `confidence.score` 里，由 groom 的 agent 判断重算，「按时间衰减」没有公式也没有脚本。结算脚本写回 `confidence` 块时会连带重写 `score`，值取自原值。人工覆盖现在没有专门字段。
 
 记录里的键取条目自己的 `id` 字段，不取文件名：先验侧两者常不一致，案例侧目前一致但没有门保证。两库的 id 目前互不重复，同样是实测结果。因此记录分两段，并加一条门：全库 id 唯一，案例侧文件名与 id 一致。
 
@@ -325,17 +341,17 @@ id 本身可读。案例侧是 `VLLM-ASC-12430` 这类短标识，先验侧是 `
 回报只改一处，不存在两处读数对不上的问题。
 
 1. 工程师回报时，轨迹记一条 `feedback{case, outcome, confirmed_at}`。渠道是续接时的追问，不改诊断流程。
-2. groom 收尾跑 `settle_trace_feedback.py --apply`。它按 `.settle-state.json` 的游标，把事件折进当期条目使用记录对应 id 行的 `resolved`、`misdiagnosed`、`self_resolved` 三列。
-3. 同一次 groom 里跑分数重算，把条目使用记录里的计数折成案例的 `confidence.score`，只写分数变了的条目。
-4. 条目使用记录与案例都在 git 里，反馈照样入库；改变下次排序的是第 3 步，与今天一致。
+2. groom 收尾跑 `settle_trace_feedback.py --apply`。它按 `.settle-state.json` 的游标，把事件折进当期条目使用记录的对应 id，写 `resolved`、`misdiagnosed`、`self_resolved` 三列。
+3. 同一次 groom 里算分并重建索引，分数落在索引生成物里，案例文件不动。
+4. 记录与索引都在 git 里，反馈照样入库；改变下次排序的是第 3 步。
 
 ```mermaid
 %%{init: {'themeVariables':{'fontSize':'14px'},'flowchart':{'curve':'basis','nodeSpacing':40,'rankSpacing':50,'padding':10}}}%%
 flowchart LR
     R1["1 工程师回报<br/>解决 / 没解决"] --> T["2 轨迹<br/>feedback 事件"]
     T --> S["3 结算脚本<br/>按游标折算，事件哈希幂等"]
-    S --> L["4 期文件条目使用记录<br/>resolved / misdiagnosed / self_resolved"]
-    L --> C["5 重算脚本<br/>写案例 score"]
+    S --> L["4 使用记录<br/>resolved / misdiagnosed / self_resolved"]
+    L --> C["5 算分并重建索引<br/>分数落在索引生成物"]
     C --> O["6 下一轮候选排序"]
 
     classDef step fill:#e7f5ff,stroke:#1971c2,stroke-width:1.5px,color:#0b3d66
@@ -347,7 +363,7 @@ flowchart LR
 
 图 4　一次回报的去向（类型：数据流图；范围：从回报到下次排序，不含跨机与迟到回报的处置）
 
-图例：蓝色是动作与下游消费，橙色是记录。两次写文件各由一次运行产生，因此不存在两处读数对不上的情况。
+图例：蓝色是动作与下游消费，橙色是记录。回报只写记录一处，分数由记录派生，因此不存在两处读数对不上的情况。
 
 准确性靠三点。事件按哈希结算一次，重跑不重复计数。回报迟到的，跟着它实际落盘的那一期走，不回填历史期。跨机器时条目使用记录按部署分家，另一台的回报由那一台的游标处理。
 
@@ -478,8 +494,10 @@ VLLM-ASC-9005   选 1 · 解 0       cann-hdk        累计 5 · 解 2 · W42
 | 蓝图项 | 改哪里 | 确认方式 |
 |---|---|---|
 | 一次诊断的记录汇总成一行 | 新增汇总脚本 | 对最近一次诊断跑一次，字段与 3.1 的表对齐 |
-| 案例的计数字段迁到条目使用记录 | `docs/spec/case-schema.md`、`scripts/settle_trace_feedback.py`、`skills/knowledge-groom/SKILL.md` | 结算后案例文件里不再出现 `hits`、`misdiagnoses`、`last_hit`；重算只改 `score` |
-| 分数重算从 agent 判断改成脚本 | 新增重算脚本，替换 `skills/knowledge-groom/SKILL.md` 第 4 步的 agent 判断 | 对全库跑一次，全量计算结果与逐条手算一致；值没变的条目不被写 |
+| `confidence` 块整体迁出案例 | `docs/spec/case-schema.md`、`scripts/verify_case_draft.py`、`scripts/settle_trace_feedback.py` | 全库不再出现 `confidence.hits` / `misdiagnoses` / `score`；结算只写记录 |
+| 分数改由索引构建时算出 | `scripts/build_index.py` 加算分；`skills/knowledge-groom/SKILL.md` 第 4 步改为算分 | 记录里计数变化后重建索引，`_index.yaml` 的 score 跟着变；缺记录时头注标出「先验值」 |
+| 人工覆盖字段 | `docs/spec/case-schema.md` 加可选 `score_override{score, reason, by}` | 造一条覆盖，索引用覆盖值；不带理由时校验报错 |
+| 算分从 agent 判断改成脚本 | 新增算分脚本，替换 `skills/knowledge-groom/SKILL.md` 第 4 步的 agent 判断 | 对全库跑一次，全量计算结果与逐条手算一致；结果与索引里的 score 一致 |
 | 分步成本接入 | `scripts/session_cost.mjs` 与汇总脚本 | 输出三分 token 与工具耗时，关联不上的会话标缺席 |
 | 期文件的产出并入 groom 收尾 | `skills/knowledge-groom/SKILL.md` 加一步，复用 `scripts/metrics_snapshot.py` | 跑一次 groom，期文件出现在同一个 PR 里；不跑 groom 时仓库不新增期 |
 | 使用记录文件族（源） | 新增 `metrics/entry-activity.d/<周>.yaml`，由汇总脚本追加 | 跑两次汇总，文件里出现两段 `run`，第一段内容不变 |
