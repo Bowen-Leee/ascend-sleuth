@@ -56,6 +56,7 @@
 - [run.md](../docs/mechanism/run.md) — 长期运行、issue 三重角色、统一执行记录、可视化
 - [eval-arena.md](../docs/mechanism/eval-arena.md) — 元层 eval 台（train/val 门控）与影响账本
 - [ixn-replay.md](../docs/mechanism/ixn-replay.md) — 交互面评测（追问 / 信息充分性 / 过早结论）
+- [metrics-feedback-target.md](../docs/mechanism/metrics-feedback-target.md) — 指标与反馈闭环的目标态：三层数据怎么采、三个新读数、落点与 git 归属、失败模式；取舍在 ADR-0010
 - [status.md](../docs/mechanism/status.md) — 机制状态总表、未建与空转、代码与文件入口对照、相邻文档分工（全库唯一一份）
 
 **操作指南（用到那个环节时才读）**
@@ -81,7 +82,7 @@
 *你想推翻某个既有选择，需要先看它当时的论证与重评条件*
 
 - `docs/adr/` — 架构决策记录（软版本匹配 / 不引入 RAG / 容量治理 / 先验知识层等）
-  - [0001](../docs/adr/0001-soft-version-matching.md)、[0002](../docs/adr/0002-retrieval-no-rag-lightweight-index.md)、[0003](../docs/adr/0003-platform-portability.md)、[0004](../docs/adr/0004-capacity-governance.md)、[0005](../docs/adr/0005-knowledge-consumption-split.md)、[0006](../docs/adr/0006-knowledge-ingest-dedup.md)、[0008](../docs/adr/0008-prior-knowledge-framework.md)、[0009](../docs/adr/0009-counterfactual-replay-exploration-policy.md)
+  - [0001](../docs/adr/0001-soft-version-matching.md)、[0002](../docs/adr/0002-retrieval-no-rag-lightweight-index.md)、[0003](../docs/adr/0003-platform-portability.md)、[0004](../docs/adr/0004-capacity-governance.md)、[0005](../docs/adr/0005-knowledge-consumption-split.md)、[0006](../docs/adr/0006-knowledge-ingest-dedup.md)、[0008](../docs/adr/0008-prior-knowledge-framework.md)、[0009](../docs/adr/0009-counterfactual-replay-exploration-policy.md)、[0010](../docs/adr/0010-metrics-feedback-target.md)
 <!-- END generated: docs-index -->
 
 ## 5 不覆盖什么
