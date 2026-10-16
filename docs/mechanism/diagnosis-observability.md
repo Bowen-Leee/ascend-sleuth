@@ -21,7 +21,7 @@
 1. 轨迹里有事件，但没有脚本把它汇总成一次诊断的成本与用到的知识（`scripts/settle_trace_feedback.py:18` 记着「数据都在 traces 里，但目前没有任何脚本产出它」）。
 2. 仓库里的汇总只到条目级一处：期文件的 `metrics.reference_detail`（某条先验被引用几次），案例侧没有对应数据。
 3. 有十个指标有产出、也在字段白名单里，8 期期文件一次都没写过（复算：见 3.6 的说明；白名单在 `scripts/verify_metrics.py:40-60`）。
-4. 归因比读错了键，恒为 0：读端只读 `verdict`（`scripts/trace_metrics.py:240-242`），而实测 7 条归因事件里 4 条写的是 `attribution_kind`、3 条两个键都没有；规范要求写 `verdict`（`skills/diagnose/references/diagnosis-procedure.md:331`）。
+4. 归因比读错了键，恒为 0。读端只读 `verdict`（`scripts/trace_metrics.py:240-242`），规范也要求写 `verdict`（`skills/diagnose/references/diagnosis-procedure.md:331`）。复算：`python3 scripts/component_tally.py --all` 统计归因事件的两种键；当前主检出的轨迹里 7 条归因事件中 4 条写 `attribution_kind`、3 条两个键都没有。
 5. 三期现场快照的反馈捕获都是 0（`metrics/timeline.d/` 的三条 live 期），命中率与误诊率因此没有分母。
 
 本文不解决四件事。诊断流程内部的执行规则在 `skills/diagnose/` 正文里。检索不上向量库（见 [ADR-0002](../adr/0002-retrieval-no-rag-lightweight-index.md)）。指标算法与评分定义只有人能改。读数不做跨部署合并。
@@ -39,16 +39,16 @@
 ```mermaid
 %%{init: {'themeVariables':{'fontSize':'14px'},'flowchart':{'curve':'basis','nodeSpacing':40,'rankSpacing':50,'padding':10}}}%%
 flowchart LR
-    TR["轨迹 traces/&lt;session_id&gt;.yaml"] --> EP["一次诊断的记录<br/>一行，留在本机"]
-    LG["harness 会话日志<br/>token 与工具耗时"] --> EP
+    TR["轨迹 traces/&lt;session_id&gt;.yaml"] -->|"收尾时汇总"| EP["一次诊断的记录<br/>一行，留在本机"]
+    LG["harness 会话日志<br/>token 与工具耗时"] -->|"账单按会话关联"| EP
     EP -->|"知识整理时汇总"| PF["metrics/entry-activity.d/&lt;周&gt;.yaml<br/>源，进 git"]
-    PF --> EA["metrics/entry-activity/&lt;deployment&gt;.yaml<br/>生成物"]
+    PF -->|"聚合"| EA["metrics/entry-activity/&lt;deployment&gt;.yaml<br/>生成物"]
     EP -->|"周界那一次"| TD["metrics/timeline.d/&lt;期号&gt;.yaml<br/>源，进 git"]
-    TD --> TI["metrics/timeline.yaml<br/>生成物"]
+    TD -->|"合并"| TI["metrics/timeline.yaml<br/>生成物"]
     EP -->|"面板直接读本机文件"| V1["单次诊断的面板<br/>读本机轨迹与账单"]
-    EA --> V2["累计读数的面板"]
-    TI --> V2
-    EA --> GR["知识整理：复审、退休"]
+    EA -->|"本期增量"| V2["累计读数的面板"]
+    TI -->|"趋势与体检"| V2
+    EA -->|"选中与解决计数"| GR["知识整理：复审、退休"]
 
     classDef store fill:#f1f3f5,stroke:#868e96,stroke-width:1.5px,color:#343a40
     classDef gen fill:#fff4e6,stroke:#e8590c,stroke-width:1.5px,color:#7a2e00
@@ -103,7 +103,7 @@ flowchart LR
 
 | 字段 | 类型 | 取值 | 说明 |
 |---|---|---|---|
-| `strength` | 枚举 | `upstream-fix-merged`、`upstream-official-doc`、`upstream-maintainer-confirmed`、`engineer-report`、`investigation`，以及本文新增的 `self-report` | 结论靠什么证据站住。命中案例时取该案例的 `verification.source`；无案例、靠源码分析或现场推理得出结论取 `investigation`；来源会话自证解决取 `self-report`（这一档是本文新增的，现有四处出处都还没有它）。前五档的来源与判据见 `examples/sample-case.yaml:50-51`、`skills/knowledge-groom/SKILL.md:83-91`、`skills/to-postmortem/SKILL.md:86-90`、`docs/mechanism/execution.md:73` |
+| `strength` | 枚举 | `upstream-fix-merged`、`upstream-official-doc`、`upstream-maintainer-confirmed`、`engineer-report`、`investigation`，以及本文新增的 `self-report` | 结论靠什么证据站住。命中案例时取该案例的 `verification.source`；无案例、靠源码分析或现场推理得出结论取 `investigation`；来源会话自证解决取 `self-report`（「自证」指来源会话自己回报的那个判断）（这一档是本文新增的，现有四处出处都还没有它）。前五档的来源与判据见 `examples/sample-case.yaml:50-51`、`skills/knowledge-groom/SKILL.md:85-89`、`skills/to-postmortem/SKILL.md:86-90`、`docs/mechanism/execution.md:73` |
 | `route.routed` | 字符串 | 命名空间，如 `inference/vllm-ascend` | 路由判定结果，空表示没判出来 |
 | `route.hit_case` | 字符串或空 | 案例 id | 阶段一命中的案例，与最终沉淀的案例可以不同 |
 | `touched.cases` | 列表 | 案例 id | 含命中、被加载、被排除三种触达方式 |
@@ -124,7 +124,7 @@ flowchart LR
 | `loaded` | 读了它的正文 | `load_full` 的 `candidates` 含它 |
 | `resolved` | 用它解决了问题 | 轨迹里出现 `{action: feedback, case, outcome: resolved}` 事件。结算脚本只认事件（`scripts/settle_trace_feedback.py:290`）；顶层的 `feedback` 字段是当前状态，不是结算输入 |
 | `misdiagnosed` | 用了它但没解决 | 同上的事件里 `outcome` 是 `not_resolved` 或 `partial` |
-| `self_resolved` | 来源会话自己回报解决 | 来源会话的 resolve，与 `resolved` 分开计 |
+| `self_resolved` | 来源会话自己回报解决（自证） | 来源会话的 resolve，与 `resolved` 分开计；与 `self-report` 是同一件事的记录侧计数 |
 | `lookups` | 查了一条先验 | 一次 `reference_lookup` 事件 |
 | `hit` / `miss` / `skipped` | 查到 / 查了没命中 / 没查并写了理由 | `reference_lookup.outcome` 的三种取值 |
 | `excluded` | 候选被排除 | 出现在 `excluded_cases` 或 `miss` 的 `excluded_cases` 里 |
@@ -222,7 +222,7 @@ flowchart TB
 %%{init: {'themeVariables':{'fontSize':'14px'},'flowchart':{'curve':'basis','nodeSpacing':30,'rankSpacing':46,'padding':10}}}%%
 flowchart TB
     S1["1 处理 inbox<br/>草稿升格为 case"] --> S2["2 结算现场回报"]
-    S2 --> S2B["2b 外部对照验证（S2）结算"]
+    S2 --> S2B["2b 外部对照验证结算"]
     S2B --> S3["3 汇总本机诊断记录"]
     S3 --> R[("metrics/entry-activity.d/&lt;周&gt;.yaml<br/>追加若干行记录")]
     R --> S4["4 算分<br/>记录计数 + 冷启动先验"]
@@ -261,7 +261,7 @@ flowchart TB
 
 ### 3.3 记录与生成物
 
-条目使用记录与本期读数分开放，因为粒度不同：前者每次运行都增长，后者按周看趋势。落地后 `metrics/` 下有五份文件，两份是源、两份是生成物、一份是判据（现在只有后两份生成物与判据）。
+条目使用记录与本期读数分开放，因为粒度不同：前者每次运行都增长，后者按周看趋势。落地后 `metrics/` 下有五份文件，两份是源、两份是生成物、一份是判据。现在已有的是期文件的源 `metrics/timeline.d/`、生成物 `metrics/timeline.yaml` 与判据 `metrics/gates.yaml`；条目使用记录的两份是蓝图项。
 
 | 文件 | 角色 | 谁写 | 进 git | 谁读 |
 |---|---|---|---|---|
@@ -284,7 +284,7 @@ flowchart TB
 - {run: baseline-2026-10-18, deployment: local-a2, kind: baseline, id: VLLM-ASC-9005, resolved: 4, misdiagnosed: 1, self_resolved: 0, last_hit: '2026-W39', note: '搬自 confidence 块，2026-10-18'}   # 迁移期搬运的历史累计值
 ```
 
-`run` 是本次运行的时间戳（`YYYY-MM-DD-HHMM`），与期号无关：记录在第 3 步写，期文件在周界那一次的第 7 步才写，两者不是一回事。唯一的例外是搬运行，它的 `run` 写 `baseline-<日期>`（见 5.2）。`deployment` 是部署标识，脚本取环境变量 `ASCEND_SLEUTH_DEPLOYMENT`，缺省取检出根目录名。同一周的多次运行共用一个文件，各写各的行。
+`run` 是本次运行的时间戳（`YYYY-MM-DD-HHMM`），与期号无关：记录在第 3 步写，期文件在周界那一次的第 7 步才写，两者不是一回事。唯一的例外是搬运行，它的 `run` 写 `baseline-<日期>`（见 5.2）。`deployment` 是部署标识，脚本取环境变量 `ASCEND_SLEUTH_DEPLOYMENT`，缺省取主检出的目录名。同一周的多次运行共用一个文件，各写各的行。
 
 读端读的是生成物，一个部署一份（`metrics/entry-activity/<deployment>.yaml`），文件内按 id 汇总，并保留每个 id 最近几次运行的结果，供面板显示本期增量与「连续未解决」：
 
@@ -387,27 +387,27 @@ flowchart LR
 
 五个问题是：谁读它；他据此做什么决定；读数为坏时下一步做什么；分子分母各是什么、覆盖哪些会话与哪份检出；这个数怎么来的。
 
-最后一问的答案只有四种，写进数据里，不写在注释里。脚本或账单直接产出的是`确定性`。用可计算的量代替真量的标`代理`，例如用展开量之差代表无效探索。agent 自己记下来的标`自报`。只有现场能给的是`人工`。
+最后一问的答案只有四种，写进数据里，不写在注释里。脚本或账单直接产出的是 `确定性`。用可计算的量代替真量的标 `代理`，例如用展开量之差代表无效探索。agent 自己记下来的标 `自报`。只有现场能给的是 `人工`。
 
 | 指标 | 读它的人、决定 | 读数为坏时的下一步 | 分母与覆盖 | 强度（这个数怎么来的） | 现状 |
 |---|---|---|---|---|---|
 | 路由准确率 | 维护者每周整理时，改 triage 词法与命名空间归属 | 看漏检类别，补路由词或挪分类 | 已判定路由的会话 | 确定性 | 已落地 |
 | 候选召回、命中位次 | 维护者，补案例或改排序键 | 看漏检样本落在哪个格子 | 有预期答案的回放样本 | 确定性 | 已落地 |
 | 兜底使用与挽救 | 维护者，判是覆盖缺口还是要新先验 | 缺口补案例，流程问题改正文 | 全部诊断会话 | 确定性 | 已落地 |
-| 先验读取三态与消费点 | 词条作者，该查没查改流程、查了没用改词条 | 按三态分流 | 走先验读取步骤的会话 | 确定性 | 部分落地 |
-| 漏检类别 | 维护者，补词法或挪类别 | 按类别补 triage 词 | 未路由命中的会话 | 确定性 | 部分落地 |
+| 先验读取三态与消费点 | 词条作者，该查没查改流程、查了没用改词条 | 按三态分流 | 走先验读取步骤的会话 | 确定性 | 蓝图：字段已有产出，指标无落点 |
+| 漏检类别 | 维护者，补词法或挪类别 | 按类别补 triage 词 | 未路由命中的会话 | 确定性 | 蓝图：字段已有产出，指标无落点 |
 | 步数与动作分布 | skill 维护者，改哪一步的正文 | 出现最多又不推进的动作优先改 | 全部诊断会话 | 确定性 | 已落地 |
 | 分步成本 | 维护者，裁最贵的步骤 | 定位最贵步骤，看能否合并或跳过 | 有会话日志的会话 | 确定性 | 蓝图：待接会话日志 |
 | 工具耗时与失败分布 | 维护者，判哪个工具该设硬超时、哪种调用总失败 | 定位最贵或最常失败的调用形态 | 该工具的调用次数 | 确定性 | 蓝图：待接会话日志 |
 | 一次诊断的读入账 | 维护者，治超预算的读路径 | 按四个分项定位该治哪条 | 全部诊断会话 | 确定性 | 蓝图：需按会话归属 |
-| 停止原因 | 维护者，判断该不该停在这里 | 未记录的会话先补记录 | 全部诊断会话 | 确定性 | 部分落地 |
+| 停止原因 | 维护者，判断该不该停在这里 | 未记录的会话先补记录 | 全部诊断会话 | 确定性 | 蓝图：字段已有产出，指标无落点 |
 | 无效探索 | 维护者，换探索策略 | 在历史决策树上离线打分，见下段 | 历史决策树，同策略对照 | 代理 | 蓝图：缺打分代码 |
 | 词表合规 | 维护者，补词表或改记法 | 违规事件逐条看 | 全部事件 | 确定性 | 已落地 |
 | 反馈捕获 | 维护者，判学习环有没有输入 | 为 0 时命中率、误诊率标不可解读 | 给出结论的会话 | 确定性 | 已落地 |
-| 现场解决计数 | 排序与退休，降置信或退休 | 连续两次未解决转人工 | 已回报的会话 | 人工 | 部分落地 |
+| 现场解决计数 | 排序与退休，降置信或退休 | 连续两次未解决转人工 | 已回报的会话 | 人工 | 蓝图：字段已有产出，指标无落点 |
 | 外部对照闭环 | 维护者，确认内容是否正确 | 没有上游 issue 或 PR 关联的案例标不可对照 | 有上游关联的案例 | 确定性 | 蓝图：缺锚点字段与查证脚本 |
-| 归因比 | 维护者，误诊修复前先读 | 先补归因事件再修 | 已归因的误诊 | 自报 | 部分落地 |
-| 结论强度分布 | 维护者与面板读者，判哪些结论不能当依据 | 弱强度结论不得升格 | 给出结论的会话 | 自报 | 蓝图：字段待接 |
+| 归因比 | 维护者，误诊修复前先读 | 先补归因事件再修 | 已归因的误诊 | 自报 | 蓝图：字段已有产出，指标无落点 |
+| 结论强度分布 | 维护者与面板读者，判哪些结论不能当依据 | 弱强度结论不得升格 | 给出结论的会话 | 自报（这里指指标来源，与 3.1 的 `strength` 档不是同一个概念） | 蓝图：字段待接 |
 | 条目使用增量 | 知识整理，退休、降置信、合并、补样例 | 高选中低解决时复审该条 | 该条目的当期被选中数，覆盖本部署 | 确定性 | 蓝图：缺汇总脚本与生成物 |
 | 长期零选中条目 | 知识整理，决定补词面还是不动 | 复查症状词面与标签 | 全库条目 | 确定性 | 蓝图：缺零选中统计 |
 | 格子读入成本 | 维护者，拆分、瘦身、按平台切 | 看格子的实读 token | 无分母，绝对量 | 确定性 | 已落地 |
@@ -417,7 +417,7 @@ flowchart LR
 | 预测实测三态 | 评审者，判卡可不可信 | 补跑判据或补预期 | 卡片数 | 确定性 | 已落地 |
 | 采纳与拒绝比 | 维护者，判系统有没有拒绝路径 | 拒绝为 0 时质疑采纳记录 | 终态卡片 | 确定性 | 已落地 |
 
-「现状」一列取已落地、部分落地、蓝图三个值，蓝图后面跟一句缺什么。`已落地`与`蓝图`是规范里那三个状态标签中的两个；`部分落地`是本节的有意扩展，指这一行的字段有产出、指标却没有落点，既不是已落地也不是蓝图。判部分落地的四种情形：字段有产出但 8 期期文件一次都没写过（先验三态、漏检类别等行）；轨迹字段已开始记而指标没有落点（停止原因）；样本少（现场解决计数）；读端读错键、恒为 0（归因比）。反馈捕获的字段本身已落地，它的当前值是 0，原因见第 1 节。
+「现状」一列只取两个值：`已落地`与`蓝图`，与 `skills/doc-standards/SKILL.md:58` 固定的节内状态标签一致。蓝图后面跟一句缺什么：字段已经有产出、只是指标没有落点的，写「蓝图：字段已有产出，指标无落点」；其余写清缺哪一件。归到「蓝图：字段已有产出，指标无落点」的有四种情形：字段有产出但 8 期期文件一次都没写过（先验三态、漏检类别等行）；轨迹字段已开始记而指标没有落点（停止原因）；样本少（现场解决计数）；读端读错键、恒为 0（归因比）。反馈捕获的字段本身已落地，它的当前值是 0，原因见第 1 节。
 
 表的「现状」列是行级判断，「8 期没写过」是字段级事实，两者可以同时成立：停止原因这一行的轨迹字段已经开始记，而它的两个指标字段从未进过期文件。
 
@@ -470,7 +470,7 @@ EOF
 累计读数的面板首屏先答四个问题：覆盖了哪些会话、哪个读数不可解读、哪些条目在变差、本周该做什么。
 
 ```
-覆盖 local-a2 · 2026-W42-live · 本机 12 个会话 · 3 期
+覆盖 local-a2 · 2026-W42-live-1016 · 本机 12 个会话 · 3 期
 不可解读 2 项  命中率、误诊率（反馈捕获 0）
 需处理 4 项    判据 5/5 已评估
 ------------------------------------------------------------------
@@ -506,7 +506,7 @@ VLLM-ASC-9005   选 1 · 解 0       cann-hdk        累计 5 · 解 2 · W42
 | 某行的 `run` 落在文件名之外的周 | `--check` 报出并按文件名归周。`run` 是本机时间戳（搬运行是 `baseline-<日期>`，按同一规则归周），跨周界那次运行可能要人工确认写在哪一周 |
 | 跨时区部署 | 记录按写入机器的本地 ISO 周归周。不同时区的两台可能在同一天落进不同周文件，这是预期行为：汇总按 `deployment` 分组，不跨部署合并 |
 | 面板读不到生成物 | 显示缺哪个生成物与重建命令，不回退到原始记录自行求和 |
-| 在 worktree 里跑整理 | 路径不退化：`main_checkout()` 把共享件锚回主检出（`scripts/exec_log_path.py:93`，输出里标 `where: shared`），在 worktree 里也能读到主检出的 `traces/` |
+| 在 worktree 里跑整理 | 路径不退化：`main_checkout()` 把共享件锚回主检出（`scripts/exec_log_path.py:93`，输出里标出「主检出（共享侧）」），在 worktree 里也能读到主检出的 `traces/` |
 | 没有 git 环境 | 路径退回检出内并在输出里标出，不产出空指标 |
 | 两个 worktree 同时写一期 | 期号冲突按现有后缀机制处理，不同期落在不同文件 |
 | 结论强度由来源会话自证或 agent 判定 | 强度档写进数据，面板标明「自证」，不与确定性读数同权 |
@@ -530,13 +530,13 @@ VLLM-ASC-9005   选 1 · 解 0       cann-hdk        累计 5 · 解 2 · W42
 
 第 1 阶段同时搬运历史累计（`kind: baseline` 行）；第 3 阶段还要把 `settle_trace_feedback.py` 从写回案例改成只写记录。阶段之间是共存期：加记录那一步之后，案例与记录各有一份计数，读端仍从案例取分；切换之后案例不再有分数，记录成为唯一来源，面板取分改读索引。共存期超过两周就应当把删字段排上前。
 
-门跟着阶段走。第 1 阶段不动读端，现有门照旧全绿。第 2 阶段改算分，`build_index.py --check` 与 `verify_metrics.py --check` 要在同一个 PR 里通过。第 3 阶段删字段前，逐个确认这五处已经改完：
+门跟着阶段走。第 1 阶段不动读端，现有门照旧全绿。第 2 阶段改算分，`build_index.py --check` 与 `verify_metrics.py --check` 要在同一个 PR 里通过。第 3 阶段删字段前，逐个确认下面四处已经改完（第五处是保留，不用改）：
 
 1. `scripts/build_index.py:183` 与 `:268`：读 `confidence.score`。
 2. `scripts/settle_trace_feedback.py:200-231`：写回 `confidence`。
 3. `scripts/trace_metrics.py:116`：索引缺失时回退扫案例本体读 `confidence.score`，删字段后恒为空，指标会无声失真。
 4. `scripts/settle_s2_feedback.py:239-248`：把 `confidence:` 块当插入锚点，块没了就跳过写回，外部对照验证的结算会静默停摆。
-5. `scripts/build_index.py` 的索引行仍保留 `confidence` 键（ADR-0004 要求），这一处不动。不要用 `grep -rn confidence scripts/` 当门：指标名 `confidence_distribution` 与索引里的 `confidence` 键按 ADR-0004 要保留，那个 grep 永远不为空。
+5. 不用改但要知道：`scripts/build_index.py` 的索引行仍保留 `confidence` 键（ADR-0004 要求）；`scripts/settle_trace_feedback.py` 的 `--audit` 交叉核对也会读案例的 `confidence`，删字段后它会报出来（响亮失败，不是静默降级）。不要用 `grep -rn confidence scripts/` 当门：指标名 `confidence_distribution` 与索引里的 `confidence` 键按 ADR-0004 要保留，那个 grep 永远不为空。
 
 搬运累计计数要一行特殊记录。`confidence` 里的 `hits` 与 `misdiagnoses` 是生命周期累计值，而记录是「一次运行一行」，两者不同量纲。搬运时写 `kind: baseline` 的行（`run: baseline-<日期>`，日期取搬运当天，因此归周与其它行同规则）。它用与其它行相同的计数名：`resolved`、`misdiagnosed`、`self_resolved`，另带 `last_hit`（这一项只有 baseline 行会带，格式从原来的日期改为 ISO 周）与来源说明。聚合把 baseline 算进 `totals`，但不计入 `by_week`、本周增量，也不算作「有活动」（`cold` 因此按非 baseline 行统计），否则排行、本周增量与长期零选中的判断会被这份人造基线污染。
 
