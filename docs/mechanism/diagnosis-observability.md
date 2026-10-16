@@ -407,6 +407,7 @@ VLLM-ASC-9005   选 1 · 解 0       cann-hdk        累计 5 · 解 2 · W42
 | 案例的计数字段迁到条目使用记录 | `docs/spec/case-schema.md`、`scripts/settle_trace_feedback.py`、`skills/knowledge-groom/SKILL.md` | 结算后案例文件里不再出现 `hits`、`misdiagnoses`、`last_hit`；重算只改 `score` |
 | 分数重算从 agent 判断改成脚本 | 新增重算脚本，替换 `skills/knowledge-groom/SKILL.md` 第 4 步的 agent 判断 | 对全库跑一次，全量计算结果与逐条手算一致；值没变的条目不被写 |
 | 分步成本接入 | `scripts/session_cost.mjs` 与汇总脚本 | 输出三分 token 与工具耗时，关联不上的会话标缺席 |
+| 期文件的产出并入 groom 收尾 | `skills/knowledge-groom/SKILL.md` 加一步，复用 `scripts/metrics_snapshot.py` | 跑一次 groom，期文件出现在同一个 PR 里；不跑 groom 时仓库不新增期 |
 | 期文件新增 `metrics.entry_activity` 段 | `scripts/metrics_snapshot.py`、`scripts/verify_metrics.py` 白名单 | 组装一期，段内出现当期有活动的条目 |
 | 跨期求和的生成物 | 新增 `scripts/build_entry_activity.py`，产出 `metrics/entry-activity.yaml` | 排行与期文件增量逐条对得上 |
 | 查不到的 id 与缺期报出 | 同上 | 造一个不存在的 id，聚合时报出该 id 与所在的期 |
