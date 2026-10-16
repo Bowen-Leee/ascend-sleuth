@@ -251,6 +251,20 @@ flowchart TB
 
 条目使用记录与整体读数分开放，因为粒度不同：前者每次运行都增长，后者按周看趋势。
 
+`metrics/` 下因此有五份文件，两份是源、两份是生成物、一份是判据。
+
+| 文件 | 角色 | 谁写 | 进 git | 谁读 |
+|---|---|---|---|---|
+| `metrics/entry-activity.d/<周>.yaml` | 源：条目使用记录，一周一个文件，每次运行追加一段 | 汇总与结算脚本 | 是 | 聚合脚本 |
+| `metrics/timeline.d/<期号>.yaml` | 源：整体读数，一周一期 | 组装脚本产出，owner 复核分母 | 是 | 聚合脚本 |
+| `metrics/entry-activity.yaml` | 生成物：按 id 跨运行求和 | `scripts/build_entry_activity.py` | 是 | 面板、知识整理 |
+| `metrics/timeline.yaml` | 生成物：全部期文件合成一条时间线 | `scripts/build_timeline.py` | 是 | 面板、体检器、演进看板 |
+| `metrics/gates.yaml` | 判据数值，不是指标 | 人 | 是 | 体检器 |
+
+两份生成物进 git、也进 PR，但它们由脚本重建，人不手改，`--check` 与源比对（CI 里跑）。生成物存在的理由有三条。读侧只有一个入口，面板与体检器不必知道源分了几个文件、怎么追加。源可以换形状（比如从期文件改成追加段），读端不用跟着改。合并时重跑一次重建命令就够，不需要人工判断留哪一份。
+
+这套写法在仓库里已有先例：`metrics/timeline.d/*` 合成 `timeline.yaml`，`knowledge/*.yaml` 合成 `_index.yaml`。
+
 ```yaml
 # metrics/entry-activity.d/2026-W42.yaml（一周一个文件，每次 groom 追加一段）
 runs:
