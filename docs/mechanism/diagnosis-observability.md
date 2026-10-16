@@ -18,10 +18,10 @@
 
 现状有五个缺口，每条都能在本机复算。
 
-1. 轨迹里有事件，但没有脚本把它汇总成一次诊断的成本与用到的知识（`scripts/settle_trace_feedback.py:16` 记着「数据都在 traces 里，但没有任何脚本产出它」）。
+1. 轨迹里有事件，但没有脚本把它汇总成一次诊断的成本与用到的知识（`scripts/settle_trace_feedback.py:18` 记着「数据都在 traces 里，但目前没有任何脚本产出它」）。
 2. 仓库里的汇总只到条目级一处：期文件的 `metrics.reference_detail`（某条先验被引用几次），案例侧没有对应数据。
 3. 有十个指标有产出、也在字段白名单里，8 期期文件一次都没写过（复算：见 3.6 的说明；白名单在 `scripts/verify_metrics.py:40-60`）。
-4. 归因比读错了键，恒为 0（读端 `scripts/trace_metrics.py:240` 读 `verdict`，生产端写 `attribution_kind`）。
+4. 归因比读错了键，恒为 0（读端 `scripts/trace_metrics.py:240-242` 读 `verdict`，生产端写 `attribution_kind`）。
 5. 三期现场快照的反馈捕获都是 0（`metrics/timeline.d/` 的三条 live 期），命中率与误诊率因此没有分母。
 
 本文不解决四件事。诊断流程内部的执行规则在 `skills/diagnose/` 正文里。检索不上向量库（见 [ADR-0002](../adr/0002-retrieval-no-rag-lightweight-index.md)）。指标算法与评分定义只有人能改。读数不做跨部署合并。
@@ -102,7 +102,7 @@ flowchart LR
 
 | 字段 | 类型 | 取值 | 说明 |
 |---|---|---|---|
-| `strength` | 枚举 | `upstream-fix-merged`、`upstream-official-doc`、`upstream-maintainer-confirmed`、`engineer-report`、`investigation`，以及本文新增的 `self-report` | 结论靠什么证据站住。命中案例时取该案例的 `verification.source`；无案例、靠源码分析或现场推理得出结论取 `investigation`；来源会话自报解决取 `self-report`（这一档是本文新增的，现有三处出处都还没有它）。前五档的来源与判据见 `examples/sample-case.yaml:49`、`skills/knowledge-groom/SKILL.md:81-91`、`skills/to-postmortem/SKILL.md:85` |
+| `strength` | 枚举 | `upstream-fix-merged`、`upstream-official-doc`、`upstream-maintainer-confirmed`、`engineer-report`、`investigation`，以及本文新增的 `self-report` | 结论靠什么证据站住。命中案例时取该案例的 `verification.source`；无案例、靠源码分析或现场推理得出结论取 `investigation`；来源会话自报解决取 `self-report`（这一档是本文新增的，现有三处出处都还没有它）。前五档的来源与判据见 `examples/sample-case.yaml:49-52`、`skills/knowledge-groom/SKILL.md:81-91`、`skills/to-postmortem/SKILL.md:85` |
 | `route.routed` | 字符串 | 命名空间，如 `inference/vllm-ascend` | 路由判定结果，空表示没判出来 |
 | `route.hit_case` | 字符串或空 | 案例 id | 阶段一命中的案例，与最终沉淀的案例可以不同 |
 | `touched.cases` | 列表 | 案例 id | 含命中、被加载、被排除三种触达方式 |
@@ -497,7 +497,7 @@ VLLM-ASC-9005   选 1 · 解 0       cann-hdk        累计 5 · 解 2 · W42
 | 某一周没有记录文件 | 该周不参与累计，聚合脚本报出缺哪几周，不按 0 计 |
 | 某个 id 在知识库里查不到 | 报出该 id 与所在的运行，不计入排行，列入清理清单 |
 | 记录文件被手改 | 改动无法用重建命令修（重建只把错值搬进生成物）。处置：删掉被改的那些行，用同一批本机记录重跑该 `run` 的汇总 |
-| 记录里的周号与文件名不符 | `--check` 报出；按文件名归周，同时提示修源 |
+| 某行的 `run` 落在文件名之外的周 | `--check` 报出并按文件名归周；`run` 是本机时间戳，跨周界那次运行可能要人工确认写在哪一周 |
 | 跨时区部署 | 记录按写入机器的本地 ISO 周归周。不同时区的两台可能在同一天落进不同周文件，这是预期行为：汇总按 `deployment` 分组，不跨部署合并 |
 | 面板读不到生成物 | 显示缺哪个生成物与重建命令，不回退到原始记录自行求和 |
 | 无 git 环境或在 worktree 里跑整理 | 路径退化为检出内并在输出里标出，不产出空指标 |
@@ -532,7 +532,7 @@ VLLM-ASC-9005   选 1 · 解 0       cann-hdk        累计 5 · 解 2 · W42
 | 一次诊断的记录汇总成一行 | 新增 `scripts/trace_entry_activity.py` | 对最近一次诊断跑一次，字段与 3.1 的表对齐 |
 | 记录文件族（源） | 新增 `metrics/entry-activity.d/<周>.yaml`，由汇总与结算脚本追加 | 跑两次汇总，文件里出现两组 `run`，前一组内容不变 |
 | 记录的生成物 | `scripts/build_entry_activity.py` 产出 `metrics/entry-activity/<deployment>.yaml` | 排行与各行增量逐条对得上；`recent` 能给出「连续未解决」；两个部署各产一份、互不覆盖 |
-| 记录的校验 | 新增校验脚本并接进 CI 的 `metrics-validation` job | 源与生成物一致；`(run,kind,id)` 重复、孤儿 id、周号与文件名不符都报红 |
+| 记录的校验 | 新增校验脚本并接进 CI 的 `metrics-validation` job | 源与生成物一致；`(run,kind,id)` 重复、孤儿 id、`run` 与文件名不同周都报红 |
 | `.gitattributes` 加 union | `metrics/entry-activity.d/* merge=union` | 构造两侧同时追加，合并后两侧的行都在 |
 | 记录格式改成一行一条 | 汇总脚本的输出格式 | 造两段并发追加，合并后的文件能被 YAML 解析 |
 | 分数的算分脚本 | 新增 `scripts/score_entries.py`；替换 `skills/knowledge-groom/SKILL.md` 第 4 步的 agent 判断 | 全库跑一次，结果与逐条手算一致；与索引里的 score 一致 |
@@ -554,7 +554,7 @@ VLLM-ASC-9005   选 1 · 解 0       cann-hdk        累计 5 · 解 2 · W42
 | 文档 | 改什么 |
 |---|---|
 | `docs/guide/metrics.md` | 来源表加条目使用记录与工具分布两行；「周批」表述改为知识整理收尾；命令链加聚合与校验脚本 |
-| `docs/spec/case-schema.md` | 删掉 `confidence` 一节，新增可选 `score_override` 与 `upstream` |
+| `docs/spec/case-schema.md` | 删掉必需字段表里的 `confidence` 行、`confidence.self_resolved` 子节与两处正文引用（`:34`、`:52`、`:54`、`:101`），新增可选 `score_override` 与 `upstream`，并把 `self-report` 加进 `verification.source` 枚举 |
 | `docs/mechanism/rsi-mechanism.md` | 第 4.4 节的四个写入点里，「知识条目」换成「条目使用记录」（净额仍是四条）；第 11 节把落期归入知识整理 |
 | `docs/guide/git-workflow.md` | 目录归属表加两条新路径，并给记录文件族选一个档：它是「追加型共享源」（允许同周并发追加、配 `merge=union`、读侧按部署分组）。该表现有分档没有这一档，要先加一档，否则只加路径会被「没列到的路径按只接收处理」挡住 |
 | `docs/mechanism/status.md` | 加条目使用记录与工具分布两行状态 |

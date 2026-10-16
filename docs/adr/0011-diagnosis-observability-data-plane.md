@@ -15,7 +15,7 @@
 | 十个指标有产出、在字段白名单里，8 期期文件一个都没写过 | `scripts/verify_metrics.py:40-60` 的白名单 29 项与 `metrics/timeline.d/` 求差得到：漏检类别、漏检会话、先验三态、先验消费点、停止原因分布、停止原因未记录、同批并发标记、候选全集事件、字段违规明细、字段违规总数 |
 | 归因比恒为 0 | 读端 `scripts/trace_metrics.py:240-242` 只读 `verdict`，生产端写 `attribution_kind`；`scripts/component_tally.py:54-58` 记的是修法（两套都收），不是读端 |
 |「命中」有三处定义 | 案例本体的 `confidence.hits`、期文件的 `tier2_hit`、`scripts/trace_metrics.py` 的现算值 |
-| 条目级观测只有先验侧有 | 期文件的 `metrics.reference_detail`；`scripts/settle_trace_feedback.py:16-19` 写着「数据都在 traces 里，但没有任何脚本产出它」 |
+| 条目级观测只有先验侧有 | 期文件的 `metrics.reference_detail`；`scripts/settle_trace_feedback.py:18` 写着「数据都在 traces 里，但没有任何脚本产出它」 |
 | 没有一处统计一次诊断内部的无效步骤 | 轨迹里预留了 `stop_reason`、`parallel_group`、`considered_candidates`，打分代码未落地 |
 | 没有任何一处把 issue 或 PR 的状态回写成诊断结局 | 有 4 处 `gh` 调用会读 `state`（`scripts/auto_fetch.py:56`、`scripts/fetch_issues.py:50`、`scripts/s2_calibration.py:274`、`scripts/ev_proposal.py:334`），但它们分别服务于拉取、建池与改进项指针，都不写诊断结局 |
 | 案例没有一条独立的外部确认 | 带 `validation_record` 的案例里 `consistent` 全为 0 |
