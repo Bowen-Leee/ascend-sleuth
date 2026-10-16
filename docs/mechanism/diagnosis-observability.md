@@ -174,7 +174,7 @@ strength: self-report              # 来源会话自证，取值见本节字段�
 %%{init: {'themeVariables':{'fontSize':'14px'},'flowchart':{'curve':'basis','nodeSpacing':40,'rankSpacing':50,'padding':10}}}%%
 flowchart TB
     D1["工程师：出问题时跑一次诊断"] --> L[("本机记录<br/>轨迹、账单")]
-    L -->|"每次知识整理，追加记录"| G1["知识整理（groom）：升格草稿 → 结算回报 → 汇总记录 → 算分 → 复审与退休 → 索引"]
+    L -->|"每次知识整理，追加记录"| G1["知识整理（groom）：升格草稿 → 结算回报 → S2 验证结算 → 汇总记录 → 算分 → 复审与退休 → 索引"]
     G1 -->|"周界那一次"| G2["组装本期读数"]
     G1 --> P1["PR 1：知识变更 + 记录 + 本期读数"]
     G2 --> P1
@@ -210,9 +210,9 @@ flowchart TB
 | 进哪个 PR | PR 1：知识变更 | 攒批后 PR 2：机制改动 | 同 PR 2 |
 | 并行度 | 一个主 agent 顺序跑完，不并行，因为改的是同一批文件 | 轻量，同会话或另起都行 | 卡片之间可并行，撞同一批文件的串行；合入判断留给人 |
 
-分开的三条理由。判据不同：知识整理照规则处理，机制演进提出假设并验证，评审者不该在同一个 diff 里同时判这两类事。失败代价不同：知识整理错了是知识库错，能软退休、能 revert；机制错了会影响之后每一次诊断，要对照集与回滚路径。节律不同：知识整理每周必做，机制演进有信号才做，可以跨周攒批。
+不合并的理由有三条：判据不同（照规则处理 vs 提出假设并验证）、失败代价不同（知识错了能软退休与 revert，机制错了影响之后每一次诊断）、节律不同（每周必做 vs 有信号才做）。
 
-两条不做的事：不在知识整理里跑实验，那会把未验证的机制改动混进知识 PR，也拖长整理的时间；不把两个 PR 合成一个，它们的模板、评审人与回退粒度都不同。
+因此不在知识整理里跑实验，也不把两个 PR 合成一个：它们的模板、评审人与回退粒度都不同。
 
 一次知识整理内部的顺序如下。本文的步骤编号自成一套，与 `skills/knowledge-groom/SKILL.md` 正文的编号不同名也不同数；那边的「软退休」对应本文第 5 步「复审与退休」。
 
@@ -222,7 +222,7 @@ flowchart TB
     S1["1 处理 inbox<br/>草稿升格为 case"] --> S2["2 结算现场回报"]
     S2 --> S2B["2b S2 验证结算"]
     S2B --> S3["3 汇总本机诊断记录"]
-    S3 --> R[("metrics/entry-activity.d/&lt;周&gt;.yaml<br/>追加一行行记录")]
+    S3 --> R[("metrics/entry-activity.d/&lt;周&gt;.yaml<br/>追加若干行记录")]
     R --> S4["4 算分<br/>记录计数 + 冷启动先验"]
     S4 --> S5["5 复审与退休"]
     S5 --> S6["6 索引重建<br/>分数落在索引生成物"]
@@ -249,8 +249,8 @@ flowchart TB
 | 1 处理 inbox | 草稿升格为 case | `knowledge-groom` 的 intake 步骤 | `knowledge/<ns>/…yaml` |
 | 2 结算现场回报 | 把 `feedback` 事件折成计数 | `scripts/settle_trace_feedback.py --apply` | 追加进条目使用记录 |
 | 2b S2 验证结算 | 把回放结果折成外部验证记录 | `scripts/settle_s2_feedback.py --apply` | 案例的 `validation_record` |
-| 3 汇总本机记录 | 按 id 折算本次增量与工具分布 | 新增汇总脚本 | 追加进条目使用记录 |
-| 4 算分 | 读记录计数与冷启动先验（条目还没有现场记录时用的初始分），算出每个条目的分数 | 新增算分脚本 | 不落盘，作为第 5、6 步的输入 |
+| 3 汇总本机记录 | 按 id 折算本次增量与工具分布 | 新增 `scripts/trace_entry_activity.py` | 追加进条目使用记录 |
+| 4 算分 | 读记录计数与冷启动先验（条目还没有现场记录时用的初始分），算出每个条目的分数 | 新增 `scripts/score_entries.py` | 不落盘，作为第 5、6 步的输入 |
 | 5 复审与退休 | 按记录与分数改内容或存续 | `knowledge-groom` 的复审步骤 | 案例文件或 `_archive/` |
 | 6 容量与索引 | 容量表、重建索引并把分数写进生成物 | `scripts/index_read_cost.py`、`scripts/build_index.py` | `knowledge/_index*` 生成物 |
 | 7 组装本期读数 | 只做本期读数，周界那一次 | `scripts/metrics_snapshot.py` | `metrics/timeline.d/<期号>.yaml` |
@@ -275,7 +275,7 @@ flowchart TB
 # metrics/entry-activity.d/2026-W42.yaml（一周一个文件，每次知识整理追加若干行）
 - {run: 2026-10-16-0920, deployment: local-a2, checkout: a1b2c3d, kb_rev: 2a931ee, sessions: 3, kind: case, id: VLLM-ASC-12430, selected: 3, loaded: 2, resolved: 1, misdiagnosed: 0}
 - {run: 2026-10-16-0920, deployment: local-a2, checkout: a1b2c3d, kb_rev: 2a931ee, sessions: 3, kind: ref,  id: cann-runtime-error-codes, lookups: 6, hit: 5, miss: 1, skipped: 0}
-- {run: 2026-10-16-0920, deployment: local-a2, kind: tool, id: Grep, calls: 41, p50_ms: 900, p90_ms: 9200, errors: 2, timeouts: 1}
+- {run: 2026-10-16-0920, deployment: local-a2, checkout: a1b2c3d, kb_rev: 2a931ee, kind: tool, id: Grep, calls: 41, p50_ms: 900, p90_ms: 9200, errors: 2, timeouts: 1}
 - {run: 2026-10-17-1005, deployment: local-a2, checkout: a1b2c3d, kb_rev: 2a931ee, sessions: 2, kind: case, id: VLLM-ASC-12430, selected: 2, loaded: 1, resolved: 0, misdiagnosed: 0}
 ```
 
@@ -530,7 +530,7 @@ VLLM-ASC-9005   选 1 · 解 0       cann-hdk        累计 5 · 解 2 · W42
 | 记录的校验 | 新增校验脚本并接进 CI 的 `metrics-validation` job | 源与生成物一致；`(run,kind,id)` 重复、孤儿 id、周号与文件名不符都报红 |
 | `.gitattributes` 加 union | `metrics/entry-activity.d/* merge=union` | 构造两侧同时追加，合并后两侧的行都在 |
 | 记录格式改成一行一条 | 汇总脚本的输出格式 | 造两段并发追加，合并后的文件能被 YAML 解析 |
-| 分数的算分脚本 | 新增算分脚本；替换 `skills/knowledge-groom/SKILL.md` 第 4 步的 agent 判断 | 全库跑一次，结果与逐条手算一致；与索引里的 score 一致 |
+| 分数的算分脚本 | 新增 `scripts/score_entries.py`；替换 `skills/knowledge-groom/SKILL.md` 第 4 步的 agent 判断 | 全库跑一次，结果与逐条手算一致；与索引里的 score 一致 |
 | `confidence` 块迁出案例 | 迁移三个阶段（见上）；`docs/spec/case-schema.md` 要改四处：必需字段表里的 `confidence` 行（`:34`）、`confidence.self_resolved` 子节（`:52`、`:54`）与正文引用（`:101`） | 第 1 阶段后计数两处一致；第 3 阶段后全库不再出现 `confidence`。注意 `scripts/verify_case_draft.py` 的 `REQUIRED_FIELDS` 里本来就没有 `confidence`，schema 的「必填」与脚本口径本就不一致 |
 | 人工覆盖字段 | `docs/spec/case-schema.md` 加可选 `score_override{score, reason, by}` | 造一条覆盖，索引用覆盖值；不带理由时校验报错 |
 | `self-report` 进枚举 | `docs/spec/case-schema.md` 与 `skills/to-postmortem/SKILL.md` 的 `verification.source` 枚举 | 造一条 `strength: self-report` 的会话，强度分布里出现它 |
@@ -585,11 +585,11 @@ VLLM-ASC-9005   选 1 · 解 0       cann-hdk        累计 5 · 解 2 · W42
 |---|---|
 | 轨迹字段与事件词表 | `skills/diagnose/references/diagnosis-trace.md`、`diagnosis_state.yaml.example`、`trace-status.yaml` |
 | 诊断记录的汇总（新增） | `scripts/trace_entry_activity.py` |
-| 记录与生成物（新增） | `metrics/entry-activity.d/<周>.yaml`、`scripts/build_entry_activity.py`、`metrics/entry-activity/<deployment>.yaml` |
+| 记录与生成物（新增） | `metrics/entry-activity.d/<周>.yaml`、`scripts/trace_entry_activity.py`、`scripts/build_entry_activity.py`、`metrics/entry-activity/<deployment>.yaml` |
 | 期文件组装、体检与白名单 | `scripts/metrics_snapshot.py`、`scripts/metrics_health.py`、`scripts/verify_metrics.py`、`metrics/gates.yaml` |
 | 期文件与生成物重建 | `scripts/build_timeline.py` |
 | 一次诊断读入账 | `scripts/index_read_cost.py` |
-| 算分与索引 | `scripts/build_index.py` |
+| 算分与索引 | `scripts/score_entries.py`、`scripts/build_index.py` |
 | 反馈与验证结算 | `scripts/settle_trace_feedback.py`、`scripts/settle_s2_feedback.py` |
 | 会话账单 | `scripts/session_cost.mjs` |
 | 本地件路径解析 | `scripts/exec_log_path.py`、`scripts/shared_dir.py` |
