@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>面板版式示意：单次诊断 / 累计读数</title>
+<style>
+  :root{
+    --bg:#f6f7f9; --card:#fff; --line:#e3e6ea; --text:#1f2328; --text2:#5c6570;
+    --green:#16a34a; --blue:#2563eb; --amber:#b45309; --purple:#7c3aed; --gray:#8b949e;
+    --bar:#2563eb;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{ --bg:#16181d; --card:#1d2025; --line:#2c313a; --text:#e6e8eb; --text2:#9aa3ad;
+           --green:#3fb950; --blue:#58a6ff; --amber:#d29922; --purple:#a371f7; --gray:#6e7681; }
+  }
+  *{box-sizing:border-box}
+  body{margin:0;padding:24px;background:var(--bg);color:var(--text);
+       font:13.5px/1.55 -apple-system,"PingFang SC","Microsoft YaHei",sans-serif}
+  h1{font-size:16px;margin:0 0 4px}
+  .note{color:var(--text2);font-size:12.5px;margin-bottom:18px}
+  .panel{background:var(--card);border:1px solid var(--line);border-radius:10px;
+         padding:14px 16px;margin-bottom:20px;max-width:960px}
+  .ptitle{display:flex;align-items:center;gap:8px;font-weight:700;font-size:14px;
+          margin-bottom:10px;padding-bottom:8px;border-bottom:1px solid var(--line)}
+  .accent{width:3px;height:15px;border-radius:2px;background:var(--blue)}
+  .accent.g{background:var(--green)}
+  .row{display:flex;gap:10px;flex-wrap:wrap;align-items:baseline;margin:6px 0}
+  .k{color:var(--text2);min-width:64px}
+  .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+  .pill{border:1px solid currentColor;border-radius:999px;padding:0 8px;font-size:11.5px;font-weight:700}
+  .g{color:var(--green)} .b{color:var(--blue)} .a{color:var(--amber)} .p{color:var(--purple)} .m{color:var(--gray)}
+  .sec{border-top:1px solid var(--line);margin-top:10px;padding-top:9px}
+  .sec h3{font-size:12.5px;margin:0 0 6px;color:var(--text2);font-weight:700;letter-spacing:.04em}
+  .steps{display:flex;align-items:flex-end;gap:2px;height:34px}
+  .step{background:var(--bar);border-radius:2px;opacity:.9}
+  .step.dim{opacity:.35}
+  .steplab{display:flex;gap:2px;color:var(--text2);font-size:10.5px;margin-top:3px}
+  .steplab span{writing-mode:horizontal-tb;text-align:center}
+  table{border-collapse:collapse;width:100%;font-size:12.5px}
+  th,td{text-align:left;padding:3px 6px;border-bottom:1px solid var(--line)}
+  th{color:var(--text2);font-weight:600}
+  td.num{font-family:ui-monospace,Menlo,monospace;text-align:right;white-space:nowrap}
+  .cols{display:flex;gap:18px;flex-wrap:wrap}
+  .col{flex:1 1 300px;min-width:280px}
+  .hint{color:var(--amber)}
+  .todo li{margin:2px 0}
+  .bar{height:9px;border-radius:3px;background:var(--bar);opacity:.85}
+  .barbg{background:var(--line);border-radius:3px;height:9px;flex:1}
+</style>
+</head>
+<body>
+  <h1>面板版式示意</h1>
+  <div class="note">数字为示意值，用于看版式与信息层级；字段与来源见
+    <span class="mono">docs/mechanism/diagnosis-observability.md</span> §3.1 与 §3.7。</div>
+
+  <div class="panel">
+    <div class="ptitle"><span class="accent g"></span>诊断面板 · 单次诊断（展开一张卡）</div>
+
+    <div class="row">
+      <span class="mono"><b>2026-09-16-12430-dsv4pro-mc2</b></span>
+      <span class="pill g">已解决</span>
+      <span class="pill m">结论强度 自证</span>
+    </div>
+    <div class="row"><span class="k">根因</span><span>HDK 24.1.0.3 低于 CANN 9.0.1 配套要求，多节点 MC2 卡死</span></div>
+    <div class="row">
+      <span class="k">命中</span><span class="mono">VLLM-ASC-9005（0.55）</span>
+      <span class="k">沉淀为</span><span class="mono">VLLM-ASC-12430</span>
+      <span class="k">待回报</span><span>无</span>
+    </div>
+
+    <div class="sec">
+      <h3>各步 · 格宽为成本占比，同批并行并排，↺ 为返工</h3>
+      <div class="steps">
+        <div class="step" style="width:26px;height:14px"></div>
+        <div class="step" style="width:10px;height:9px"></div>
+        <div class="step" style="width:34px;height:19px"></div>
+        <div class="step" style="width:22px;height:13px"></div>
+        <div class="step" style="width:92px;height:34px"></div>
+        <div class="step" style="width:40px;height:32px"></div>
+        <div class="step" style="width:12px;height:11px"></div>
+        <div class="step" style="width:20px;height:12px"></div>
+        <div class="step dim" style="width:10px;height:9px"></div>
+      </div>
+      <div class="steplab">
+        <span style="width:26px">①</span><span style="width:10px">②</span><span style="width:34px">③</span>
+        <span style="width:22px">④</span><span style="width:92px">⑤</span><span style="width:40px">⑥</span>
+        <span style="width:12px">⑦</span><span style="width:20px">⑧</span><span style="width:10px">⑨</span>
+      </div>
+      <div class="row m" style="font-size:11.5px;margin-top:2px">
+        ① 路由　② 读候选索引　③ 候选核验　④ 读候选正文　⑤ 取先验 ×7　⑥ 源码分析　⑦ 结论　⑧ 报告　⑨ 回报
+      </div>
+    </div>
+
+    <div class="sec">
+      <h3>检索走向</h3>
+      <div class="row"><span class="k">展开</span><span>4 条</span><span class="k">排除</span><span>5 条</span>
+        <span class="k">命中</span><span>1 条</span></div>
+      <div class="row"><span class="k">命中</span><span class="mono">VLLM-ASC-9005</span><span class="hint">↺ 与最终沉淀的案例不同</span></div>
+      <div class="row"><span class="k">排除</span><span class="mono">VLLM-ASC-12461 · VLLM-ASC-7635 · VLLM-ASC-9887 …</span></div>
+      <div class="row"><span class="k">先验</span><span>命中 6 · 未命中 1 · 未查 0</span>
+        <span class="k">消费点</span><span>签名 3 / 流程 2 / 背景 1 / 修复 1</span></div>
+    </div>
+
+    <div class="sec">
+      <h3>成本</h3>
+      <div class="row"><span class="k">token</span><span class="mono">未缓存 12.4k · 缓存读 216k · 缓存写 38k · 输出 9.1k</span></div>
+      <div class="row"><span class="k">工具</span><span class="mono">42.6s</span><span>最慢 源码检索 18.2s</span></div>
+      <div class="row"><span class="k">读入账</span><span class="mono">类视图 5.1k tok</span><span>先验层 0.4k</span><span>候选全文 8.9k</span></div>
+    </div>
+
+    <div class="sec">
+      <h3>本次没记</h3>
+      <div class="row hint">归因事件 0 条 · 停止原因未记 · 分步工具耗时空</div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="ptitle"><span class="accent"></span>指标面板 · 累计读数</div>
+
+    <div class="row">
+      <span class="k">覆盖</span><span class="mono">2026-W42-live-1016</span>
+      <span>本机 12 个会话 · 3 期 live</span>
+    </div>
+    <div class="row"><span class="k">不可解读</span><span class="p">2 项</span><span>命中率、误诊率（反馈捕获 0）</span></div>
+    <div class="row"><span class="k">需处理</span><span class="a">4 项</span><span>判据 5/5 已评估</span></div>
+
+    <div class="sec">
+      <h3>条目使用</h3>
+      <div class="cols">
+        <div class="col">
+          <table>
+            <tr><th>本期增量</th><th class="num">选</th><th class="num">解</th></tr>
+            <tr><td class="mono">VLLM-ASC-12430</td><td class="num">3</td><td class="num">1</td></tr>
+            <tr><td class="mono">cann-runtime-error-codes</td><td class="num">6</td><td class="num">—</td></tr>
+            <tr><td class="mono">VLLM-ASC-9005</td><td class="num">1</td><td class="num">0</td></tr>
+          </table>
+          <div class="row m" style="font-size:12px">长期零选中 96 条（不据此退休）</div>
+        </div>
+        <div class="col">
+          <table>
+            <tr><th>跨期累计</th><th class="num">累计</th><th class="num">解</th><th class="num">最后</th></tr>
+            <tr><td class="mono">VLLM-ASC-12430</td><td class="num">11</td><td class="num">4</td><td class="num">W42</td></tr>
+            <tr><td class="mono">VLLM-ASC-9005</td><td class="num">6</td><td class="num">1</td><td class="num">W41</td></tr>
+            <tr><td class="mono">cann-hdk</td><td class="num">5</td><td class="num">2</td><td class="num">W42</td></tr>
+          </table>
+          <div class="row a" style="font-size:12px">高选中低解决 2 条 → 复审</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="sec">
+      <h3>过程动作成本</h3>
+      <div class="row" style="gap:6px">
+        <span class="mono" style="min-width:78px">先验读取 38%</span><span class="barbg"><span class="bar" style="width:38%;display:block"></span></span>
+      </div>
+      <div class="row" style="gap:6px">
+        <span class="mono" style="min-width:78px">源码分析 31%</span><span class="barbg"><span class="bar" style="width:31%;display:block"></span></span>
+      </div>
+      <div class="row" style="gap:6px">
+        <span class="mono" style="min-width:78px">候选核验 12%</span><span class="barbg"><span class="bar" style="width:12%;display:block"></span></span>
+      </div>
+      <div class="row" style="gap:6px">
+        <span class="mono" style="min-width:78px">其余 19%</span><span class="barbg"><span class="bar" style="width:19%;display:block;opacity:.5"></span></span>
+      </div>
+    </div>
+
+    <div class="sec">
+      <h3>变差的读数</h3>
+      <table>
+        <tr><td><span class="mono">inference/vllm-ascend interrupt</span> 读入 16.4k tok（软线 8k）</td><td class="a">拆分评估</td></tr>
+        <tr><td>期文件断档 3 天（阈值 7）</td><td class="a">跑周批</td></tr>
+        <tr><td>条目 <span class="mono">VLLM-ASC-7635</span> 连续 2 次未解决</td><td class="a">转人工</td></tr>
+      </table>
+    </div>
+
+    <div class="sec">
+      <h3>本周该做</h3>
+      <ol class="todo">
+        <li>复审 2 条高选中低解决的条目</li>
+        <li>补 <span class="mono">507014</span> 错误码词条（先验层覆盖缺口）</li>
+        <li>跑一次周批，把本期条目增量落进期文件</li>
+      </ol>
+    </div>
+  </div>
+</body>
+</html>
