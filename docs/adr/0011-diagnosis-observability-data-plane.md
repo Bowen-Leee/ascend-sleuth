@@ -13,8 +13,8 @@
 | 三期 live 快照的反馈捕获都是 0，命中率、误诊率、校准只能标不可解读 | `metrics/timeline.yaml` 的三条 live 期 |
 | 面板的约三十个指标标签只有三个消费点 | `scripts/metrics_health.py`、`scripts/evolution_health.py`、`skills/self-evolve/SKILL.md` 的漂移判读 |
 | 十个指标有产出、在字段白名单里，8 期期文件一个都没写过 | `scripts/verify_metrics.py:40-60` 的白名单 29 项与 `metrics/timeline.d/` 求差得到：漏检类别、漏检会话、先验三态、先验消费点、停止原因分布、停止原因未记录、同批并发标记、候选全集事件、字段违规明细、字段违规总数 |
-| 归因比恒为 0 | 读端 `scripts/trace_metrics.py:240-242` 只读 `verdict`，生产端写 `attribution_kind`；`scripts/component_tally.py:54-58` 记的是修法（两套都收），不是读端 |
-|「命中」有三处定义 | 案例本体的 `confidence.hits`、期文件的 `tier2_hit`、`scripts/trace_metrics.py` 的现算值 |
+| 归因比恒为 0 | 读端 `scripts/trace_metrics.py:240-242` 只读 `verdict`；规范要求写 `verdict`（`skills/diagnose/references/diagnosis-procedure.md:331`），而实测 7 条 attribution 事件里 4 条写的是 `attribution_kind`、3 条两个键都没有；`scripts/component_tally.py:54-58` 记的是修法（两套都收），不是读端 |
+|「命中」有两处口径 | 案例本体的 `confidence.hits`（现场确认解决）与期文件的 `tier2_hit`（由 `scripts/trace_metrics.py:338` 的现算值派生），两个数含义不同却都能叫「命中」 |
 | 条目级观测只有先验侧有 | 期文件的 `metrics.reference_detail`；`scripts/settle_trace_feedback.py:18` 写着「数据都在 traces 里，但没有任何脚本产出它」 |
 | 没有一处统计一次诊断内部的无效步骤 | 轨迹里预留了 `stop_reason`、`parallel_group`、`considered_candidates`，打分代码未落地 |
 | 没有任何一处把 issue 或 PR 的状态回写成诊断结局 | 有 4 处 `gh` 调用会读 `state`（`scripts/auto_fetch.py:56`、`scripts/fetch_issues.py:50`、`scripts/s2_calibration.py:274`、`scripts/ev_proposal.py:334`），但它们分别服务于拉取、建池与改进项指针，都不写诊断结局 |
@@ -27,7 +27,7 @@
 
 ## 决定
 
-我们决定把条目使用增量落成独立的一族追加型文件 `metrics/entry-activity.d/<周>.yaml`：一周一个文件，每次知识整理追加若干行，一行一条自包含记录（`merge=union` 是行级合并，嵌套结构会拼出非法 YAML，所以记录必须一行一条），并配 `merge=union`；读侧由生成物 `metrics/entry-activity/<部署>.yaml` 汇总，一个部署一份、互不覆盖，不跨部署合并；观测计数（被选中、被加载、检索三态、解决与误诊）只落这份记录，`last_hit` 不单独存、由记录推出；案例文件里不再写计数，也不再写排序分数，分数由记录计数与冷启动先验算出来、只落在索引生成物里；记录缺失或过期时分数退回该条目的冷启动先验值，并在索引头注与体检里写明这一次用的是先验值；迁移期的历史累计值写成 `kind: baseline` 的行，只计入累计、不计入按周增量；人为覆盖走案例的可选字段 `score_override`；结局真值分外部自动对照与现场人工确认两条通道分别计；无效探索只落地可离线重算的那一半。
+我们决定把条目使用增量落成独立的一族追加型文件 `metrics/entry-activity.d/<周>.yaml`：一周一个文件，每次知识整理追加若干行，一行一条自包含记录（`merge=union` 是行级合并，嵌套结构会拼出非法 YAML，所以记录必须一行一条），并配 `merge=union`；读侧由生成物 `metrics/entry-activity/<部署>.yaml` 汇总，一个部署一份、互不覆盖，不跨部署合并；观测计数（被选中、被加载、检索三态、解决与误诊）只落这份记录，`last_hit` 不单独存、由记录推出；案例文件里不再写计数，也不再写排序分数，分数由记录计数与冷启动先验算出来、只落在索引生成物里；条目既没有记录也没有搬运行时，分数退回它的冷启动先验值，并在索引头注与体检里写明这一次用的是先验值；迁移期的历史累计值写成 `kind: baseline` 的行，只计入累计、不计入按周增量；人为覆盖走案例的可选字段 `score_override`；结局真值分外部自动对照与现场人工确认两条通道分别计；无效探索只落地可离线重算的那一半。
 
 ## 被否决的替代方案
 
@@ -65,7 +65,7 @@
 - 坏，因为多了一族文件：源文件、生成物、校验脚本、`.gitattributes` 的 union 行，以及 `docs/guide/metrics.md` 与路径归属表的同步。
 - 坏，因为使用记录按部署分家，跨机器的排行在第二台部署有数据之前看不到。
 - 坏，因为整体读数仍按周落期，一天跑多次整理时只有周界那一次产出期文件；想按天看趋势要另说。
-- 坏，因为要迁移：案例的 `confidence` 现有四种形态，搬运要跨三个 PR，中间有共存期；迁移期间分数先仍从案例读，切换到记录之后全库分数退回冷启动先验值。
+- 坏，因为要迁移：案例的 `confidence` 现有四种形态，搬运要跨三个 PR，中间有共存期；迁移期间分数先仍从案例读，切换到记录之后分数由记录计数（含搬运行带来的历史累计）与冷启动先验算出。
 - 坏，因为记录按写入机器的本地 ISO 周归周，跨时区的两台部署在同一自然日可能落进不同周文件；汇总按部署分组，因此跨部署的排行仍然拼不出来。
 - 坏，因为分步成本要接 harness 会话日志，两个数据源按 `session_id` 关联；关联失败时该会话的成本缺席，不补估值。
 - 坏，因为外部自动对照只覆盖有上游锚点的案例，客户侧现网问题仍然等人工回报，学习环在那些问题上依旧没有分母。
@@ -77,7 +77,7 @@
 
 依赖的设计与规格：`docs/mechanism/diagnosis-observability.md`。
 
-相关既有决定：`docs/adr/0004-capacity-governance.md` 的索引字段拆分与「同一个量不写两处」。其中「案例内只留 score」一条由本记录取代：索引仍只留 score，但 score 的来源从案例改为记录（`scripts/build_index.py:180-183` 的注释在第 2 阶段落地后即失效）；`docs/adr/0009-counterfactual-replay-exploration-policy.md` 的零执行评估闸门；`docs/adr/0002-retrieval-no-rag-lightweight-index.md` 的词法检索。
+相关既有决定：`docs/adr/0004-capacity-governance.md` 的索引字段拆分与「同一个量不写两处」。其中「hits/misdiagnoses 留在案例本体、由 groom 重算读取」（`docs/adr/0004-capacity-governance.md:59-61`）由本记录取代：计数改由记录承载，索引仍只留 score，但 score 的来源从案例改为记录加上先验（`scripts/build_index.py:180-183` 的注释在第 2 阶段落地后即失效）；`docs/adr/0009-counterfactual-replay-exploration-policy.md` 的零执行评估闸门；`docs/adr/0002-retrieval-no-rag-lightweight-index.md` 的词法检索。
 
 读数的采集入口：`scripts/trace_metrics.py`、`scripts/session_cost.mjs`。
 

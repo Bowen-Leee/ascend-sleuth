@@ -34,7 +34,7 @@
 |---|---|---|---|---|
 | 一次诊断 | 这次诊断的路由、行为、成本、结局、碰到的知识条目（下文叫触达） | `session_id` | 收尾时由脚本从轨迹与会话日志汇总 | 否，含客户现场信息 |
 | 条目使用记录 | 某个案例或先验在一期内的使用增量 | 条目 id 与运行号 | 知识整理时由脚本追加 | 是 |
-| 期 | 一个部署在一期内的全部读数，部署身份写在期文件的 `sources` 里 | 期号（一期一个文件） | 组装脚本产出，维护者复核分母 | 是 |
+| 期 | 一个部署在一期内的全部读数 | 期号（一期一个文件） | 组装脚本产出，维护者复核分母 | 是 |
 
 ```mermaid
 %%{init: {'themeVariables':{'fontSize':'14px'},'flowchart':{'curve':'basis','nodeSpacing':40,'rankSpacing':50,'padding':10}}}%%
@@ -121,8 +121,8 @@ flowchart LR
 |---|---|---|
 | `selected` | 这个条目进了候选集 | 案例出现在 `considered_candidates`、`load_index` 或 `load_full` 的候选里 |
 | `loaded` | 读了它的正文 | `load_full` 的 `candidates` 含它 |
-| `resolved` | 用它解决了问题 | 该案例收到 `feedback.outcome: resolved` |
-| `misdiagnosed` | 用了它但没解决 | `feedback.outcome` 是 `not_resolved` 或 `partial` |
+| `resolved` | 用它解决了问题 | 轨迹里出现 `{action: feedback, case, outcome: resolved}` 事件。结算脚本只认事件（`scripts/settle_trace_feedback.py:290`）；顶层的 `feedback` 字段是当前状态，不是结算输入 |
+| `misdiagnosed` | 用了它但没解决 | 同上的事件里 `outcome` 是 `not_resolved` 或 `partial` |
 | `self_resolved` | 来源会话自己回报解决 | 来源会话的 resolve，与 `resolved` 分开计 |
 | `lookups` | 查了一条先验 | 一次 `reference_lookup` 事件 |
 | `hit` / `miss` / `skipped` | 查到 / 查了没命中 / 没查并写了理由 | `reference_lookup.outcome` 的三种取值 |
@@ -279,7 +279,8 @@ flowchart TB
 - {run: 2026-10-16-0920, deployment: local-a2, checkout: a1b2c3d, kb_rev: 2a931ee, kind: tool, id: Grep, calls: 41, p50_ms: 900, p90_ms: 9200, errors: 2, timeouts: 1}
 - {run: 2026-10-16-0920, deployment: local-a2, checkout: a1b2c3d, kb_rev: 2a931ee, sessions: 3, kind: case, id: VLLM-ASC-7635, selected: 1, loaded: 0, resolved: 0, misdiagnosed: 0, excluded: 1}
 - {run: 2026-10-17-1005, deployment: local-a2, checkout: a1b2c3d, kb_rev: 2a931ee, sessions: 2, kind: case, id: VLLM-ASC-12430, selected: 2, loaded: 1, resolved: 0, misdiagnosed: 0}
-- {run: baseline-2026-10-20, deployment: local-a2, kind: baseline, id: VLLM-ASC-9005, hits: 4, misdiagnoses: 1, self_resolved: 0, last_hit: '2026-W39'}   # 迁移期的历史累计值
+- {run: 2026-10-17-1005, deployment: local-a2, checkout: a1b2c3d, kb_rev: 2a931ee, kind: tool, id: Read, calls: 12, p50_ms: 130, p90_ms: 400, errors: 0, timeouts: 0}
+- {run: baseline-2026-10-18, deployment: local-a2, kind: baseline, id: VLLM-ASC-9005, resolved: 4, misdiagnosed: 1, self_resolved: 0, last_hit: '2026-W39'}   # 迁移期搬运的历史累计值
 ```
 
 `run` 是本次运行的时间戳（`YYYY-MM-DD-HHMM`），与期号无关：记录在第 3 步写，期文件在周界那一次的第 7 步才写，两者不是一回事。唯一的例外是搬运行，它的 `run` 写 `baseline-<日期>`（见 5.2）。`deployment` 是部署标识，脚本取环境变量 `ASCEND_SLEUTH_DEPLOYMENT`，缺省取检出根目录名。同一周的多次运行共用一个文件，各写各的行。
@@ -304,7 +305,7 @@ references:
 tools:
   Grep: {calls: 41, p50_ms: 900, p90_ms: 9200, errors: 2, timeouts: 1}
   Read: {calls: 12, p50_ms: 130, p90_ms: 400, errors: 0, timeouts: 0}
-cold: {cases: 96, references: 12}     # 本表覆盖的运行与周里零活动的条目数 = 库总量减本表条目
+cold: {cases: 96, references: 12}     # 库总量 − 被非 baseline 行覆盖的条目数；baseline 只补累计，不算活动
 ```
 
 一天跑一次甚至多次知识整理时，每次运行往 `metrics/entry-activity.d/<周>.yaml` 追加若干行，不改已经写下的行；一周七次运行就是同一个文件里的七组行。读端按 id 求和，一个 id 在本周被选中几次就是各行之和。本期读数不跟着每次运行写进期文件：它一周一期，在周界那一次由第 7 步组装，维护者复核分母后写进 `metrics/timeline.d/<期号>.yaml`。理由是趋势要的是周粒度，日粒度里每次运行只有一两次诊断，比例读数全是 0/1 与 1/1，噪声盖过信号；而分母复核是人每周做一次的动作，不该跟着运行次数翻倍。
@@ -315,9 +316,9 @@ cold: {cases: 96, references: 12}     # 本表覆盖的运行与周里零活动�
 
 两份生成物进 git、也进 PR，但它们由脚本重建，人不手改，`--check` 与源比对（要接进 CI，见 5.2）。生成物存在的理由有三条。读端只有一个入口，面板与体检器不必知道源分了几个文件、怎么追加。源可以换形状（这次就把条目使用记录从期文件里的一个段换成了独立的追加文件族，读端没改）。合并时重跑一次重建命令就够，不需要人工判断留哪一份。这套写法仓库里已有先例：`metrics/timeline.d/*` 合成 `timeline.yaml`，`knowledge/*.yaml` 合成 `_index.yaml`。
 
-读数的部署边界：记录里带 `deployment`，汇总按它分组，一个部署出一份生成物，两个部署各自重建、互不覆盖；面板只读本部署那一份。因此 union 只解决同部署的并发，两份部署的计数不会被加成一条排行。
+读数的部署边界：记录里带 `deployment`，汇总按它分组，一个部署出一份生成物，两个部署各自重建、互不覆盖；面板只读本部署那一份。因此 union 只解决同部署的并发，两份部署的计数不会被加成一条排行。期文件本身不带部署名，读数按部署分家靠各自的仓拷贝（`docs/guide/git-workflow.md:64`）；`deployment` 只出现在记录与生成物里。
 
-`deployment` 由脚本取，优先级是环境变量 `ASCEND_SLEUTH_DEPLOYMENT`、其次是主检出的目录名（`scripts/exec_log_path.py:93` 的 `main_checkout()`，同一克隆的所有 worktree 得到同一个值）。不取当前目录名：本项目要求改动走 worktree，缺省取当前目录会把同一部署拆成多条排行。
+`deployment` 由脚本取，优先级是环境变量 `ASCEND_SLEUTH_DEPLOYMENT`、其次是主检出（`main_checkout()`）的目录名（`scripts/exec_log_path.py:93`，同一克隆的所有 worktree 得到同一个值）。不取检出根目录名：本项目要求改动走 worktree，缺省取当前目录会把同一部署拆成多条排行。
 
 ### 3.4 与知识库解耦
 
@@ -396,6 +397,7 @@ flowchart LR
 | 漏检类别 | 维护者，补词法或挪类别 | 按类别补 triage 词 | 未路由命中的会话 | 确定性 | 部分落地 |
 | 步数与动作分布 | skill 维护者，改哪一步的正文 | 出现最多又不推进的动作优先改 | 全部诊断会话 | 确定性 | 已落地 |
 | 分步成本 | 维护者，裁最贵的步骤 | 定位最贵步骤，看能否合并或跳过 | 有会话日志的会话 | 确定性 | 蓝图：待接会话日志 |
+| 工具耗时与失败分布 | 维护者，判哪个工具该设硬超时、哪种调用总失败 | 定位最贵或最常失败的调用形态 | 该工具的调用次数 | 确定性 | 蓝图：待接会话日志 |
 | 一次诊断的读入账 | 维护者，治超预算的读路径 | 按四个分项定位该治哪条 | 全部诊断会话 | 确定性 | 蓝图：需按会话归属 |
 | 停止原因 | 维护者，判断该不该停在这里 | 未记录的会话先补记录 | 全部诊断会话 | 确定性 | 部分落地 |
 | 无效探索 | 维护者，换探索策略 | 在历史决策树上离线打分，见下段 | 历史决策树，同策略对照 | 代理 | 蓝图：缺打分代码 |
@@ -403,7 +405,7 @@ flowchart LR
 | 反馈捕获 | 维护者，判学习环有没有输入 | 为 0 时命中率、误诊率标不可解读 | 给出结论的会话 | 确定性 | 已落地 |
 | 现场解决计数 | 排序与退休，降置信或退休 | 连续两次未解决转人工 | 已回报的会话 | 人工 | 部分落地 |
 | 外部对照闭环 | 维护者，确认内容是否正确 | 没有上游 issue 或 PR 关联的案例标不可对照 | 有上游关联的案例 | 确定性 | 蓝图：缺锚点字段与查证脚本 |
-| 归因比 | 维护者，误诊修复前先读 | 先补归因事件再修 | 已归因的误诊 | 人工 | 部分落地 |
+| 归因比 | 维护者，误诊修复前先读 | 先补归因事件再修 | 已归因的误诊 | 自报 | 部分落地 |
 | 结论强度分布 | 维护者与面板读者，判哪些结论不能当依据 | 弱强度结论不得升格 | 给出结论的会话 | 自报 | 蓝图：字段待接 |
 | 条目使用增量 | 知识整理，退休、降置信、合并、补样例 | 高选中低解决时复审该条 | 该条目的当期被选中数，覆盖本部署 | 确定性 | 蓝图：本次新增 |
 | 长期零选中条目 | 知识整理，决定补词面还是不动 | 复查症状词面与标签 | 全库条目 | 确定性 | 蓝图：本次新增 |
@@ -524,24 +526,24 @@ VLLM-ASC-9005   选 1 · 解 0       cann-hdk        累计 5 · 解 2 · W42
 
 先做迁移，再做新口径。`confidence` 在库里现有四种形态（四个键 / 只有 `hits` 与 `misdiagnoses` / 三个键 / 带 `self_resolved`），一部分条目没有 `score`。因此迁移要跨三个 PR，一个 PR 一个阶段：加记录与新聚合、切换算分与读端、删除旧字段。
 
-阶段之间是共存期：加记录那一步之后，案例与记录各有一份计数，读端仍从案例取分；切换之后案例不再有分数，记录成为唯一来源，面板取分改读索引。共存期超过两周就应当把删字段排上前。
+第 1 阶段同时搬运历史累计（`kind: baseline` 行）；第 3 阶段还要把 `settle_trace_feedback.py` 从写回案例改成只写记录。阶段之间是共存期：加记录那一步之后，案例与记录各有一份计数，读端仍从案例取分；切换之后案例不再有分数，记录成为唯一来源，面板取分改读索引。共存期超过两周就应当把删字段排上前。
 
-门跟着阶段走。第 1 阶段不动读端，现有门照旧全绿。第 2 阶段改算分，`build_index.py --check` 与 `verify_metrics.py --check` 要在同一个 PR 里通过。第 3 阶段删字段前先确认没有脚本再读它（`grep -rn confidence scripts/` 应为空），否则会出现「脚本读一个已经不存在的键」的静默降级。
+门跟着阶段走。第 1 阶段不动读端，现有门照旧全绿。第 2 阶段改算分，`build_index.py --check` 与 `verify_metrics.py --check` 要在同一个 PR 里通过。第 3 阶段删字段前，逐个确认这三处已经改完：`scripts/build_index.py:183` 与 `:268`（读 `confidence.score`）、`scripts/settle_trace_feedback.py:200-231`（写回 `confidence`）。不要用 `grep -rn confidence scripts/` 当门：指标名 `confidence_distribution` 与索引里的 `confidence` 键按 ADR-0004 要保留，那个 grep 永远不为空。
 
-搬运累计计数要一行特殊记录。`confidence` 里的 `hits` 与 `misdiagnoses` 是生命周期累计值，而记录是「一次运行一行」，两者不同量纲。搬运时写 `kind: baseline` 的行（`run: baseline-<日期>`，带 `hits`、`misdiagnoses`、`self_resolved`、`last_hit` 与来源说明；`last_hit` 只有这一种行会带）。聚合把 baseline 算进 `totals`，但不计入 `by_week`、本周增量与 `cold`，否则排行与「本周增量」会被这份人造基线污染。
+搬运累计计数要一行特殊记录。`confidence` 里的 `hits` 与 `misdiagnoses` 是生命周期累计值，而记录是「一次运行一行」，两者不同量纲。搬运时写 `kind: baseline` 的行（`run: baseline-<日期>`，日期取搬运当天，因此归周与其它行同规则）。它用与其它行相同的计数名：`resolved`、`misdiagnosed`、`self_resolved`，另带 `last_hit`（这一项只有 baseline 行会带，格式从原来的日期改为 ISO 周）与来源说明。聚合把 baseline 算进 `totals`，但不计入 `by_week`、本周增量，也不算作「有活动」（`cold` 因此按非 baseline 行统计），否则排行、本周增量与长期零选中的判断会被这份人造基线污染。
 
 | 蓝图项 | 改哪里 | 确认方式 |
 |---|---|---|
 | 一次诊断的记录汇总成一行 | 新增 `scripts/trace_entry_activity.py` | 对最近一次诊断跑一次，字段与 3.1 的表对齐 |
 | 记录文件族（源） | 新增 `metrics/entry-activity.d/<周>.yaml`，由汇总与结算脚本追加 | 跑两次汇总，文件里出现两组 `run`，前一组内容不变 |
-| 记录的生成物 | `scripts/build_entry_activity.py` 产出 `metrics/entry-activity/<deployment>.yaml` | 排行与各行增量逐条对得上；`recent` 能给出「连续未解决」；两个部署各产一份、互不覆盖 |
+| 记录的生成物 | `scripts/build_entry_activity.py` 产出 `metrics/entry-activity/<deployment>.yaml` | 排行与各行增量逐条对得上；`recent` 能给出「连续未解决」；两个部署各产一份、互不覆盖。CI 上部署名取主检出目录名或环境变量，只校验仓里已有的每一份生成物与源一致；部署改名后旧文件按只接收处理，由 owner 决定删 |
 | 记录的校验 | 新增校验脚本并接进 CI 的 `metrics-validation` job | 源与生成物一致；`(run,kind,id)` 重复、孤儿 id、`run` 与文件名不同周都报红 |
 | `.gitattributes` 加 union | `metrics/entry-activity.d/* merge=union` | 构造两侧同时追加，合并后两侧的行都在 |
 | 记录格式改成一行一条 | 汇总脚本的输出格式 | 造两段并发追加，合并后的文件能被 YAML 解析 |
 | 分数的算分脚本 | 新增 `scripts/score_entries.py`；替换 `skills/knowledge-groom/SKILL.md` 第 4 步的 agent 判断 | 全库跑一次，结果与逐条手算一致；与索引里的 score 一致 |
-| `confidence` 块迁出案例 | 迁移三个阶段（见上）；`docs/spec/case-schema.md` 要改三处：必需字段表里的 `confidence` 行（`:34`）、`confidence.self_resolved` 子节（`:54`）与正文引用（`:101`） | 第 1 阶段后计数两处一致；第 3 阶段后全库不再出现 `confidence`。注意 `scripts/verify_case_draft.py` 的 `REQUIRED_FIELDS` 里本来就没有 `confidence`，schema 的「必填」与脚本口径本就不一致 |
-| 人工覆盖字段 | `docs/spec/case-schema.md` 加可选 `score_override{score, reason, by}` | 造一条覆盖，索引用覆盖值；不带理由时校验报错 |
-| `self-report` 进枚举 | `docs/spec/case-schema.md`、`skills/to-postmortem/SKILL.md` 与 `skills/knowledge-groom/SKILL.md:83-91` 三处 `verification.source` 清单 | 造一条 `strength: self-report` 的会话，强度分布里出现它 |
+| `confidence` 块迁出案例 | 迁移三个阶段（见上）；`docs/spec/case-schema.md` 有五个位置要改：`:34`（必需字段表行）、`:52` 与 `:68`（两处正文引用）、`:54`（子节标题）、`:101`（有意保留的例外）；另 `examples/sample-case.yaml:20` 的示例也要改 | 第 1 阶段后计数两处一致；第 3 阶段后全库不再出现 `confidence`。注意 `scripts/verify_case_draft.py` 的 `REQUIRED_FIELDS` 里本来就没有 `confidence`，schema 的「必填」与脚本口径本就不一致 |
+| 人工覆盖字段 | `docs/spec/case-schema.md` 加可选 `score_override{score, reason, by}`；校验脚本（`scripts/verify_case_draft.py` 或新校验）加一条必带 `reason` | 造一条覆盖，索引用覆盖值；不带理由时校验报错 |
+| `self-report` 不进 `verification.source` | 只写进本文的观察记录（3.1 的取值表） | 造一条来源会话自报解决的诊断，记录的 `strength` 是 `self-report`；案例的 `verification.source` 枚举不变（它在 `examples/sample-case.yaml:50-51`、`skills/to-postmortem/SKILL.md:86-90`、`skills/knowledge-groom/SKILL.md:85-89`、`docs/mechanism/execution.md:73`） |
 | 条目 id 的唯一性门 | `scripts/build_index.py --check` 或新校验脚本 | 全库 id 唯一；案例侧文件名与 id 一致；造一条重名条目，门报红 |
 | 工具调用明细与按工具的分布 | 汇总脚本写 `kind: tool` 的记录行；生成物出 `tools` 段 | 对最近一次诊断跑一次，明细逐次列出，生成物的 `tools` 段里出现按工具的 p50/p90 与失败数 |
 | 期文件的产出并入知识整理收尾 | `skills/knowledge-groom/SKILL.md` 加一步，复用 `scripts/metrics_snapshot.py` | 跑一次整理，期文件出现在同一个 PR 里；不跑整理时仓库不新增期 |
@@ -557,7 +559,7 @@ VLLM-ASC-9005   选 1 · 解 0       cann-hdk        累计 5 · 解 2 · W42
 | 文档 | 改什么 |
 |---|---|
 | `docs/guide/metrics.md` | 来源表加条目使用记录与工具分布两行；「周批」表述改为知识整理收尾；命令链加聚合与校验脚本 |
-| `docs/spec/case-schema.md` | 把 `investigation_quality` 补进字段表；删掉必需字段表里的 `confidence` 行、`confidence.self_resolved` 子节与两处正文引用（`:34`、`:52`、`:54`、`:101`），新增可选 `score_override` 与 `upstream`，并把 `self-report` 加进 `verification.source` 枚举 |
+| `docs/spec/case-schema.md` | 把 `investigation_quality` 补进字段表；删掉 `confidence` 的五个位置：`:34`（必需字段表行）、`:52` 与 `:68`（两处正文引用）、`:54`（子节标题）、`:101`（有意保留的例外）；新增可选 `score_override` 与 `upstream`；`examples/sample-case.yaml:20` 的示例同步 |
 | `docs/mechanism/rsi-mechanism.md` | 第 4.4 节的四个写入点里，「知识条目」换成「条目使用记录」（净额仍是四条）；第 11 节把落期归入知识整理 |
 | `docs/guide/git-workflow.md` | 目录归属表加两条新路径，并给记录文件族选一个档：它是「追加型共享源」（允许同周并发追加、配 `merge=union`、读侧按部署分组）。该表现有分档没有这一档，要先加一档，否则只加路径会被「没列到的路径按只接收处理」挡住 |
 | `docs/mechanism/status.md` | 加条目使用记录与工具分布两行状态 |
