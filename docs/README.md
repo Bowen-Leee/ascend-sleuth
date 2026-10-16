@@ -56,7 +56,7 @@
 - [run.md](../docs/mechanism/run.md) — 长期运行、issue 三重角色、统一执行记录、可视化
 - [eval-arena.md](../docs/mechanism/eval-arena.md) — 元层 eval 台（train/val 门控）与影响账本
 - [ixn-replay.md](../docs/mechanism/ixn-replay.md) — 交互面评测（追问 / 信息充分性 / 过早结论）
-- [metrics-feedback-target.md](../docs/mechanism/metrics-feedback-target.md) — 指标与反馈闭环的目标态：三层数据怎么采、三个新读数、落点与 git 归属、失败模式；取舍在 ADR-0010
+- [diagnosis-artifacts-and-metrics.md](../docs/mechanism/diagnosis-artifacts-and-metrics.md) — 诊断本地产物与指标上仓：产物清单与锚定、消费关系、四个场景、上仓形态与新增字段；取舍在 ADR-0010
 - [status.md](../docs/mechanism/status.md) — 机制状态总表、未建与空转、代码与文件入口对照、相邻文档分工（全库唯一一份）
 
 **操作指南（用到那个环节时才读）**
