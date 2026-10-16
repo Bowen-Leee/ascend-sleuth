@@ -221,23 +221,23 @@ flowchart TB
 ```mermaid
 %%{init: {'themeVariables':{'fontSize':'14px'},'flowchart':{'curve':'basis','nodeSpacing':30,'rankSpacing':46,'padding':10}}}%%
 flowchart TB
-    S1["1 处理 inbox<br/>草稿升格为 case"] --> S2["2 结算现场回报"]
-    S2 --> S2B["2b 外部对照验证结算"]
-    S2B --> S3["3 汇总本机诊断记录"]
-    S3 --> R[("metrics/entry-activity.d/&lt;周&gt;.yaml<br/>追加若干行记录")]
-    R --> S4["4 算分<br/>记录计数 + 冷启动先验"]
-    S4 --> S5["5 复审与退休"]
-    S5 --> S6["6 索引重建<br/>分数落在索引生成物"]
-    S4 --> S6
-    S5 --> C2[("案例内容或 _archive/")]
-    S6 --> S7["7 周界：组装本期读数"]
-    S6 --> PR["同一个 PR<br/>知识变更 + 记录 + 本期读数"]
-    S7 --> PR
+    K1["1 处理 inbox<br/>草稿升格为 case"] --> K2["2 结算现场回报"]
+    K2 --> K2B["2b 外部对照验证结算"]
+    K2B --> K3["3 汇总本机诊断记录"]
+    K3 --> R[("metrics/entry-activity.d/&lt;周&gt;.yaml<br/>追加若干行记录")]
+    R --> K4["4 算分<br/>记录计数 + 冷启动先验"]
+    K4 --> K5["5 复审与退休"]
+    K5 --> K6["6 索引重建<br/>分数落在索引生成物"]
+    K4 --> K6
+    K5 --> C2[("案例内容或 _archive/")]
+    K6 --> K7["7 周界：组装本期读数"]
+    K6 --> PR["同一个 PR<br/>知识变更 + 记录 + 本期读数"]
+    K7 --> PR
 
     classDef step fill:#e7f5ff,stroke:#1971c2,stroke-width:1.5px,color:#0b3d66
     classDef store fill:#fff4e6,stroke:#e8590c,stroke-width:1.5px,color:#7a2e00
     classDef pr fill:#f1f3f5,stroke:#868e96,stroke-width:1.5px,color:#343a40
-    class S1,S2,S2B,S3,S4,S5,S6,S7 step
+    class K1,K2,K2B,K3,K4,K5,K6,K7 step
     class R,C2 store
     class PR pr
 ```
@@ -475,11 +475,11 @@ EOF
 不可解读 2 项  命中率、误诊率（反馈捕获 0）
 需处理 4 项    判据 5/5 已评估
 ------------------------------------------------------------------
-条目使用（本周增量）              条目使用（跨周累计）
-VLLM-ASC-12430  选 3 · 解 1       VLLM-ASC-12430  累计 5 · 解 1 · W42
-cann-runtime-error-codes  6 次    VLLM-ASC-9005   累计 6 · 解 4 · W41
-VLLM-ASC-9005   选 1 · 解 0       cann-hdk        累计 5 · 解 2 · W42
-长期零选中 96 条（不退休）        高选中低解决 2 条 → 复审
+条目使用（本期增量）              条目使用（跨期累计）
+VLLM-ASC-12430  选 5 · 解 1       VLLM-ASC-12430  累计 5 · 解 1 · W42
+cann-runtime-error-codes  6 次    VLLM-ASC-7635   累计 1 · 排除 1 · W42
+VLLM-ASC-7635   选 1 · 排除 1     cann-runtime-error-codes  6 次 · 命中 5 · W42
+长期零选中 96 条（只算案例，不退休） 高选中低解决 2 条 → 复审
 ------------------------------------------------------------------
 过程动作成本   先验读取 38% · 源码分析 31% · 候选核验 12% · 其余 19%
 ------------------------------------------------------------------
@@ -491,7 +491,7 @@ VLLM-ASC-9005   选 1 · 解 0       cann-hdk        累计 5 · 解 2 · W42
 本周该做   ① 复审 2 条高选中低解决  ② 补 507014 错误码词条  ③ 跑一次知识整理
 ```
 
-排行每行显示 `id`（等宽）+ 条目标题 + 计数。id 是记录的键，点一行回到条目本体。每张卡右上角带 3.6 的五格（指标强度写在那里，与卡首的结论强度不是一回事），展开可见。
+排行每行显示 `id`（等宽）+ 条目标题 + 计数。id 是记录的键，点一行回到条目本体。累计来自搬运行（`kind: baseline`）的条目在该列标「基线」。每张卡右上角带 3.6 的五个问题（指标强度写在那里，与卡首的结论强度不是一回事），展开可见。
 
 ## 4 边界与失败模式
 
@@ -539,7 +539,7 @@ VLLM-ASC-9005   选 1 · 解 0       cann-hdk        累计 5 · 解 2 · W42
 4. `scripts/settle_s2_feedback.py:239-248`：把 `confidence:` 块当插入锚点，块没了就跳过写回，外部对照验证的结算会静默停摆。
 5. 不用改但要知道：`scripts/build_index.py` 的索引行仍保留 `confidence` 键（ADR-0004 要求）；`scripts/settle_trace_feedback.py` 的 `--audit` 交叉核对也会读案例的 `confidence`，删字段后它会报出来（响亮失败，不是静默降级）。不要用 `grep -rn confidence scripts/` 当门：指标名 `confidence_distribution` 与索引里的 `confidence` 键按 ADR-0004 要保留，那个 grep 永远不为空。
 
-搬运累计计数要一行特殊记录。`confidence` 里的 `hits` 与 `misdiagnoses` 是生命周期累计值，而记录是「一次运行一行」，两者不同量纲。搬运时写 `kind: baseline` 的行（`run: baseline-<日期>`，日期取搬运当天，因此归周与其它行同规则）。它用与其它行相同的计数名：`resolved`、`misdiagnosed`、`self_resolved`，另带 `last_hit`（这一项只有 baseline 行会带，格式从原来的日期改为 ISO 周）与来源说明。聚合把 baseline 算进 `totals`，但不计入 `by_week`、本周增量，也不算作「有活动」（`cold` 因此按非 baseline 行统计），否则排行、本周增量与长期零选中的判断会被这份人造基线污染。
+搬运累计计数要一行特殊记录。`confidence` 里的 `hits` 与 `misdiagnoses` 是生命周期累计值，而记录是「一次运行一行」，两者不同量纲。搬运时写 `kind: baseline` 的行（`run: baseline-<日期>`，日期取搬运当天，因此归周与其它行同规则）。它用与其它行相同的计数名：`resolved`、`misdiagnosed`、`self_resolved`，另带 `last_hit`（这一项只有 baseline 行会带，格式从原来的日期改为 ISO 周）与来源说明。聚合把 baseline 算进 `totals`，但不计入 `by_week`、本期增量，也不算作「有活动」（`cold` 因此按非 baseline 行统计），否则排行、本期增量与长期零选中的判断会被这份人造基线污染。
 
 | 蓝图项 | 改哪里 | 确认方式 |
 |---|---|---|
