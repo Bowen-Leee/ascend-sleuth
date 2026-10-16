@@ -98,7 +98,7 @@
       <div class="row"><span class="k">命中</span><span class="mono">VLLM-ASC-9005</span><span class="hint">↺ 与最终沉淀的案例不同</span></div>
       <div class="row"><span class="k">排除</span><span class="mono">VLLM-ASC-12461 · VLLM-ASC-7635 · VLLM-ASC-9887 …</span></div>
       <div class="row"><span class="k">先验</span><span>命中 6 · 未命中 1 · 未查 0</span>
-        <span class="k">消费点</span><span>签名 3 / 流程 2 / 背景 1 / 修复 1</span></div>
+        <span class="k">消费点</span><span>签名 3 / 背景 2 / 修复依据 1 / 流程 1</span></div>
     </div>
 
     <div class="sec">
@@ -130,18 +130,18 @@
         <div class="col">
           <table>
             <tr><th>本期增量</th><th class="num">选</th><th class="num">解</th></tr>
-            <tr><td class="mono">VLLM-ASC-12430</td><td class="num">3</td><td class="num">1</td></tr>
+            <tr><td class="mono">VLLM-ASC-12430</td><td class="num">5</td><td class="num">1</td></tr>
             <tr><td class="mono">cann-runtime-error-codes</td><td class="num">6</td><td class="num">—</td></tr>
-            <tr><td class="mono">VLLM-ASC-9005</td><td class="num">1</td><td class="num">0</td></tr>
+            <tr><td class="mono">VLLM-ASC-7635</td><td class="num">1</td><td class="num">排除 1</td></tr>
           </table>
-          <div class="row m" style="font-size:12px">长期零选中 96 条（不据此退休）</div>
+          <div class="row m" style="font-size:12px">长期零选中 96 条（只算案例，不据此退休）</div>
         </div>
         <div class="col">
           <table>
             <tr><th>跨期累计</th><th class="num">累计</th><th class="num">解</th><th class="num">最后</th></tr>
-            <tr><td class="mono">VLLM-ASC-12430</td><td class="num">11</td><td class="num">4</td><td class="num">W42</td></tr>
-            <tr><td class="mono">VLLM-ASC-9005</td><td class="num">6</td><td class="num">1</td><td class="num">W41</td></tr>
-            <tr><td class="mono">cann-hdk</td><td class="num">5</td><td class="num">2</td><td class="num">W42</td></tr>
+            <tr><td class="mono">VLLM-ASC-12430</td><td class="num">5</td><td class="num">1</td><td class="num">W42</td></tr>
+            <tr><td class="mono">VLLM-ASC-7635</td><td class="num">1</td><td class="num">排除 1</td><td class="num">W42</td></tr>
+            <tr><td class="mono">cann-runtime-error-codes</td><td class="num">6 次</td><td class="num">命中 5</td><td class="num">W42</td></tr>
           </table>
           <div class="row a" style="font-size:12px">高选中低解决 2 条 → 复审</div>
         </div>
@@ -168,17 +168,17 @@
       <h3>变差的读数</h3>
       <table>
         <tr><td><span class="mono">inference/vllm-ascend interrupt</span> 读入 16.4k tok（软线 8k）</td><td class="a">拆分评估</td></tr>
-        <tr><td>期文件断档 3 天（阈值 7）</td><td class="a">跑周批</td></tr>
-        <tr><td>条目 <span class="mono">VLLM-ASC-7635</span> 连续 2 次未解决</td><td class="a">转人工</td></tr>
+        <tr><td>期文件断档 3 天（阈值 7）</td><td class="a">跑一次知识整理</td></tr>
+        <tr><td>条目 <span class="mono">VLLM-ASC-14277</span> 连续 2 次未解决（示意）</td><td class="a">转人工</td></tr>
       </table>
     </div>
 
     <div class="sec">
-      <h3>本周该做</h3>
+      <h3>本期该做</h3>
       <ol class="todo">
         <li>复审 2 条高选中低解决的条目</li>
         <li>补 <span class="mono">507014</span> 错误码词条（先验层覆盖缺口）</li>
-        <li>跑一次周批，把本期条目增量落进期文件</li>
+        <li>跑一次知识整理，把本期条目增量落进期文件</li>
       </ol>
     </div>
   </div>
