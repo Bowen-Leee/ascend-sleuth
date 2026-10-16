@@ -294,7 +294,7 @@ covered: {deployment: local-a2, runs: 2, weeks: ['2026-W42'], checkouts: [a1b2c3
 cases:
   VLLM-ASC-12430:
     totals: {selected: 5, loaded: 3, resolved: 1, misdiagnosed: 0}
-    last_hit: '2026-W42'                                     # 由最近一次 resolved 的周推出
+    last_hit: '2026-W42'                                     # 由最近一次 resolved 或 misdiagnosed 的周推出
     by_week: {2026-W42: {selected: 5, loaded: 3, resolved: 1, misdiagnosed: 0}}
     recent: [{run: 2026-10-16-0920, resolved: 1, misdiagnosed: 0}, {run: 2026-10-17-1005, resolved: 0, misdiagnosed: 0}]
   VLLM-ASC-7635:
@@ -350,7 +350,7 @@ cold: {cases: 96}                     # 库总量 − 被非 baseline 行覆盖�
 
 索引构建因此多了一条对使用记录的依赖。缺记录或记录过期时，分数退回该条目的冷启动先验值；构建脚本与索引头注写明这一次用的是先验值，体检器（`scripts/metrics_health.py`）把它报成一项待处理。这个退化的代价可测：阶段一排序的主键是字面量命中与 token 交集，分数只用于并列时的排序（破平）。要对照退化前后的名次，用 `python3 scripts/rank_candidates.py --write-baseline` 与 `--compare-baseline`（`--eval` 是同一份索引内的排序键对照，不能做前后对比）。
 
-现状与目标的差别有三处。计数与 `last_hit` 现在写在案例的 `confidence` 里，跟着结算走：结算一次就改一次知识文件，并与记录重复定义同一个量。分数也写在案例里（多数条目有、也有条目没有，`build_index.py:183` 读的是这个键），由知识整理的 agent 判断重算，「按时间衰减」没有公式也没有脚本，结算脚本写回 `confidence` 块时还会连带重写它、值取自原值。人工覆盖现在没有专门字段。
+现状与目标的差别有三处。计数与 `last_hit` 现在写在案例的 `confidence` 里，跟着结算走：结算一次就改一次知识文件，并与记录重复定义同一个量。分数也写在案例里（多数条目有、也有条目没有，`scripts/build_index.py:183` 读的是这个键），由知识整理的 agent 判断重算，「按时间衰减」没有公式也没有脚本，结算脚本写回 `confidence` 块时还会连带重写它、值取自原值。人工覆盖现在没有专门字段。
 
 记录里的键取条目自己的 `id` 字段，不取文件名：先验侧两者常不一致，案例侧目前一致但没有门保证。两库的 id 目前互不重复，同样是实测结果。因此记录用 `kind` 区分 `case` 与 `ref`（生成物里再分成 `cases` 与 `references` 两段），并加一条门：全库 id 唯一，案例侧文件名与 id 一致。
 
@@ -486,7 +486,7 @@ EOF
 
 | 情形 | 行为 |
 |---|---|
-| 反馈捕获为 0 | 误诊率、归因比标不可解读，不写 0；面板写明是没数据，不是零问题 |
+| 反馈捕获为 0 | 误诊率、归因比（面板显示为「误诊归因」）标不可解读，不写 0；面板写明是没数据，不是零问题 |
 | 某个指标本期没有数据 | 不写该键，面板显示本期未采集 |
 | 某一周没有记录文件 | 该周不参与累计，聚合脚本报出缺哪几周，不按 0 计 |
 | 某个 id 在知识库里查不到 | 报出该 id 与所在的运行，不计入排行，列入清理清单 |
