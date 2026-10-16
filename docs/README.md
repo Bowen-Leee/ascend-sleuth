@@ -56,7 +56,7 @@
 - [run.md](../docs/mechanism/run.md) — 长期运行、issue 三重角色、统一执行记录、可视化
 - [eval-arena.md](../docs/mechanism/eval-arena.md) — 元层 eval 台（train/val 门控）与影响账本
 - [ixn-replay.md](../docs/mechanism/ixn-replay.md) — 交互面评测（追问 / 信息充分性 / 过早结论）
-- [diagnosis-observability.md](../docs/mechanism/diagnosis-observability.md) — 诊断可观测性目标态：本地件清单与锚定、三种粒度（一次诊断 / 条目使用增量 / 期）、指标的存在条件与清单、动态与静态两类视图、上仓形态与节律；取舍在 ADR-0011
+- [diagnosis-observability.md](../docs/mechanism/diagnosis-observability.md) — 诊断观测的目标态：一次诊断记什么字段、十次诊断怎么汇总成一份上仓读数、与知识库的解耦边界、并发与冲突处理、反馈联动、指标清单与面板；取舍在 ADR-0011
 - [status.md](../docs/mechanism/status.md) — 机制状态总表、未建与空转、代码与文件入口对照、相邻文档分工（全库唯一一份）
 
 **操作指南（用到那个环节时才读）**

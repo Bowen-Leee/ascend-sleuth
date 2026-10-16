@@ -1,170 +1,210 @@
-# 诊断的本地件、指标与上仓
+# 一次诊断记录什么、怎么上仓
 
-一次诊断会留下轨迹、报告、证据、缓存与账单。哪些文件留在本机、哪些提交到仓库、提交的那部分长什么样、各自被谁读，这四件事原先散在多个 skill 正文、脚本注释与面板代码里。本文把它们收在一处，并给出目标形态：三层记录、每个指标要回答的问题、两块面板，以及指标随知识上仓的方式与时机。
+诊断在本机跑，记录也留在本机；进仓库的只有汇总后的读数。本文说明一次诊断产出哪些文件与字段、这些记录怎么攒成可以提交的形式、以及在多人、多 worktree、多次回报的条件下怎么不出冲突。
 
-读者是要改轨迹字段、指标算法、面板、本地件落点或知识整理流程的人。前置有三件：诊断六步各写什么，见 [diagnosis-trace.md](../../skills/diagnose/references/diagnosis-trace.md)；指标怎么算，见 [metrics.md](../guide/metrics.md)；机制层怎么演化，见 [rsi-mechanism.md](rsi-mechanism.md)。只想拿到一次诊断结论的工程师不必读。
+读者是要改轨迹字段、上仓脚本、面板或知识整理流程的人。前置有三件：诊断六步各写什么，见 [diagnosis-trace.md](../../skills/diagnose/references/diagnosis-trace.md)；指标怎么算，见 [metrics.md](../guide/metrics.md)；机制层怎么演化，见 [rsi-mechanism.md](rsi-mechanism.md)。只想拿到一次诊断结论的工程师不必读。
 
 取舍与被否决的方案在 [ADR-0011](../adr/0011-diagnosis-observability-data-plane.md)。
 
 ## 1 解决什么问题
 
-### 1.1 本地件与仓库资产的边界
+这套记录要被问到五个问题。前三个今天答不了，后两个没有设计。
 
-仓库资产进 git、走 PR、所有人共享。本地件只在这台机器的这份检出里有意义。这两者的边界原先没有一处写全，于是出现三类事故，下面三条都实测过。
+1. 一次诊断产出什么数据、什么产物、记哪些字段。
+2. 本机跑了十次诊断，怎么变成仓库里的一份读数。
+3. 观测数据与案例库、先验库是否解耦，加观测要不要动知识条目。
+4. 多人提 PR 时，同一条案例的读数变化会不会撞车，改动面有多大。
+5. 工程师回报「解决 / 没解决」时，读数能不能跟着准确更新。
 
-1. 记录写错位置。在 worktree 里按正文写的相对路径写轨迹，文件落进 worktree 自己的忽略目录。主检出的面板与周批读不到它；`git worktree remove` 对忽略件不报错，记录随 worktree 一起消失。
-2. 把读不到当成没有。在 worktree 里跑周批，`traces/` 是空的，`scripts/trace_metrics.py` 报「未找到任何 traces/*.yaml」，同时照常产出空快照。`scripts/settle_s2_feedback.py` 在目录不存在时 glob 返回空，报 0 条结算、退出码 0。读的人分不出「样本都没有结论」与「结果文件在另一个检出」。
-3. 同一个量各算一遍。会话成本有四个来源：提供方账单、skill 执行流水的 `cost` 字段、改进项卡的 `actual_cost.tokens`、skill 常驻上下文的审计值。四个值含义不同，互不换算。「命中」也有三处定义：案例本体的 `confidence.hits`、期文件的 `tier2_hit`、`trace_metrics.py` 的现算值。
-
-### 1.2 现有读数的问题
-
-1. 过程记录很密，但没有读端回答「这一次诊断值不值」。本机 18 份轨迹里有 242 条事件、agent 动作 16 类，有词表校验、有面板渲染，却没有一处折算出步数、成本、没有推进的动作与触达的知识。
-2. 仓库里那份汇总不带条目。期文件里按 id 记的只有 `metrics.reference_detail`；案例侧没有对应数据，`scripts/settle_trace_feedback.py` 自己写着「数据都在 traces 里，但没有任何脚本产出它」。
-3. 有六个指标定义了却没有决定读它：漏检类别、漏检会话、先验三态、停止原因分布、同批并发标记、候选全集事件。它们有产出、在字段白名单里，8 期期文件一个都没写过。归因比有判据、有生产者，读端读错了键，恒为 0。
-4. 结局侧没有输入。三期 live 快照的反馈捕获都是 0，命中率、误诊率、校准只能标不可解读。
+现状是：轨迹记了 242 条事件，但没有任何读端把它折成一次诊断的成本与触达；仓库里那份汇总不带条目（期文件里按 id 记的只有 `metrics.reference_detail`）；六个指标有产出、在字段白名单里，8 期期文件一个都没写过；归因比读错了键，恒为 0；三期 live 快照的反馈捕获都是 0，命中率和误诊率因此没有分母。
 
 本文不解决四件事。诊断流程内部的执行规则在 `skills/diagnose/` 正文里。检索不上向量库（见 [ADR-0002](../adr/0002-retrieval-no-rag-lightweight-index.md)）。指标算法与评分定义只有人能改。读数不做跨部署合并。
 
 ## 2 最小可执行模型
 
-本地件与仓库资产的分界是一条判据：这份文件换到另一份检出、另一台机器上还有没有意义。有意义的是仓库资产，没有意义的是本地件。
-
-本地件分两种落点。要被同一克隆的多个检出共读的锚在主检出；一次批次用完即弃的留在检出内。锚定分三部分，缺一部分就会重新出现 1.1 的第 1 条：
-
-1. 一张路径表：`scripts/exec_log_path.py` 的 `CHECKOUT_DIRS` 与 `resolve_*` 函数。
-2. 一个命令行入口：`python3 scripts/shared_dir.py <名字>`。
-3. 一条写作纪律：skill 正文里的本地件路径用解析后的绝对路径。
-
-观测按三层记录，面板的两块显示都从这三层取数：
+记录分三层，只有后两层进仓库。
 
 | 层 | 内容 | 键 | 谁写 | 进 git |
 |---|---|---|---|---|
-| 一次诊断 | 这次诊断的路由、行为、成本、结局、触达的知识 | `session_id` | 诊断收尾时由脚本从轨迹与账单汇总 | 否，含客户现场信息 |
+| 一次诊断 | 这次诊断的路由、行为、成本、结局、触达的知识 | `session_id` | 收尾时由脚本从轨迹与会话日志汇总 | 否，含客户现场信息 |
 | 条目使用 | 某个案例或先验在一期内的使用增量 | 条目 id × 期号 | 知识整理流程在周批里写 | 是 |
 | 期 | 一个部署机在一期内的全部读数 | 部署 × 期号 | 组装脚本出骨架，人复核分母 | 是 |
-
-面板分两块。
-
-- 单次诊断的面板摊开一次诊断：走对了没有、成本落在哪一步、哪些动作没有推进。
-- 累计读数的面板合并多期：被用得最多的案例与先验、最花时间的过程动作、正在变差的读数。
 
 ```mermaid
 %%{init: {'themeVariables':{'fontSize':'14px'},'flowchart':{'curve':'basis','nodeSpacing':40,'rankSpacing':50,'padding':10}}}%%
 flowchart LR
-    TR["轨迹 traces/&lt;sid&gt;.yaml<br/>每步一条事件"] --> EP
+    TR["轨迹 traces/&lt;sid&gt;.yaml"] --> EP["一次诊断的记录<br/>一行，留在本机"]
     LG["harness 会话日志<br/>token 与工具耗时"] --> EP
-    EP["一次诊断<br/>一行记录<br/>留在本机"] --> AG
-    AG["周批汇总<br/>按条目 id 聚合当期增量"] --> PF["期文件 metrics/timeline.d/&lt;期号&gt;.yaml<br/>源，进 git"]
-    PF --> B1["build_timeline.py"]
-    PF --> B2["build_entry_activity.py"]
-    B1 --> TI["metrics/timeline.yaml<br/>生成物，读侧只读它"]
-    B2 --> EA["metrics/entry-activity.yaml<br/>生成物，读侧只读它"]
-    TI --> V1["单次诊断的面板"]
-    EA --> V1
-    TI --> V2["累计读数的面板"]
-    EA --> V2
+    EP --> AG["周批汇总<br/>按条目 id 折算当期增量"]
+    AG --> PF["期文件 metrics/timeline.d/&lt;期号&gt;.yaml<br/>源，进 git"]
+    PF --> EA["metrics/entry-activity.yaml<br/>生成物"]
+    PF --> TI["metrics/timeline.yaml<br/>生成物"]
+    EA --> V1["单次诊断的面板"]
+    TI --> V1
+    EA --> V2["累计读数的面板"]
+    TI --> V2
     EA --> GR["knowledge-groom<br/>退休、降置信、合并"]
-    EA --> EV["EV 卡的 source_signals"]
 
     classDef store fill:#f1f3f5,stroke:#868e96,stroke-width:1.5px,color:#343a40
     classDef gen fill:#fff4e6,stroke:#e8590c,stroke-width:1.5px,color:#7a2e00
     classDef view fill:#e7f5ff,stroke:#1971c2,stroke-width:1.5px,color:#0b3d66
     class EP,PF store
-    class TI,EA gen
-    class V1,V2,GR,EV view
+    class EA,TI gen
+    class V1,V2,GR view
 ```
 
-图 1　三层记录与两块面板（类型：数据流图；范围：从一次诊断的原始记录到面板与演进消费，省略结构侧与评测侧指标）
+图 1　一次诊断的记录与上仓（类型：数据流图；范围：从本机记录到面板与知识整理，省略结构侧与评测侧指标）
 
-图例：灰色是源与记录（一次诊断留在本机，期文件进 git），橙色是生成物，蓝色是消费方。
+图例：灰色是本机记录与期文件源，橙色是生成物，蓝色是消费方。
 
-两块面板取的是同一份数据。同一次诊断在诊断面板里显示它怎么走的；它的条目触达在累计面板里显示成这些条目又被用了一次。两边对不上时，问题在聚合脚本。
+两块面板取同一份数据：单次诊断的面板摊开这一次，累计读数的面板合并多期（被用得最多的案例与先验、最花成本的过程动作、正在变差的读数）。
 
 ## 3 完整机制
 
-### 3.1 本地件清单与锚定
+### 3.1 一次诊断产出什么
 
-锚定一列写「主检出」的走 `CHECKOUT_DIRS` 或对应的 `resolve_*` 函数。写「检出内」的不锚主检出，解析路径的基准有两种：多数读端按当前工作目录解析，`scripts/evolution_health.py` 按脚本所在检出解析。
+一次诊断在本地留下四样东西，第五样是本设计要补的。
 
-| 本地件 | 路径 | 谁写 | 锚定 | 进 git |
-|---|---|---|---|---|
-| 诊断轨迹 | `traces/<session_id>.yaml` | diagnose 每步 | 主检出 | 否 |
-| 定位报告 | `traces/<session_id>.report.md` | diagnose 收尾 | 主检出 | 否 |
-| 证据原件 | `traces/evidence/<session_id>/` | diagnose | 主检出 | 否 |
-| 交接单与导出 | `traces/handoff/<sid>.yaml`、`traces/exports/` | `import_trace.py`、`export_trace.py` | 主检出 | 否 |
-| 沉淀草稿 | `postmortems/inbox/<case-id>.md`、`.case.yaml` | `to-postmortem`、`issue-ingest` | 主检出 | 否 |
-| 源码缓存 | `src-code/<version>/` | `src_fetch.py` | 主检出 | 否 |
-| 上游文档缓存 | `ref-docs/` | `reference-ingest`、`gc_docs.py` | 主检出 | 否 |
-| 结算游标 | `.settle-state.json` | 两个结算脚本 | 主检出 | 否 |
-| skill 执行流水 | `metrics/skill-exec-log.yaml` | `log_skill_exec.py` | 主检出 | 否 |
-| 改进项实测记录 | `metrics/ev-measure-log.yaml` | `ev_measure.py --run` | 主检出 | 否 |
-| 演进会话与评审 | `proposals/{sessions,tasks,reviews,experiments}/` | `self-evolve` | 主检出 | 否 |
-| 摄取台账 | `ingest-state.json`、`reference-ingest-state.json` | `issue-ingest`、`reference-ingest` | 仓根 | 是 |
-| 验证回放产物 | `.s2-replay/` | `s2_replay.py`、`eval_arena.py` | 检出内 | 否 |
-| 交互回放产物 | `.ixn-replay/` | `ixn_replay.py` | 检出内 | 否 |
-| 回放输入与报告 | `.replay-input/`、`.replay-report.md`、`.flow-replay/` | `replay_golden.py`、`flow_pool.py` | 检出内 | 否 |
-| 自动抓取候选 | `.auto-fetch/` | `auto_fetch.py` | 检出内 | 否 |
-| 调研物料 | `research/` | 人 | 检出内 | 否 |
+| 产物 | 路径 | 内容 |
+|---|---|---|
+| 轨迹 | `traces/<session_id>.yaml` | 顶层字段加事件列表，每步一条 |
+| 报告 | `traces/<session_id>.report.md` | 人读结论，与轨迹同目录 |
+| 证据原件 | `traces/evidence/<session_id>/` | 工程师贴回的日志、截图 |
+| 会话账单 | DSH 会话日志 | 提供方 usage 与工具耗时，按 `session_id` 关联 |
+| 诊断记录（待补） | 本机派生，不落轨迹 | 上面四样汇总成一行，供汇总脚本读 |
 
-`traces/` 与 `diagnosis_state*.yaml` 在 `.gitignore` 的前几行，其余各自有注释行。锚定只在「同一克隆且能取到 git」时成立。`scripts/exec_log_path.py` 在没有 git 环境时退化为检出内，多份克隆之间也互不可见，两种情况都在输出里标出退化形态。
+其余本地件（源码缓存、上游文档缓存、回放产物、调研物料等）的落点见 [git-workflow.md](../guide/git-workflow.md) 的目录归属表，本文不重复。
 
-两个场景各有一个坑。
+这一行的字段如下。标「现成」的今天已能从轨迹取到，标「待接」的需要新增汇总代码。
 
-在 worktree 里干活时，worktree 没有主检出那份 `traces/`、`postmortems/inbox/` 与 `proposals/` 运行时目录，忽略件不随 worktree 创建而复制。写相对路径的记录会进 worktree 那一份，清理时一起消失。
-
-跨机器接手时，`export_trace.py` 在 `traces/exports/` 下产出压缩包与说明，另一台用 `import_trace.py` 落位，并在 `traces/handoff/` 留交接单。两侧比对的锚点是 `kb_rev`。两台的 `kb_rev` 不一致时候选集会不同，做法见 [handoff.md](../guide/handoff.md)。
-
-### 3.2 谁在什么时候读哪份本地件
-
-本地件的读端分两种。脚本读的输入确定、输出确定，可以配门；agent 读的随现场变化，只能靠正文约束。这条区分决定了哪些改动能进 CI：`scripts/` 下的确定性读端可以，skill 正文里的读法只能靠评审。
-
-| 消费方 | 时点 | 读什么 | 入口 |
+| 字段 | 内容 | 来源 | 状态 |
 |---|---|---|---|
-| diagnose | 步骤 3 相似检测 | 历史轨迹 | `shared_dir.py traces` |
-| to-postmortem | 收尾 | 来源轨迹 | 草稿头的 `source_session` |
-| 各内容 skill | 收尾 | 无（只写执行流水） | `log_skill_exec.py` |
-| knowledge-groom | 反馈结算 | 轨迹里的 `feedback` 事件 | `settle_trace_feedback.py`、`.settle-state.json` |
-| knowledge-groom | 验证结算 | `.s2-replay/*.result.yaml` | `settle_s2_feedback.py` |
-| knowledge-groom | 引用可观测性与夹具预核 | 轨迹里的 `reference_lookup`；轨迹 | `trace_metrics.py`、`replay_trace.py --emit-fixtures` |
-| evolve-check | 内容流程收尾 | 执行流水；归因事件与容量判据 | `tail_exec_log.py`、`component_tally.py`、`metrics_health.py` |
-| self-evolve | 深度轮 | 时序数据、执行流水、归因、验证待办、会话状态 | `metrics_health.py --json`、`s2_replay.py --todo` |
-| skill-review | 显式触发 | 执行流水、skill 上下文成本 | `audit_skill_cost.py`、`tail_exec_log.py` |
-| resume-diagnosis 与诊断面板 | 开屏 | 自己的轨迹与交接单 | `shared_dir.py traces`；面板自身的 `fs.resolve('traces', {cwd})` |
+| `session_id` | 会话号 | 轨迹顶层 | 现成 |
+| `window` | 起止时间 | `created_at`、`updated_at` | 现成 |
+| `detected` | 框架、平台、类别 | 轨迹顶层 | 现成 |
+| `route` | 路由到的命名空间、候选数量、实际加载条数、检索命中的案例 | `triage`、`load_index`、`load_full`、`hit` 事件汇总 | 现成 |
+| `steps` | 步数与各动作次数 | 事件列表计数 | 现成 |
+| `touched.cases` / `touched.references` | 这次诊断碰到的全部案例 id 与先验 id | `hit`、`load_full`、`reference_lookup`、`excluded_cases` | 现成 |
+| `outcome` | 最终状态、是否给出 fix、反馈结果 | 顶层 `status`、`resolved_at`、`feedback` | 现成 |
+| `sedimented` | 沉淀状态与案例 id | 顶层 `sedimented` | 现成 |
+| `cost.tokens` | 未缓存输入、缓存读、缓存写、输出 | 会话日志按 `(turn, step)` 去重 | 待接 |
+| `cost.tool_ms` | 工具耗时合计与最慢几步 | 会话日志 | 待接 |
+| `cost.index_read_tok` | 一次诊断的读入账四个分项 | `index_read_cost.py` 现算 | 现成 |
+| `strength` | 本次结论的强度档 | `verification.source` 或事件类型 | 待接 |
 
-表里的诊断面板与其余各行不同：它不调用 `shared_dir.py`，读的是当前会话的工作目录。在 worktree 里开面板，看到的是 worktree 的 `traces/`。锚定只覆盖脚本，不覆盖面板的轨迹读，这一条列在 5.2。
+一条真实轨迹折出来的样子（取自 `traces/2026-09-16-12430-dsv4pro-mc2.yaml`，`cost` 段为待接字段，未填数值）。
 
-### 3.3 指标的存在条件与清单
+```yaml
+session_id: 2026-09-16-12430-dsv4pro-mc2
+window: {start: '2026-09-16T16:00:00+08:00', end: '2026-09-16T18:20:00+08:00'}
+detected: {framework: vllm-ascend, platform: A2-910B, category: interrupt}
+route:
+  routed: inference/vllm-ascend
+  hit_case: VLLM-ASC-9005          # 检索命中的是 9005
+steps: {count: 32, reference_lookup: 7, report: 6, attribution: 4, quickly_check: 3, ...}
+touched:
+  cases: [VLLM-ASC-9005, VLLM-ASC-12430, VLLM-ASC-12461, VLLM-ASC-7635, VLLM-ASC-9887, VLLM-ASC-13688, VLLM-ASC-10944]
+  references: [cann-runtime-error-codes, cann-hdk, ascend-moe-comm-triage, aicore-error-fault-patterns, operator-exec-fault-patterns]
+outcome: {status: resolved, fix_emitted: true, feedback: {case: VLLM-ASC-12430, outcome: resolved, confirmed_at: '2026-09-16'}}
+sedimented: {state: knowledge, case_id: VLLM-ASC-12430}
+cost: {tokens: {uncached: -, cache_read: -, cache_write: -, out: -}, tool_ms: -, index_read_tok: -}
+strength: self-report              # 来源 session 自证，见 3.5
+```
 
-一个指标进得了这套机制，只有当它能填满五格，填不满就删掉。这是 1.2 第 3、4 条的解法。
+改汇总脚本时要处理两件事。检索命中的案例（9005）与最终沉淀的案例（12430）不是同一个，两个 id 各算一次触达。被排除的五个案例（`excluded_cases`）也算触达，它们是「检索到但被排除」，与「命中」分开计数。
 
-| 格 | 要写什么 |
+### 3.2 十次诊断怎么进仓库
+
+本机十次诊断产生十个轨迹文件与十行诊断记录，都不进仓库。进仓库的是一次汇总后的当期增量。
+
+1. 工程师正常跑诊断，收尾时轨迹落盘。
+2. 周批里跑一次汇总脚本，逐份读轨迹（并行读，不改轨迹）。
+3. 脚本把十行记录里 `touched` 的每个 id 折算成当期增量，同一个 id 在十次里出现几次就是几。
+4. 增量写进一个期文件的 `metrics.entry_activity` 段：`metrics/timeline.d/<期号>.yaml`。
+5. 重建生成物，面板与知识整理流程只读生成物。
+
+十次诊断里三次碰到 `VLLM-ASC-12430`、一次解决，汇总后是这样的：
+
+```yaml
+# metrics/timeline.d/2026-W42-live-1016.yaml（片段）
+metrics:
+  entry_activity:
+    VLLM-ASC-12430: {selected: 3, loaded: 2, resolved: 1, misdiagnosed: 0}
+    VLLM-ASC-9005: {selected: 1, loaded: 1, resolved: 0, misdiagnosed: 0}
+    cann-runtime-error-codes: {lookups: 6, hit: 5, miss: 1, purpose: {signature: 2, background: 1, fix: 1}}
+```
+
+跨期求和后，面板看到的是一行排行：`VLLM-ASC-12430` 本期被选中 3 次、累计 11 次、解决 4 次、最后一次是本期。
+
+不做成十条独立上仓记录，原因有三条。轨迹含客户现场信息，逐单上仓要先逐单脱敏。PR 量会从每周一次变成每单一次，而每周一次是当前能维持的节律。同一个 id 的历史分散在十条记录里，读端要自己拼，拼错了看不出来。
+
+### 3.3 与知识库解耦
+
+观测数据只写期文件，不改 `knowledge/` 下的任何文件。`entry_activity` 的键是 id，值是计数；案例与先验条目本身一个字节都不动。
+
+| 数据 | 写在哪 | 是否改知识条目 |
+|---|---|---|
+| 被选中、被加载、检索三态、被排除 | 期文件 `metrics.entry_activity` | 否 |
+| 现场确认解决（`confidence.hits` / `misdiagnoses` / `score` / `last_hit`） | `knowledge/` 下的案例文件 | 是，现有链路 |
+| 置信度在索引里的副本 | `knowledge/_index.yaml` 生成物 | 生成物重建 |
+
+第二行是例外。它保留的理由与观测无关：那个分数参与下次候选排序，必须落进知识本体（[rsi-mechanism.md](rsi-mechanism.md) 第 4.4 节的四个写入点）。两边的边界是：台账记被选中，案例记被确认解决。选中不等于解决。
+
+解耦带来一条约束：台账里的 id 必须能在库里找到。汇总时对不上的 id 报出来并列入清理清单，不静默丢弃，也不写进排行。
+
+### 3.4 并发与冲突
+
+台账按「一期一个文件」写，同一 id 的历次记录落在不同文件里，读侧求和。这样设计之后，常见的三种并发都不需要人做合并判断。
+
+| 场景 | 结果 |
 |---|---|
-| 读它的人 | 具体角色，不写「所有读者」 |
-| 做什么决定 | 一个可以执行的决定 |
-| 读数为坏时的下一步 | 一条命令或一个动作 |
-| 分母与覆盖 | 分母是什么、覆盖哪批会话、哪份检出 |
-| 观测强度 | 确定性 / 代理 / 自报 / 人工 |
+| 两人各跑自己那一周的周批 | 两个期号、两个文件，互不触碰 |
+| 同一天两人各跑一次 | 后者拿到的期号带 `-2` 后缀（`metrics_snapshot.py` 的现有行为），两个文件并存 |
+| 两人各记录同一条案例（同一周或不同周） | 落在各自的期文件里，同一条案例的两行在不同文件 |
+| 补一个指标字段 | 改汇总脚本、`verify_metrics.py` 白名单、`docs/guide/metrics.md`、面板标签与面板包 |
+| 补一条条目记录 | 只动当期期文件的一行 |
 
-观测强度按 [design-principles.md](../spec/design-principles.md) 第十条标档，并写进数据（每个指标一个字段），不写在注释里。`确定性`指脚本或账单直接产出，`代理`指用可计算的量代替真量，`自报`指 agent 自己记的，`人工`指现场回报。
+前三种不需要处理冲突，因为没有人编辑别人写过的行。第四条要说清楚：字段级的改动仍然是多点同步，这是期文件受白名单约束的代价，不是可以通过设计消掉的。第五条才是解耦带来的收益：记录一次使用不碰知识条目，也不碰历史期文件。
+
+配套两条规矩。期文件由脚本产出，不手改（与 `metrics/timeline.yaml` 同一条纪律）。两人手改同一个期文件仍然会撞，撞了按现有口径处理：重跑重建命令，或各自换期号。
+
+### 3.5 反馈联动
+
+工程师回报之后，读数在两处落点，由同一次运行产生，因此不会各说各话。
+
+1. 回报时轨迹记一条 `feedback{case, outcome, confirmed_at}`。渠道是续接时的追问，不改诊断流程。
+2. 周批跑 `settle_trace_feedback.py --apply`。它按 `.settle-state.json` 的游标，把事件写进案例的 `confidence.hits`、`misdiagnoses` 与 `last_hit`。
+3. 同一次运行把同一批事件的 `resolved` / `misdiagnosed` 追加到当期台账的对应 id 行。
+4. 新判据：任一条目的「案例累计 hits」与「台账 resolved 累计」对不上时报出该 id 与两个值。
+
+准确性靠三点：两处落点同一次运行、同一个游标；事件按哈希结算一次，重跑不重复计数；回报迟到的，跟着它实际落盘的那一期走，不回填历史期。
+
+三种失败形态各有归属。回报迟到：进下一期，排行上表现为该条目当期才出现解决计数。跨机器：台账按部署分家，另一台机器的回报由那一台的游标处理，两边不合并。案例 id 查不到：报错并计入清理清单，不改写任何历史。
+
+真实样例里还有一个边界情况：本次命中 9005、最终沉淀成 12430，回报落在 12430 上。台账按事件里的 id 各记一行，9005 记被选中，12430 记被选中与解决。
+
+### 3.6 指标清单
+
+一个指标进得了这套机制，只有当它能填满五格：读它的人、做什么决定、读数为坏时的下一步、分母与覆盖、观测强度。填不满就删掉。观测强度写进数据，取自四档：`确定性`（脚本或账单直接产出）、`代理`（用可计算的量代替真量）、`自报`（agent 自己记的）、`人工`（现场回报）。
 
 | 指标 | 读它的人、决定 | 读数为坏时的下一步 | 分母与覆盖 | 强度 | 现状 |
 |---|---|---|---|---|---|
 | 路由准确率 | 维护者周批，改 triage 词法与命名空间归属 | 看漏检类别，补路由词或挪分类 | 已判定路由的会话 | 确定性 | 已有 |
-| 候选召回、命中位次 | 维护者，补案例或改排序键 | 看漏检样本落在哪个格子 | 有预期答案的回放样本 | 确定性 | 已有，离线 |
+| 候选召回、命中位次 | 维护者，补案例或改排序键 | 看漏检样本落在哪个格子 | 有预期答案的回放样本 | 确定性 | 已有 |
 | 兜底使用与挽救 | 维护者，判是覆盖缺口还是要新先验 | 缺口补案例，流程问题改正文 | 全部诊断会话 | 确定性 | 已有 |
 | 先验读取三态与消费点 | 词条作者，该查没查改流程、查了没用改词条 | 按三态分流 | 走先验读取步骤的会话 | 确定性 | 已有 |
 | 漏检类别 | 维护者，补词法或挪类别 | 按类别补 triage 词 | 未路由命中的会话 | 确定性 | 字段有，无读端 |
-| 步数与动作分布 | skill 维护者，改哪一步的正文 | 出现最多又不推进的动作优先改 | 全部诊断会话 | 确定性 | 已有，事件计数 |
-| 分步成本（token 与工具耗时） | 维护者，裁最贵的步骤 | 定位最贵步骤，看能否合并或跳过 | 有 harness 会话日志的会话 | 确定性 | 缺失 |
+| 步数与动作分布 | skill 维护者，改哪一步的正文 | 出现最多又不推进的动作优先改 | 全部诊断会话 | 确定性 | 已有 |
+| 分步成本 | 维护者，裁最贵的步骤 | 定位最贵步骤，看能否合并或跳过 | 有会话日志的会话 | 确定性 | 缺失 |
 | 一次诊断的读入账 | 维护者，治超预算的读路径 | 按四个分项定位该治哪条 | 全部诊断会话 | 确定性 | 已有 |
-| 停止原因 | 维护者，判断该不该停在这里 | 未记录的会话先补记录 | 全部诊断会话 | 确定性 | 字段有，覆盖 2/18 |
-| 无效探索 | 维护者，换探索策略 | 在历史决策树上离线打分，见 3.7 | 历史决策树，同策略对照 | 代理 | 缺打分代码 |
+| 停止原因 | 维护者，判断该不该停在这里 | 未记录的会话先补记录 | 全部诊断会话 | 确定性 | 覆盖 2/18 |
+| 无效探索 | 维护者，换探索策略 | 在历史决策树上离线打分，见下段 | 历史决策树，同策略对照 | 代理 | 缺打分代码 |
 | 词表合规 | 维护者，补词表或改记法 | 违规事件逐条看 | 全部事件 | 确定性 | 已有 |
-| 反馈捕获 | owner，判学习环有没有输入 | 为 0 时命中率、误诊率标不可解读 | 给出结论的会话 | 确定性 | 已有，三期 0 |
-| 现场解决计数 | 排序与退休，降置信或退休 | 连续两次未解决转人工 | 已回报的会话 | 人工 | 已有，`hits>0` 仅 2 条 |
-| 外部对照闭环 | owner，确认内容是否正确 | 没有上游锚点的案例标不可对照 | 有上游 issue 或 PR 锚点的案例 | 确定性 | 缺失 |
-| 归因比 | owner，误诊修复前先读，决定改知识还是改流程 | 先补归因事件再修 | 已归因的误诊 | 人工 + 脚本 | 读错键，恒 0 |
-| 结论强度分布 | owner 与面板读者，判哪些结论不能当依据 | 弱强度结论不得升格 | 给出结论的会话 | 确定性 | 字段有，草稿期 |
+| 反馈捕获 | owner，判学习环有没有输入 | 为 0 时命中率、误诊率标不可解读 | 给出结论的会话 | 确定性 | 三期 0 |
+| 现场解决计数 | 排序与退休，降置信或退休 | 连续两次未解决转人工 | 已回报的会话 | 人工 | `hits>0` 仅 2 条 |
+| 外部对照闭环 | owner，确认内容是否正确 | 没有上游锚点的案例标不可对照 | 有上游锚点的案例 | 确定性 | 缺失 |
+| 归因比 | owner，误诊修复前先读 | 先补归因事件再修 | 已归因的误诊 | 人工 + 脚本 | 读错键，恒 0 |
+| 结论强度分布 | owner 与面板读者，判哪些结论不能当依据 | 弱强度结论不得升格 | 给出结论的会话 | 确定性 | 字段有 |
 | 条目使用增量 | groom，退休、降置信、合并、补样例 | 高选中低解决时复审该条 | 该条目的当期被选中数 | 确定性，本部署 | 缺失，本次新增 |
 | 长期零命中条目 | groom，决定补词面还是不动 | 复查症状词面与标签 | 全库条目 | 确定性 | 缺失 |
 | 格子读入成本 | 维护者，拆分、瘦身、按平台切 | 看格子的实读 token | 无分母，绝对量 | 确定性 | 已有判据 |
@@ -176,136 +216,59 @@ flowchart LR
 
 同一个量只允许一处定义。新指标落地前先回答「它与表里哪一行是同一个量」，是同一个就改那一行。
 
-### 3.4 单次诊断的面板
+无效探索按两半处理。可以离线重算的一半指展开几个候选、什么顺序、哪些同批并行、在哪里停，原料是轨迹顶层 `stop_reason` 与事件级 `parallel_group`、`considered_candidates` 三个字段；读数形式是同一棵历史决策树上两种策略到达命中所需的展开量之差。只能在线判断的一半是假设被哪条证据推翻，记在事件或 `reason` 里，不参与上面的差值计算。打分代码在任一部署机轨迹达到 30 条、反馈捕获率大于 0 之后才写（[ADR-0009](../adr/0009-counterfactual-replay-exploration-policy.md) 的重评条件；当前 18 条、反馈捕获 0）。
 
-诊断面板展开一张卡时，除现有的结论与轨迹之外，按下面的顺序补五块。缺数据时显示本次没记，不显示 0。
+### 3.7 面板
 
-1. 结论与强度。给结论一句话、命中案例 id、结论强度档。强度取自草稿期的 `verification.source`，不取 `confidence.score`。
-2. 各步的横条。事件按步排成一条横条，一格一个动作；颜色深浅表示该步成本占比，同批并行的并排，返工加标记。
-3. 检索走向。候选池里被展开、被排除、被命中的各是哪些 id，先验读取的三态与消费点。
-4. 成本。三分 token（未缓存输入、缓存读写、输出）、工具耗时占比、一次诊断读入账的四个分项。数据来自 harness 会话日志，不由 agent 自报。
-5. 本次没记的字段。逐条列出停止原因、反馈、归因等缺口，并给补记入口。
+单次诊断的面板展开一张卡时补五块。缺数据的块显示本次没记，不显示 0。
 
-### 3.5 累计读数的面板
+1. 结论与强度。
+2. 各步的横条：成本占比、并行分组、返工标记。
+3. 检索走向：被展开、被排除、被命中的 id。
+4. 成本：三分 token、工具耗时、读入账四分项。
+5. 本次没记的字段清单。
 
-指标面板首屏先回答四个问题，再给趋势：样本覆盖是多少、哪个读数不可解读、哪些条目在变差、本周该做什么。
-
-- 被用得最多的案例与先验。按当期被选中次数排序，每条带选中次数、解决次数、最后命中期、来源检出。长期零选中的条目单列，零选中不能证明条目没用，罕见但正确的条目不退休（见 [ADR-0004](../adr/0004-capacity-governance.md) 的软退休）。
-- 最花时间的过程动作。动作分布与成本占比合并显示，回答成本主要落在哪一步，用来改 skill 正文。
-- 变差的读数。被检索但长期不解决、长期零选中、格子读入成本越界、期文件断档，四类各一行，每行带判据出处与下一步动作。
-- 趋势。沿用现有期序列。每格要能回答「往哪个方向是坏」，面板不按正负号着色。
-- 每张卡带 3.3 的五格，界面上的读法相同。
-
-累计面板上每个变差的读数都指向一类动作，不需要人转抄：
-
-| 读数 | 动作 |
-|---|---|
-| 条目高选中、低解决 | 复审该案例，降置信或补样例 |
-| 长期零选中 | 补症状词面与标签；不据此退休 |
-| 相似条目对 | 合并压缩 |
-| 某一步占比高且常返工 | 改该 skill 正文 |
-| 漏检类别集中 | 补 triage 词或挪分类 |
-| 兜底使用持续偏高 | 补案例（覆盖缺口）或补先验 |
-| 无效探索的展开量偏高 | 换探索策略，闸门满足后 |
-| 改进项积压超限 | 停产新项，先补合入指针 |
-
-### 3.6 上仓形态与节律
-
-进仓库的四类数据各有落点与更新方式：
-
-| 数据 | 落点 | 更新方式 |
-|---|---|---|
-| 单条知识的持久状态 | 案例的 `confidence` 与 `validation_record` | 周批结算，走知识修改 PR |
-| 条目使用增量 | 期文件 `metrics.entry_activity` 段 | 一期一文件，随期文件一起提交 |
-| 周期聚合读数 | `metrics/timeline.d/<期号>.yaml` 与生成物 `metrics/timeline.yaml` | 一期一文件，聚合是生成物 |
-| 判据数值 | `metrics/gates.yaml`、`proposals/gates.yaml` | 机制变更时改 |
-
-条目使用增量记的是被选中，案例里的 `confidence.hits` 记的是现场确认解决，两个数含义不同，不互相代替。
-
-```yaml
-# metrics/timeline.d/<期号>.yaml 的 metrics 段内
-metrics:
-  entry_activity:                     # 键 = 案例 id 或先验 id，只写当期有活动的条目
-    VLLM-ASC-12430: {selected: 3, loaded: 2, resolved: 1, misdiagnosed: 0}
-    msllm-startup-version-env-triage: {lookups: 4, hit: 3, miss: 1, purpose: {signature: 3, background: 1}}
-```
-
-这个形状由四条约束决定。
-
-1. 一期一文件。同期的两个写入者不会撞在一起，撞号由现有后缀机制处理。若按 id 一个文件，同一 id 的历史会跨期写进同一文件，冲突时没有确定性重建命令。
-2. 源文件可以写数字。「生成物里不写数字」约束的是生成物；仓根的 `ingest-state.json` 是同类先例。
-3. 与知识本体解耦。只写 id 键的观测，不改 `knowledge/` 下的案例文件。
-4. 放在 `metrics:` 段内。面板的期文件解析器是手写的，会把 `metrics` 上下文里缩进不超过四层的行折进 `metrics`；段内与既有 `reference_detail` 同构，段外的顶层键会被当成指标行渲染。
-
-读侧新增生成物 `metrics/entry-activity.yaml`，由聚合脚本跨期求和，面板与 groom 只读它。读数按部署分家：本台账同 `metrics/timeline.d/`，是这份检出自己的使用史，不同部署的数字不合并；`sources` 里写明哪份检出、当时的 `kb_rev`、覆盖的期。
-
-周期与事件驱动回答的不是同一个问题，因此两种都用：
-
-| | 周期（现状） | 事件驱动 | 本设计 |
-|---|---|---|---|
-| 触发 | 每周任一人跑周批 | 每次诊断或每次整理 | 周期跑整体读数，条目增量随整理流程提交 |
-| 谁复核分母 | 人，不可退 | 无 | 人复核整体读数，条目增量由脚本产出、groom 核对 |
-| 好处 | 趋势可比、分母有人看过、PR 量可控 | 因果链短，指标与知识同一 PR | 趋势照旧，条目级观测与知识变更同行 |
-| 坏处 | 条目级观测到不了仓库 | 分母碎片化、趋势要重拼、PR 量按单增长 | 期文件变大，新增段要同步多处 |
-| 不选另一案的理由 | 只留事件驱动会撞已否决的一条，即每次诊断单独开 PR | 只留周期则条目被检索的证据到不了退休决定 | |
-
-节点落在：诊断收尾不写仓库，一次诊断的记录留在本机；周批由任何人跑一次，组装整体读数与当期条目增量，两部分写进同一个期文件，随一个 PR 进 git。
-
-### 3.7 无效探索
-
-无效探索指这次诊断里没有推进结论的步骤。仓库已有的外部研究给了做法与边界（[rsi-mechanism.md](rsi-mechanism.md) 第 12 节 Dream-RSI 一行）。一条完整的历史是精确的重放器：换一种探索策略在同一棵决策树上走不同分支，结果已在盘上，评估零执行。前提是策略为可重算的代码。把历史抽象成方向性洞见注入提示词，同预算下不如不注入。
-
-据此拆成两半，各自记各自算。
-
-- 机械化的一半可以离线打分：展开几个候选、以什么顺序、哪些同批并行、在哪里停。原料在轨迹里已有三个字段：顶层 `stop_reason`、事件级 `parallel_group`、`considered_candidates`。读数形式是同一棵历史决策树上两种策略到达命中所需的展开量之差。
-- 语义的一半只能在线判断：某个假设被哪条证据推翻、为什么换方向。记法可以是 agent 显式写下的一条事件，也可以是 `reason` 里的散文。它不参与上面那个差值的计算，两者强度与可比性不同。
-
-打分代码在任一部署机的轨迹达到 30 条、且反馈捕获率大于 0 之前不写（[ADR-0009](../adr/0009-counterfactual-replay-exploration-policy.md) 的重评条件；当前主检出 18 条、反馈捕获 0）。在此之前只做两件事：保证三个原料字段继续被记录；面板显示本项缺打分代码。
+累计读数的面板首屏先答四个问题：样本覆盖是多少、哪个读数不可解读、哪些条目在变差、本周该做什么。下面是被用得最多的案例与先验（带选中次数、解决次数、最后命中期、来源检出）、最花成本的过程动作、变差的读数（被检索但长期不解决、长期零选中、格子读入成本越界、期文件断档，各一行带下一步动作）、趋势。每张卡带 3.6 的五格。
 
 ## 4 边界与失败模式
 
 | 情形 | 行为 |
 |---|---|
-| 反馈捕获为 0 | 命中率、误诊率、校准一律标不可解读，不写 0；面板写明是没数据，不是零问题 |
+| 反馈捕获为 0 | 命中率、误诊率标不可解读，不写 0；面板写明是没数据，不是零问题 |
 | 某个指标本期没有数据 | 不写该键，面板显示本期未采集 |
-| 某台机器没有某类记录 | 在覆盖声明里写明，不把本机没遇到过写成全库没人用 |
-| 某一期缺 `entry_activity` | 该期不参与条目累计，聚合脚本报出缺哪几期，不按 0 计 |
-| 条目 id 在知识库里查不到 | 报出该 id 与它所在的期，不计入排行，列入清理清单 |
-| 面板读不到生成物 | 显示生成物缺失与重建命令，不回退到原始期文件自行求和 |
+| 某一期没有 `entry_activity` | 该期不参与累计，聚合脚本报出缺哪几期，不按 0 计 |
+| 台账里的 id 在库里查不到 | 报出该 id 与所在的期，不计入排行，列入清理清单 |
+| 面板读不到生成物 | 显示缺哪个生成物与重建命令，不回退到原始期文件自行求和 |
 | 无 git 环境或在 worktree 里跑周批 | 路径退化为检出内并在输出里标出，不产出空指标 |
-| 多个 worktree 并发写同一期 | 期号冲突由现有后缀机制处理，不同期落在不同文件 |
+| 两个 worktree 同时写一期 | 期号冲突按现有后缀机制处理，不同期落在不同文件 |
 | 结论强度是 agent 自报 | 强度档写进数据，面板标明自报，不与确定性读数同权 |
-| 事件列表键名不认识 | 报该会话事件未记录，并在比例读数旁标出分母构成 |
 
 ## 5 现状
 
 ### 5.1 已落地
 
-- 本地件锚定表与两个缓存根的解析：`python3 scripts/shared_dir.py --list` 列出名字；`python3 scripts/shared_dir.py traces` 打印主检出下的绝对路径。
-- 轨迹与事件的词表校验、证据落盘、报告模板：`skills/diagnose/references/diagnosis-trace.md`。
+- 轨迹、报告、证据的写入与词表校验：`skills/diagnose/references/diagnosis-trace.md`。
 - 三块组装与周批流程：`scripts/metrics_snapshot.py`、`scripts/metrics_health.py`，算法见 [metrics.md](../guide/metrics.md)。
 - 期文件与生成物分离、期号命名、字段白名单：`scripts/build_timeline.py`、`scripts/verify_metrics.py`。
 - 一次诊断读入账的四个分项与格子读入成本线：`scripts/index_read_cost.py`、`metrics/gates.yaml`。
 - 先验按 id 的明细：期文件的 `metrics.reference_detail`。
-- 反馈结算把现场回报写回案例置信度：`scripts/settle_trace_feedback.py`。
-- 确定性读端的复核命令：`settle_trace_feedback.py --audit`、`component_tally.py`、`check_handoff.py`。会话账单读 `node scripts/session_cost.mjs --all`。
-- 无 git 环境下的退化路径与标签：`scripts/exec_log_path.py`。
+- 现场回报写回案例置信度与其幂等游标：`scripts/settle_trace_feedback.py`、`.settle-state.json`。
+- 会话账单：`node scripts/session_cost.mjs --all`。
+- 本地件锚定：`scripts/exec_log_path.py`、`python3 scripts/shared_dir.py`。
 
 ### 5.2 蓝图
 
 | 蓝图项 | 落点 | 确认方式 |
 |---|---|---|
-| 期文件新增 `metrics.entry_activity` 段（当期增量，id 键） | `scripts/metrics_snapshot.py`、`scripts/verify_metrics.py` 白名单 | 组装一期骨架，段内出现当期有活动的条目 |
-| 条目累计的生成物与聚合脚本 | 新增 `scripts/build_entry_activity.py`，产出 `metrics/entry-activity.yaml` | 跑一次聚合，排行与期文件增量逐条对得上 |
-| 查不到的 id 与缺期 | 同上 | 造一个不存在的 id，聚合时报出该 id 与所在的期 |
-| 分步成本（token 与工具耗时）接入 | `scripts/session_cost.mjs` 与汇总脚本 | 对最近一次诊断跑一次，输出三分 token 与工具耗时 |
-| 单次诊断面板的五块 | `dsh-plugins/ascend-panel/` 前端与 host | 在真实轨迹上打开一张卡，五块都显示，或显示本次没记 |
-| 累计面板的四个问题与五格 | 同上 | 首屏能答四个问题，每张卡带五格 |
-| 面板解析器支持条目段 | `panel-host.js` 的期文件解析 | 喂一期含 `entry_activity` 的文件，条目不被当成指标行渲染 |
+| 一次诊断的记录汇总成一行 | 新增汇总脚本 | 对最近一次诊断跑一次，字段与 3.1 的表对齐 |
+| 分步成本接入 | `scripts/session_cost.mjs` 与汇总脚本 | 输出三分 token 与工具耗时，关联不上的会话标缺席 |
+| 期文件新增 `metrics.entry_activity` 段 | `scripts/metrics_snapshot.py`、`scripts/verify_metrics.py` 白名单 | 组装一期骨架，段内出现当期有活动的条目 |
+| 跨期求和的生成物 | 新增 `scripts/build_entry_activity.py`，产出 `metrics/entry-activity.yaml` | 排行与期文件增量逐条对得上 |
+| 查不到的 id 与缺期报出 | 同上 | 造一个不存在的 id，聚合时报出该 id 与所在的期 |
+| 台账与案例计数的一致性判据 | `scripts/metrics_health.py` | 造一次只写一处的结算，判据报出不一致 |
+| 面板支持条目段与五块 | `dsh-plugins/ascend-panel/` 前端与 host | 喂一期含 `entry_activity` 的文件，条目不被当成指标行渲染 |
 | 外部对照自动查证（开源 issue 类） | 新增脚本，复用 `gh api` 外壳与结算回写通道 | 对一个有上游锚点的案例跑一次，写出结局并留在 `validation_record` |
-| 面板的轨迹读跟随会话工作目录 | `panel-host.js` 的 `resolveCwd` | 在 worktree 里开面板，看读到的是哪一份 `traces/` |
-| 指标强度档写进数据 | 期文件与面板 | 每个指标能读出强度档，面板标明自报 |
-| 无效探索的离线打分 | 尚未立项，闸门见 3.7 | 闸门满足后另行起卡 |
+| 无效探索的离线打分 | 尚未立项，闸门见 3.6 | 闸门满足后另行起卡 |
 
 ### 5.3 已否决
 
@@ -315,24 +278,22 @@ metrics:
 
 | 用途 | 入口 |
 |---|---|
-| 本地件锚定表 | `scripts/exec_log_path.py` 的 `CHECKOUT_DIRS` 与 `resolve_*`；agent 入口 `scripts/shared_dir.py` |
 | 轨迹字段与事件词表 | `skills/diagnose/references/diagnosis-trace.md`、`diagnosis_state.yaml.example`、`trace-status.yaml` |
-| 指标算法与周批流程 | `docs/guide/metrics.md` |
-| 期文件组装与体检 | `scripts/metrics_snapshot.py`、`scripts/metrics_health.py`、`metrics/gates.yaml` |
-| 期文件校验与聚合 | `scripts/verify_metrics.py`、`scripts/build_timeline.py` |
-| 诊断侧现有读数 | `scripts/trace_metrics.py` |
-| 条目增量（新增） | `scripts/trace_entry_activity.py`、`scripts/build_entry_activity.py` |
+| 诊断记录的汇总（新增） | `scripts/trace_entry_activity.py` |
+| 期文件组装、体检与白名单 | `scripts/metrics_snapshot.py`、`scripts/metrics_health.py`、`scripts/verify_metrics.py`、`metrics/gates.yaml` |
+| 期文件与生成物重建 | `scripts/build_timeline.py`、`scripts/build_entry_activity.py` |
 | 一次诊断读入账 | `scripts/index_read_cost.py` |
 | 反馈与验证结算 | `scripts/settle_trace_feedback.py`、`scripts/settle_s2_feedback.py` |
 | 会话账单 | `scripts/session_cost.mjs` |
+| 本地件锚定 | `scripts/exec_log_path.py`、`scripts/shared_dir.py` |
 | 面板 | `dsh-plugins/ascend-panel/README.md`、`dsh-plugins/ev-panel/README.md` |
-| 跨机交接 | `docs/guide/handoff.md`、`scripts/export_trace.py`、`scripts/import_trace.py` |
+| 路径归属 | `docs/guide/git-workflow.md` 的目录归属表 |
 | 演进消费点 | `skills/evolve-check/SKILL.md`、`skills/self-evolve/SKILL.md`、`skills/knowledge-groom/SKILL.md` |
 
 ## 7 外部参考
 
 适用性判断与全表见 [rsi-mechanism.md](rsi-mechanism.md) 第 12 节。与本文直接相关的三条：
 
-- Dream-RSI（arXiv 2609.14858）：历史树离线重放、策略须可重算；把历史抽象成洞见注入提示词不如不注入。3.7 只做机械化一半的依据。
+- Dream-RSI（arXiv 2609.14858）：历史树离线重放、策略须可重算；把历史抽象成洞见注入提示词不如不注入。3.6 只做机械化一半的依据。
 - Library Drift（arXiv 2605.19576）：不维护的知识库会漂移到注入反而更差，过早退休同样有害。累计面板不把零选中读成没用的依据。
 - Falsifiable Release Gates（arXiv 2607.13070）：不能报错的检查与没有检查在观测上无法区分。每个读数要求写出坏时下一步的依据。
