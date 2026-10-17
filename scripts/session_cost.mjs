@@ -23,7 +23,7 @@
 //   node scripts/session_cost.mjs --all [--workspace <子串>]   # 逐会话汇总（回填历史账单）
 //   加 --json 输出机器可读结果。
 
-import { readFileSync, readdirSync, existsSync, statSync } from 'node:fs'
+import { readFileSync, readdirSync, existsSync, statSync, writeSync } from 'node:fs'
 import { join } from 'node:path'
 import { homedir } from 'node:os'
 import { zstdDecompressSync } from 'node:zlib'
@@ -118,15 +118,23 @@ function summarize(file) {
   }
 }
 
+// 会话日志的文件名**不是固定值**：实测本机 DSH 写的是 `session.v4.jsonl.zstd`。
+// 写死 `session.jsonl.zstd` 会让 findSession 恒为 null、--all 漏掉全部会话，
+// 而失败只表现为「没有账单」——所以按通配找，同名多份时取最新。
+function sessionFiles(dir) {
+  if (!existsSync(dir)) return []
+  return readdirSync(dir)
+    .filter(n => /^session\..*jsonl\.zstd$/.test(n) || n === 'session.jsonl' || n === 'session.jsonl.zstd')
+    .map(n => join(dir, n))
+}
 function findSession(id) {
   const dshHome = process.env.DSH_HOME || join(homedir(), '.dsh')
   const roots = [join(dshHome, 'sessions')]
   for (const root of roots) {
     if (!existsSync(root)) continue
     for (const ws of readdirSync(root)) {
-      const dir = join(root, ws, id)
-      const f = join(dir, 'session.jsonl.zstd')
-      if (existsSync(f)) return f
+      const files = sessionFiles(join(root, ws, id))
+      if (files.length) return files.sort().pop()
     }
   }
   return null
@@ -142,8 +150,8 @@ function allSessions(workspaceFilter) {
     const wsDir = join(root, ws)
     if (!statSync(wsDir).isDirectory()) continue
     for (const id of readdirSync(wsDir)) {
-      const f = join(wsDir, id, 'session.jsonl.zstd')
-      if (existsSync(f)) out.push({ workspace: ws, id, file: f })
+      const files = sessionFiles(join(wsDir, id))
+      if (files.length) out.push({ workspace: ws, id, file: files.sort().pop() })
     }
   }
   return out
@@ -162,7 +170,9 @@ if (process.argv.includes('--decompress')) {
     console.error(`--decompress 需要存在的文件路径：${target ?? '(none)'}`)
     process.exit(2)
   }
-  process.stdout.write(readSessionLog(String(target)))
+  // 必须**同步写**：`process.stdout.write` 到管道是异步的，紧接着 `process.exit(0)` 会截断
+  // 大输出（实测 2.3MB 的日志只吐出 52KB = 头几帧，而它看起来"成功"了）。
+  writeSync(1, readSessionLog(String(target)))
   process.exit(0)
 }
 

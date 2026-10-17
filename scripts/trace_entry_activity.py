@@ -64,7 +64,10 @@ INVESTIGATION = "investigation"
 #: 案例 `verification.source` 里可用的档；不在其中的（历史写法）退回 `investigation`。
 STRENGTHS = ("upstream-fix-merged", "upstream-official-doc", "upstream-maintainer-confirmed",
              "engineer-report", "investigation", SELF_REPORT)
-HARNESS_SUFFIX = Path("session.jsonl.zstd")
+# 会话日志的文件名**不是固定值**：实测本机 DSH 写的是 `session.v4.jsonl.zstd`，而
+# `session_cost.mjs` 与本文原先都写死 `session.jsonl.zstd` —— 于是关联一直失败，
+# 成本与工具分布永远是空的，而失败只表现为「本次没记」。按通配找 + 取最新那个。
+HARNESS_LOG_PATTERNS = ("session*.jsonl.zstd", "session.jsonl")
 
 
 # ---------------------------------------------------------------- 会话日志
@@ -81,9 +84,14 @@ def find_session_log(sid: str, sessions_root: Path | None = None):
     if not sessions_root.is_dir():
         return None, f"会话日志根目录不存在（{sessions_root}）"
     for ws in sorted(sessions_root.iterdir()):
-        cand = ws / sid / HARNESS_SUFFIX
-        if cand.is_file():
-            return cand, None
+        d = ws / sid
+        if not d.is_dir():
+            continue
+        found = []
+        for pat in HARNESS_LOG_PATTERNS:
+            found += [p for p in d.glob(pat) if p.is_file()]
+        if found:
+            return max(found, key=lambda p: p.stat().st_mtime), None
     return None, f"{sessions_root} 下没有 {sid} 的会话日志"
 
 
@@ -238,6 +246,7 @@ def trace_facts(st) -> dict:
     trace = st.get("trace") or []
     actions, cases, refs = {}, {}, {}
     routed, hit_case, candidates_seen = "", None, set()
+    excluded_from_events = set()
     route_seen = False
 
     def case(cid):
@@ -257,32 +266,38 @@ def trace_facts(st) -> dict:
                         break
         if a == "triage_semantic" and not routed and ev.get("namespace"):
             routed = str(ev["namespace"]).rstrip("/")
+        # 一个事件里点名的 case **按集合算**：同一个事件常常同时写 `candidates` 与
+        # `considered_candidates`（后者是前者的超集），逐字段加会把同一次触达记两遍
+        # ——实测一单 3 条候选被记成 selected 5 / loaded 2。
+        sel = set()
+        loaded = set()
+        excluded = set()
         if a == "hit" and ev.get("case"):
             hit_case = hit_case or str(ev["case"])
-            case(str(ev["case"]))["selected"] += 1
-        # 被加载 = 读了正文：阶段二取全文，以及随后的 quickly_check（它在全文之上做验证）。
+            sel.add(str(ev["case"]))
         if a == "load_full":
-            for cid in (ev.get("candidates") or []):
-                if isinstance(cid, str):
-                    case(cid)["loaded"] += 1
+            loaded |= {c for c in (ev.get("candidates") or []) if isinstance(c, str)}
         if a == "quickly_check" and ev.get("case"):
-            c = case(str(ev["case"]))
-            c["selected"] += 1
-            c["loaded"] += 1
-        # 被选中 = 进了候选集（含只看了行、没取全文的那些）。
+            # quickly_check 在阶段二的全文之上做验证：点到它即进过候选集、也读过正文。
+            sel.add(str(ev["case"]))
+            loaded.add(str(ev["case"]))
         for key in ("candidates", "considered_candidates"):
             v = ev.get(key)
             if isinstance(v, list):
                 for cid in v:
                     if isinstance(cid, str):
                         candidates_seen.add(cid)
-                        case(cid)["selected"] += 1
-        # 被排除 = 检索到但被筛掉。`excluded_cases` 可能挂在任何事件上（`miss` 事件、`hit`、
-        # 以及顶层的同名列表），**只在这里计一次**：早先另有一个 `if a == "miss"` 分支，
-        # 同一事件的同名列表因此被算两遍（实测 4 条 case 记成 3，按口径应为 2）。
-        for cid in (ev.get("excluded_cases") or []):
-            if isinstance(cid, str):
-                case(cid)["excluded"] += 1
+                        sel.add(cid)
+        # 被排除 = 检索到但被筛掉。`excluded_cases` 可能挂在任何事件上，也可能只写在顶层
+        # （顶层是这一单的汇总）——**同一个 id 只计一次**：事件里出现过就不再记顶层的。
+        excluded |= {c for c in (ev.get("excluded_cases") or []) if isinstance(c, str)}
+        for cid in sel:
+            case(cid)["selected"] += 1
+        for cid in loaded:
+            case(cid)["loaded"] += 1
+        for cid in excluded:
+            case(cid)["excluded"] += 1
+            excluded_from_events.add(cid)
         if a == "reference_lookup":
             # `lookups` 记「查了一条先验」——事件在就算查过，与三态是否记录无关。三态缺记录的
             # 事件因此表现为 `lookups > hit+miss+skipped`，这个差本身就是记账缺口的读数。
@@ -297,8 +312,10 @@ def trace_facts(st) -> dict:
                 if purpose:
                     r["purpose"][purpose] = r["purpose"].get(purpose, 0) + 1
 
+    # 顶层 `excluded_cases` 与事件里的同名列表是同一个事实的两种写法：事件里已经记过的
+    # 不再从顶层补，否则一单的「被排除」会被算成 2。
     for cid in (st.get("excluded_cases") or []):
-        if isinstance(cid, str):
+        if isinstance(cid, str) and cid not in excluded_from_events:
             case(cid)["excluded"] += 1
 
     ref_ids_all = []

@@ -141,10 +141,27 @@ class FactsTest(Fixture):
         self.assertEqual(facts["cases"]["CASE-X"]["excluded"], 1)
         self.assertEqual(facts["cases"]["CASE-Y"]["excluded"], 1)
 
-    def test_top_level_and_event_excluded_cases_add_up(self):
+    def test_top_level_rollup_is_not_counted_twice(self):
+        """顶层 `excluded_cases` 是这一单的汇总，与事件里的同名列表是同一个事实，只计一次。"""
         facts = tea.trace_facts({"excluded_cases": ["CASE-X"], "trace": [
             {"role": "agent", "action": "miss", "excluded_cases": ["CASE-X"]}]})
-        self.assertEqual(facts["cases"]["CASE-X"]["excluded"], 2, "两个位置各记一次 = 2，不是 3")
+        self.assertEqual(facts["cases"]["CASE-X"]["excluded"], 1)
+
+    def test_two_separate_exclusions_count_twice(self):
+        """两次各自排除同一个候选 = 两次触达，计 2。"""
+        facts = tea.trace_facts({"trace": [
+            {"role": "agent", "action": "miss", "excluded_cases": ["CASE-X"]},
+            {"role": "agent", "action": "miss", "excluded_cases": ["CASE-X"]}]})
+        self.assertEqual(facts["cases"]["CASE-X"]["excluded"], 2)
+
+    def test_one_event_counting_both_candidate_fields_counts_once(self):
+        """同一事件同时写 `candidates` 与 `considered_candidates` 时按集合算（后者是超集）。"""
+        facts = tea.trace_facts({"trace": [{"role": "agent", "action": "load_full",
+                                           "candidates": ["C"], "considered_candidates": ["C", "D"]}]})
+        self.assertEqual(facts["cases"]["C"]["selected"], 1)
+        self.assertEqual(facts["cases"]["C"]["loaded"], 1)
+        self.assertEqual(facts["cases"]["D"]["selected"], 1)
+        self.assertEqual(facts["cases"]["D"]["loaded"], 0, "D 只是被看过，没取全文")
 
     def test_route_and_hit_case(self):
         facts = tea.trace_facts(TRACE)
