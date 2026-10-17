@@ -65,3 +65,25 @@
 - {run: 2026-10-17-2125, deployment: ascend-sleuth, checkout: 896493c, kb_rev: b752859, kind: tool, id: todo_write, calls: 1, p50_ms: 26, p90_ms: 26, errors: 0, timeouts: 0}
 - {run: 2026-10-17-2125, deployment: ascend-sleuth, checkout: 896493c, kb_rev: b752859, kind: tool, id: update_goal, calls: 1, p50_ms: 43, p90_ms: 43, errors: 0, timeouts: 0}
 - {run: 2026-10-17-2125, deployment: ascend-sleuth, checkout: 896493c, kb_rev: b752859, kind: tool, id: write, calls: 16, p50_ms: 56, p90_ms: 82, errors: 0, timeouts: 0}
+- {run: 2026-10-18-0749, deployment: ascend-sleuth, checkout: 4a923cd, kb_rev: b752859, sessions: 1, kind: case, id: VLLM-ASC-10998, selected: 3, loaded: 2, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+- {run: 2026-10-18-0749, deployment: ascend-sleuth, checkout: 4a923cd, kb_rev: b752859, sessions: 1, kind: case, id: VLLM-ASC-13934, selected: 3, loaded: 2, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+- {run: 2026-10-18-0749, deployment: ascend-sleuth, checkout: 4a923cd, kb_rev: b752859, sessions: 1, kind: ref, id: fabricmem-unified-addressing-and-transfer, lookups: 1, hit: 1, miss: 0, skipped: 0, purpose: {background: 1}}
+- {run: 2026-10-18-0749, deployment: ascend-sleuth, checkout: 4a923cd, kb_rev: b752859, sessions: 1, kind: ref, id: hixl-error-codes, lookups: 1, hit: 1, miss: 0, skipped: 0, purpose: {signature: 1}}
+- {run: 2026-10-18-0749, deployment: ascend-sleuth, checkout: 4a923cd, kb_rev: b752859, sessions: 1, kind: ref, id: hixl-tool-route-and-comm-res, lookups: 1, hit: 1, miss: 0, skipped: 0, purpose: {background: 1}}
+- {run: 2026-10-18-0749, deployment: ascend-sleuth, checkout: 4a923cd, kb_rev: b752859, kind: tool, id: ask_user_question, calls: 1, p50_ms: 821713, p90_ms: 821713, errors: 0, timeouts: 0}
+- {run: 2026-10-18-0749, deployment: ascend-sleuth, checkout: 4a923cd, kb_rev: b752859, kind: tool, id: bash, calls: 505, p50_ms: 234, p90_ms: 7164, errors: 0, timeouts: 0}
+- {run: 2026-10-18-0749, deployment: ascend-sleuth, checkout: 4a923cd, kb_rev: b752859, kind: tool, id: create_goal, calls: 1, p50_ms: 46, p90_ms: 46, errors: 0, timeouts: 0}
+- {run: 2026-10-18-0749, deployment: ascend-sleuth, checkout: 4a923cd, kb_rev: b752859, kind: tool, id: edit, calls: 19, p50_ms: 49, p90_ms: 54, errors: 0, timeouts: 0}
+- {run: 2026-10-18-0749, deployment: ascend-sleuth, checkout: 4a923cd, kb_rev: b752859, kind: tool, id: get_goal, calls: 1, p50_ms: 23, p90_ms: 23, errors: 0, timeouts: 0}
+- {run: 2026-10-18-0749, deployment: ascend-sleuth, checkout: 4a923cd, kb_rev: b752859, kind: tool, id: job_kill, calls: 1, p50_ms: 66, p90_ms: 66, errors: 0, timeouts: 0}
+- {run: 2026-10-18-0749, deployment: ascend-sleuth, checkout: 4a923cd, kb_rev: b752859, kind: tool, id: job_output, calls: 19, p50_ms: 60147, p90_ms: 194760, errors: 0, timeouts: 0}
+- {run: 2026-10-18-0749, deployment: ascend-sleuth, checkout: 4a923cd, kb_rev: b752859, kind: tool, id: list_agents, calls: 1, p50_ms: 29, p90_ms: 29, errors: 0, timeouts: 0}
+- {run: 2026-10-18-0749, deployment: ascend-sleuth, checkout: 4a923cd, kb_rev: b752859, kind: tool, id: present, calls: 2, p50_ms: 27, p90_ms: 27, errors: 0, timeouts: 0}
+- {run: 2026-10-18-0749, deployment: ascend-sleuth, checkout: 4a923cd, kb_rev: b752859, kind: tool, id: read, calls: 15, p50_ms: 48, p90_ms: 80975398, errors: 0, timeouts: 0}
+- {run: 2026-10-18-0749, deployment: ascend-sleuth, checkout: 4a923cd, kb_rev: b752859, kind: tool, id: read_image, calls: 18, p50_ms: 309, p90_ms: 369, errors: 0, timeouts: 0}
+- {run: 2026-10-18-0749, deployment: ascend-sleuth, checkout: 4a923cd, kb_rev: b752859, kind: tool, id: send_message, calls: 2, p50_ms: 28, p90_ms: 29, errors: 0, timeouts: 0}
+- {run: 2026-10-18-0749, deployment: ascend-sleuth, checkout: 4a923cd, kb_rev: b752859, kind: tool, id: skill, calls: 3, p50_ms: 177308, p90_ms: 29709052, errors: 0, timeouts: 0}
+- {run: 2026-10-18-0749, deployment: ascend-sleuth, checkout: 4a923cd, kb_rev: b752859, kind: tool, id: subagent, calls: 5, p50_ms: 254, p90_ms: 277, errors: 0, timeouts: 0}
+- {run: 2026-10-18-0749, deployment: ascend-sleuth, checkout: 4a923cd, kb_rev: b752859, kind: tool, id: todo_write, calls: 1, p50_ms: 26, p90_ms: 26, errors: 0, timeouts: 0}
+- {run: 2026-10-18-0749, deployment: ascend-sleuth, checkout: 4a923cd, kb_rev: b752859, kind: tool, id: update_goal, calls: 1, p50_ms: 43, p90_ms: 43, errors: 0, timeouts: 0}
+- {run: 2026-10-18-0749, deployment: ascend-sleuth, checkout: 4a923cd, kb_rev: b752859, kind: tool, id: write, calls: 18, p50_ms: 56, p90_ms: 80, errors: 0, timeouts: 0}

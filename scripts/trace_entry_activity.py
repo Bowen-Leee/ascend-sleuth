@@ -141,11 +141,11 @@ def read_session_log(path: Path):
     for ev in _json_events(text):
         t, d = ev.get("type"), ev.get("data") or {}
         if t == "assistant/message" and d.get("usage"):
-            attempts[(d.get("turn"), d.get("step"))] = (d["usage"], "final")
+            attempts[(d.get("turn"), d.get("step"))] = (d["usage"], "final", ev.get("time") or 0)
         elif t == "assistant/chunk" and (d.get("chunk") or {}).get("type") == "usage":
             key = (d.get("turn"), d.get("step"))
-            if attempts.get(key, (None, None))[1] != "final":
-                attempts[key] = (d["chunk"]["usage"], "stream")
+            if attempts.get(key, (None, None, None))[1] != "final":
+                attempts[key] = (d["chunk"]["usage"], "stream", ev.get("time") or 0)
         elif t == "tool/call":
             calls[d.get("callId")] = {"name": d.get("name") or "?", "t": ev.get("time") or 0,
                                       "step": d.get("step"), "args": d.get("arguments") or ""}
@@ -160,11 +160,16 @@ def read_session_log(path: Path):
                                          or (d.get("error") or {}).get("code") or "")}
 
     tokens = {"uncached": 0, "cache_read": 0, "cache_write": 0, "out": 0}
-    for usage, _kind in attempts.values():
-        tokens["uncached"] += int(usage.get("inputTokens") or 0)
-        tokens["cache_read"] += int(usage.get("cacheReadTokens") or 0)
-        tokens["cache_write"] += int(usage.get("cacheWriteTokens") or 0)
-        tokens["out"] += int(usage.get("outputTokens") or 0)
+    usage_points = []          # [{t, uncached, cache_read, cache_write, out}]，按时间可切窗口
+    for usage, _kind, t_at in attempts.values():
+        u = {"t": int(t_at or 0),
+             "uncached": int(usage.get("inputTokens") or 0),
+             "cache_read": int(usage.get("cacheReadTokens") or 0),
+             "cache_write": int(usage.get("cacheWriteTokens") or 0),
+             "out": int(usage.get("outputTokens") or 0)}
+        usage_points.append(u)
+        for k in tokens:
+            tokens[k] += u[k]
 
     tool_calls, stats = [], {}
     for cid, c in calls.items():
@@ -174,6 +179,7 @@ def read_session_log(path: Path):
         code = (r or {}).get("code") or ""
         timeout = err and "timeout" in code.lower()
         tool_calls.append({"tool": c["name"], "step": c["step"], "ms": ms,
+                           "t": int(c["t"] or 0), "end": int(r["t"]) if (r and r.get("t")) else None,
                            "ok": not err, "args": _brief_args(c["name"], c["args"]),
                            **({"error": code or "error"} if err else {})})
         s = stats.setdefault(c["name"], {"durs": [], "errors": 0, "timeouts": 0, "calls": 0})
@@ -184,8 +190,9 @@ def read_session_log(path: Path):
             s["errors"] += 1
         if timeout:
             s["timeouts"] += 1
-    tool_calls.sort(key=lambda x: (x["step"] or 0, x["ms"] or 0))
-    return {"tokens": tokens, "tools": stats, "tool_calls": tool_calls}, None
+    tool_calls.sort(key=lambda x: x["t"] or 0)
+    return {"tokens": tokens, "tools": stats, "tool_calls": tool_calls,
+            "usage_points": usage_points}, None
 
 
 def _brief_args(name: str, args: str) -> str:
@@ -342,6 +349,90 @@ def trace_facts(st) -> dict:
         "load_index_events": [ev for ev in trace if ev.get("action") == "load_index"],
         "load_full_events": [ev for ev in trace if ev.get("action") == "load_full"],
     }
+
+
+def _epoch_ms(v):
+    """把 `ts` 归一成 epoch 毫秒。认三种写法：整数毫秒、秒级浮点、ISO 8601 字符串。
+
+    轨迹里的 `ts` 是 agent 自己打的（`python3 -c 'import time;print(round(time.time()*1000))'`），
+    不同人会写成不同形态；这里收几种常见写法，认不出来就返回 None（那一格按没记处理，
+    不猜——猜错会把耗时挂到别的步上）。
+    """
+    if v is None or v == "":
+        return None
+    # 毫秒还是秒，按量级判：2026 年的毫秒是 1.7e12 量级、秒是 1.7e9 量级。
+    # 落在两者之间的按秒；比 1e8 还小的当毫秒原样用（不是真实时间戳，别乘 1000 把窗口放大一千倍）。
+    def norm(x):
+        if x >= 1e11:
+            return int(x)
+        if x >= 1e8:
+            return int(x * 1000)
+        return int(x)
+    if isinstance(v, (int, float)):
+        return norm(v)
+    s = str(v).strip()
+    try:
+        return norm(float(s))
+    except ValueError:
+        pass
+    try:
+        from datetime import datetime
+        return int(datetime.fromisoformat(s.replace("Z", "+00:00")).timestamp() * 1000)
+    except ValueError:
+        return None
+
+
+def step_cost(trace, log):
+    """按诊断步切窗口，把会话日志的调用与 token 折进窗口 → 每步的成本。
+
+    **为什么要这一步**：「每步花了多少」是诊断过程唯一能指导动作的读数（哪一步最贵、该裁哪
+    一步），但它跨两个数据源：步属于轨迹，耗时与 token 属于会话日志。两边的键不同源——
+    轨迹的 `step` 是诊断自己的 1..6，会话日志的 `step` 是 harness 轮次。所以靠**时间**关联：
+    每个诊断事件带 `ts`，相邻两个步边界之间就是一个窗口，落在窗口里的调用与用量归那一步。
+
+    轨迹没有 `ts` 时返回 None（那一格显示「本次没记」）——不按顺序猜，猜错会把耗时挂到
+    相邻步上，比没有更坏。
+    """
+    if not log:
+        return None
+    starts = {}
+    for ev in trace:
+        ms_t = _epoch_ms(ev.get("ts"))
+        step = ev.get("step")
+        if ms_t is None or step is None:
+            continue
+        starts.setdefault(step, ms_t)
+        starts[step] = min(starts[step], ms_t)
+    if len(starts) < 2:
+        return None                 # 只有一步有时间戳，切不出窗口
+    order = sorted(starts, key=lambda k: starts[k])
+    # 末步的右边界是「直到日志末尾」：用 None 表示开区间，不拿最后一个时间点当上界
+    # （否则最后一条调用/用量正好落在边界上会被漏掉）。
+    bounds = []
+    for i, st in enumerate(order):
+        lo = starts[st]
+        hi = starts[order[i + 1]] if i + 1 < len(order) else None
+        bounds.append((st, lo, hi))
+    out = []
+    for st, lo, hi in bounds:
+        def inside(t):
+            t = t or 0
+            return t >= lo and (hi is None or t < hi)
+        calls = [c for c in (log.get("tool_calls") or []) if inside(c.get("t"))]
+        ups = [u for u in (log.get("usage_points") or []) if inside(u.get("t"))]
+        tok = {"uncached": sum(u["uncached"] for u in ups),
+               "cache_read": sum(u["cache_read"] for u in ups),
+               "cache_write": sum(u["cache_write"] for u in ups),
+               "out": sum(u["out"] for u in ups)}
+        out.append({
+            "step": st,
+            "from": lo, "to": (hi if hi is not None else (max([c.get("t") or 0 for c in calls] + [u.get("t") or 0 for u in ups] + [lo]))),
+            "calls": len(calls),
+            "ms": sum((c.get("ms") or 0) for c in calls),
+            "tokens": tok,
+            "tools": sorted({c["tool"] for c in calls}),
+        })
+    return out
 
 
 def strength_of(facts, self_resolved: bool) -> str:
@@ -754,6 +845,9 @@ def session_doc(st, sid, facts, log, log_note, case_files, root) -> dict:
         "feedback": facts["feedback"],
         "sedimented": facts["sedimented"],
         "cost": {"tokens": (log or {}).get("tokens") or None,
+                 # 每步成本：按 `ts` 切窗口把会话日志的调用与 token 折进诊断步。
+                 # 轨迹没有 `ts` 时为 None（面板显示「本次没记」，不按顺序硬猜）。
+                 "step_cost": step_cost(st.get("trace") or [], log),
                  "index_read_tok": index_read_account(root, facts, case_files,
                                                       category=st.get("detected_category"))},
         "strength": strength_of(facts, self_res),

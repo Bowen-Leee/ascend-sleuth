@@ -240,6 +240,52 @@ class SessionLogTest(Fixture):
         self.assertEqual(by["grep"]["args"], "507014")
 
 
+class StepCostTest(Fixture):
+    """每步成本：靠 `ts` 切窗口把会话日志折进诊断步。"""
+
+    def test_no_ts_means_no_guess(self):
+        """轨迹没有 ts → 返回 None（面板显示「本次没记」），不按顺序猜。"""
+        log, _ = tea.read_session_log(self.sessions / "ws" / "demo-sid" / "session.jsonl.zstd")
+        self.assertIsNone(tea.step_cost([{"step": 1}, {"step": 2}], log))
+
+    def test_one_timestamped_step_is_not_enough(self):
+        log, _ = tea.read_session_log(self.sessions / "ws" / "demo-sid" / "session.jsonl.zstd")
+        self.assertIsNone(tea.step_cost([{"step": 1, "ts": 1000}], log))
+
+    def test_calls_and_tokens_are_folded_into_their_window(self):
+        log = {
+            "tool_calls": [
+                {"tool": "read", "t": 1000, "ms": 100, "step": 1},
+                {"tool": "grep", "t": 2500, "ms": 300, "step": 1},
+                {"tool": "bash", "t": 4000, "ms": 50, "step": 2},
+            ],
+            "usage_points": [
+                {"t": 1100, "uncached": 10, "cache_read": 5, "cache_write": 0, "out": 2},
+                {"t": 2600, "uncached": 7, "cache_read": 3, "cache_write": 0, "out": 1},
+                {"t": 4100, "uncached": 1, "cache_read": 0, "cache_write": 0, "out": 9},
+            ],
+        }
+        trace = [{"step": 1, "ts": 900}, {"step": 2, "ts": 3000}]
+        out = {r["step"]: r for r in tea.step_cost(trace, log)}
+        self.assertEqual((out[1]["calls"], out[1]["ms"]), (2, 400))
+        self.assertEqual((out[2]["calls"], out[2]["ms"]), (1, 50))
+        self.assertEqual(out[1]["tokens"]["uncached"], 17)
+        self.assertEqual(out[2]["tokens"]["out"], 9)
+        self.assertEqual(out[1]["tools"], ["grep", "read"])
+
+    def test_ts_accepts_epoch_ms_seconds_and_iso(self):
+        self.assertEqual(tea._epoch_ms(1792222333444), 1792222333444)
+        self.assertEqual(tea._epoch_ms(1792222333.444), 1792222333444)
+        self.assertEqual(tea._epoch_ms("1970-01-01T00:00:01+00:00"), 1000)
+        self.assertIsNone(tea._epoch_ms("刚刚"))
+
+    def test_real_row_shape_survives_the_join(self):
+        """每步成本只留本机明细，不进记录行（明细含命令摘要与现场信息）。"""
+        log, _ = tea.read_session_log(self.sessions / "ws" / "demo-sid" / "session.jsonl.zstd")
+        self.assertIn("usage_points", log)
+        self.assertTrue(all("t" in c for c in log["tool_calls"]))
+
+
 class DeltaTest(Fixture):
     def test_first_run_writes_rows_for_every_touched_entry(self):
         self.write_trace()

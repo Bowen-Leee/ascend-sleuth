@@ -5,7 +5,7 @@
 #
 # `tools` 的 p50_ms/p90_ms 是**按调用次数加权的各运行分位均值**：跨运行的分位数无法从各运行的
 # 分位数精确合成，这里给的是量级读数，逐次与逐运行的精确值只在本机明细里（metrics/entry-activity.local/）。
-covered: {deployment: ascend-sleuth, runs: 3, weeks: [2026-W42], checkouts: [896493c]}
+covered: {deployment: ascend-sleuth, runs: 4, weeks: [2026-W42], checkouts: [4a923cd, 896493c]}
 cases:
   VLLM-ASC-10322:
     totals: {selected: 3, loaded: 2, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
@@ -37,6 +37,12 @@ cases:
       2026-W42: {selected: 1, loaded: 0, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
     recent:
     - {run: 2026-10-17-2124, week: 2026-W42, selected: 1, loaded: 0, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+  VLLM-ASC-10998:
+    totals: {selected: 3, loaded: 2, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+    by_week:
+      2026-W42: {selected: 3, loaded: 2, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+    recent:
+    - {run: 2026-10-18-0749, week: 2026-W42, selected: 3, loaded: 2, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
   VLLM-ASC-12030:
     totals: {selected: 3, loaded: 1, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
     by_week:
@@ -94,6 +100,12 @@ cases:
       2026-W42: {selected: 0, loaded: 0, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
     recent:
     - {run: 2026-10-17-2124, week: 2026-W42, selected: 0, loaded: 0, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+  VLLM-ASC-13934:
+    totals: {selected: 3, loaded: 2, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+    by_week:
+      2026-W42: {selected: 3, loaded: 2, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+    recent:
+    - {run: 2026-10-18-0749, week: 2026-W42, selected: 3, loaded: 2, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
   VLLM-ASC-14273:
     totals: {selected: 1, loaded: 1, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
     by_week:
@@ -222,6 +234,13 @@ references:
       2026-W42: {lookups: 4, hit: 2, miss: 1, skipped: 0, purpose: {signature: 2, background: 1, fix: 1}}
     recent:
     - {run: 2026-10-17-2124, week: 2026-W42, lookups: 4, hit: 2, miss: 1, skipped: 0, purpose: {signature: 2, background: 1, fix: 1}}
+  fabricmem-unified-addressing-and-transfer:
+    totals: {lookups: 1, hit: 1, miss: 0, skipped: 0}
+    purpose: {background: 1}
+    by_week:
+      2026-W42: {lookups: 1, hit: 1, miss: 0, skipped: 0, purpose: {background: 1}}
+    recent:
+    - {run: 2026-10-18-0749, week: 2026-W42, lookups: 1, hit: 1, miss: 0, skipped: 0, purpose: {background: 1}}
   fractal-nz-layout:
     totals: {lookups: 1, hit: 1, miss: 0, skipped: 0}
     purpose: {background: 1}
@@ -229,6 +248,20 @@ references:
       2026-W42: {lookups: 1, hit: 1, miss: 0, skipped: 0, purpose: {background: 1}}
     recent:
     - {run: 2026-10-17-2124, week: 2026-W42, lookups: 1, hit: 1, miss: 0, skipped: 0, purpose: {background: 1}}
+  hixl-error-codes:
+    totals: {lookups: 1, hit: 1, miss: 0, skipped: 0}
+    purpose: {signature: 1}
+    by_week:
+      2026-W42: {lookups: 1, hit: 1, miss: 0, skipped: 0, purpose: {signature: 1}}
+    recent:
+    - {run: 2026-10-18-0749, week: 2026-W42, lookups: 1, hit: 1, miss: 0, skipped: 0, purpose: {signature: 1}}
+  hixl-tool-route-and-comm-res:
+    totals: {lookups: 1, hit: 1, miss: 0, skipped: 0}
+    purpose: {background: 1}
+    by_week:
+      2026-W42: {lookups: 1, hit: 1, miss: 0, skipped: 0, purpose: {background: 1}}
+    recent:
+    - {run: 2026-10-18-0749, week: 2026-W42, lookups: 1, hit: 1, miss: 0, skipped: 0, purpose: {background: 1}}
   msllm-startup-version-env-triage:
     totals: {lookups: 2, hit: 0, miss: 0, skipped: 0}
     purpose: {signature: 2}
@@ -279,22 +312,24 @@ references:
     recent:
     - {run: 2026-10-17-2124, week: 2026-W42, lookups: 1, hit: 1, miss: 0, skipped: 0, purpose: {background: 1}}
 tools:
-  ask_user_question: {calls: 1, p50_ms: 821713, p90_ms: 821713, errors: 0, timeouts: 0}
-  bash: {calls: 359, p50_ms: 130, p90_ms: 6485, errors: 0, timeouts: 0}
-  create_goal: {calls: 1, p50_ms: 46, p90_ms: 46, errors: 0, timeouts: 0}
-  edit: {calls: 19, p50_ms: 49, p90_ms: 54, errors: 0, timeouts: 0}
-  get_goal: {calls: 1, p50_ms: 23, p90_ms: 23, errors: 0, timeouts: 0}
-  job_kill: {calls: 1, p50_ms: 66, p90_ms: 66, errors: 0, timeouts: 0}
-  job_output: {calls: 15, p50_ms: 60147, p90_ms: 184161, errors: 0, timeouts: 0}
-  list_agents: {calls: 1, p50_ms: 29, p90_ms: 29, errors: 0, timeouts: 0}
-  read: {calls: 15, p50_ms: 32, p90_ms: 59, errors: 0, timeouts: 0}
-  send_message: {calls: 2, p50_ms: 28, p90_ms: 29, errors: 0, timeouts: 0}
-  skill: {calls: 1, p50_ms: 35, p90_ms: 35, errors: 0, timeouts: 0}
-  subagent: {calls: 5, p50_ms: 254, p90_ms: 277, errors: 0, timeouts: 0}
-  todo_write: {calls: 1, p50_ms: 26, p90_ms: 26, errors: 0, timeouts: 0}
-  update_goal: {calls: 1, p50_ms: 43, p90_ms: 43, errors: 0, timeouts: 0}
-  write: {calls: 16, p50_ms: 56, p90_ms: 82, errors: 0, timeouts: 0}
-cold: {cases: 145}
+  ask_user_question: {calls: 2, p50_ms: 821713, p90_ms: 821713, errors: 0, timeouts: 0}
+  bash: {calls: 864, p50_ms: 191, p90_ms: 6882, errors: 0, timeouts: 0}
+  create_goal: {calls: 2, p50_ms: 46, p90_ms: 46, errors: 0, timeouts: 0}
+  edit: {calls: 38, p50_ms: 49, p90_ms: 54, errors: 0, timeouts: 0}
+  get_goal: {calls: 2, p50_ms: 23, p90_ms: 23, errors: 0, timeouts: 0}
+  job_kill: {calls: 2, p50_ms: 66, p90_ms: 66, errors: 0, timeouts: 0}
+  job_output: {calls: 34, p50_ms: 60147, p90_ms: 190084, errors: 0, timeouts: 0}
+  list_agents: {calls: 2, p50_ms: 29, p90_ms: 29, errors: 0, timeouts: 0}
+  present: {calls: 2, p50_ms: 27, p90_ms: 27, errors: 0, timeouts: 0}
+  read: {calls: 30, p50_ms: 40, p90_ms: 40487728, errors: 0, timeouts: 0}
+  read_image: {calls: 18, p50_ms: 309, p90_ms: 369, errors: 0, timeouts: 0}
+  send_message: {calls: 4, p50_ms: 28, p90_ms: 29, errors: 0, timeouts: 0}
+  skill: {calls: 4, p50_ms: 132990, p90_ms: 22281798, errors: 0, timeouts: 0}
+  subagent: {calls: 10, p50_ms: 254, p90_ms: 277, errors: 0, timeouts: 0}
+  todo_write: {calls: 2, p50_ms: 26, p90_ms: 26, errors: 0, timeouts: 0}
+  update_goal: {calls: 2, p50_ms: 43, p90_ms: 43, errors: 0, timeouts: 0}
+  write: {calls: 34, p50_ms: 56, p90_ms: 81, errors: 0, timeouts: 0}
+cold: {cases: 143}
 cold_never_looked_up:
 - a5-950dt-memory-spec
 - a5-950pr-memory-spec
@@ -385,7 +420,6 @@ cold_never_looked_up:
 - dvpp-vpc-fault-patterns
 - elemwise-vs-reduce-bound
 - exec-npu-cmd-async-launch
-- fabricmem-unified-addressing-and-transfer
 - fault-collect-env
 - fe-error-codes
 - flash-attention-stage-pipeline
@@ -411,8 +445,6 @@ cold_never_looked_up:
 - hdmi-fault-patterns
 - hif8-and-mxfp8-low-precision-training
 - hif8-type-contract
-- hixl-error-codes
-- hixl-tool-route-and-comm-res
 - host-kernel-log-collection
 - hostbound-evidence-gate
 - hw-task-scheduler-routing

@@ -100,6 +100,7 @@ flowchart LR
 | `outcome.fix_emitted` | 是否给出了 fix | 沉淀漏斗的一格 | 顶层 `outcome.fix_emitted`，字段说明在 `diagnosis_state.yaml.example`；现有轨迹里不一定写，缺了就按「本次没记」显示 | 现成 |
 | `sedimented` | 沉淀状态与案例 id | 面板的沉淀漏斗（诊断数 → 沉淀数 → 转正数） | 顶层 `sedimented` | 现成 |
 | `cost.tokens` | 未缓存输入、缓存读、缓存写、输出 | 会话成本中位数与 P90、按动作占比 | 会话日志按 `(turn, step)` 去重、定稿优先 | 已落地 |
+| `cost.step_cost` | 每个诊断步的调用次数、耗时、token，按步切窗口 | 维护者裁最贵的步骤（合并、跳过、换更便宜的做法） | 轨迹事件的 `ts` 切窗口，窗口内的调用与用量归那一步；没有 `ts` 时整段为空 | 已落地 |
 | `cost.index_read_tok` | 一次诊断读进来的 token 账，四个分项 | 命名空间 × 类别格子（下文简称格子）的读入成本 | `scripts/index_read_cost.py` 按视图现算；按会话归属取**这次会话实际读了哪些面** | 已落地 |
 | `strength` | 结论强度档（与 3.6 的指标强度不是一回事） | 强度分布 | 见下表 | 已落地 |
 
@@ -167,7 +168,8 @@ touched:
 outcome: {status: resolved, fix_emitted: true}
 feedback: {case: VLLM-ASC-12430, outcome: resolved, confirmed_at: '2026-09-16'}
 sedimented: {state: knowledge, case_id: VLLM-ASC-12430}
-cost: {tokens: {uncached: -, cache_read: -, cache_write: -, out: -}, index_read_tok: -}
+cost: {tokens: {uncached: -, cache_read: -, cache_write: -, out: -},
+       step_cost: [{step: -, from: -, to: -, calls: -, ms: -, tokens: {}, tools: []}], index_read_tok: -}
 tool_calls:                        # 逐次，见上表
 strength: self-report              # 来源会话自证，取值见本节字段取值表
 ```
@@ -423,7 +425,7 @@ flowchart LR
 | 先验读取三态与消费点 | 词条作者，该查没查改流程、查了没用改词条 | 按三态分流 | 走先验读取步骤的会话 | 确定性 | 已落地（生成物的 `references` 段） |
 | 漏检类别 | 维护者，补词法或挪类别 | 按类别补 triage 词 | 未路由命中的会话 | 确定性 | 蓝图：字段已有产出，指标无落点 |
 | 步数与动作分布 | skill 维护者，改哪一步的正文 | 出现最多又不推进的动作优先改 | 全部诊断会话 | 确定性 | 已落地 |
-| 分步成本 | 维护者，裁最贵的步骤 | 定位最贵步骤，看能否合并或跳过 | 有会话日志的会话 | 确定性 | 已落地（本机明细的 `cost` 段） |
+| 分步成本 | 维护者，裁最贵的步骤 | 定位最贵步骤，看能否合并或跳过 | 有会话日志且轨迹带 `ts` 的会话 | 确定性 | 已落地（本机明细的 `cost.step_cost`；没有 `ts` 的会话为空，不按事件顺序估） |
 | 工具耗时与失败分布 | 维护者，判哪个工具该设硬超时、哪种调用总失败 | 定位最贵或最常失败的调用形态 | 该工具的调用次数 | 次数与失败数确定性；跨运行分位是加权均值（代理） | 已落地（生成物的 `tools` 段） |
 | 一次诊断的读入账 | 维护者，治超预算的读路径 | 按四个分项定位该治哪条 | 全部诊断会话 | 确定性 | 已落地（本机明细的 `cost.index_read_tok`） |
 | 停止原因 | 维护者，判断该不该停在这里 | 未记录的会话先补记录 | 全部诊断会话 | 确定性 | 已落地（本机明细的 `outcome.stop_reason`） |
