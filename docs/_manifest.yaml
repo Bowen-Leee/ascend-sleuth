@@ -94,6 +94,9 @@ docs:
   - path: docs/mechanism/ixn-replay.md
     layer: mechanism
     purpose: 交互面评测（追问 / 信息充分性 / 过早结论）
+  - path: docs/mechanism/diagnosis-observability.md
+    layer: mechanism
+    purpose: 诊断观测的目标态：一次诊断记什么字段、十次诊断怎么汇总成一份上仓读数、与知识库的解耦边界、并发与冲突处理、反馈联动、指标清单与面板；取舍在 ADR-0011
   - path: docs/mechanism/status.md
     layer: mechanism
     purpose: 机制状态总表、未建与空转、代码与文件入口对照、相邻文档分工（全库唯一一份）
