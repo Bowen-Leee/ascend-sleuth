@@ -152,6 +152,20 @@ function allSessions(workspaceFilter) {
 const json = process.argv.includes('--json')
 const fmt = n => n.toLocaleString('en-US')
 
+// --decompress <file>：只把会话日志（多帧 zstd）解成 JSONL 文本吐到 stdout。
+// 谁用：`scripts/trace_entry_activity.py`。Python 标准库没有 zstd，而工具调用与 token 账单都在
+// 这份日志里；让 Python 直接解析、只借这里解压，是为了**同一套解析口径只有一份实现**
+// （若两边各解析一次，两处口径迟早对不上）。
+if (process.argv.includes('--decompress')) {
+  const target = arg('decompress')
+  if (!target || target === true || !existsSync(String(target))) {
+    console.error(`--decompress 需要存在的文件路径：${target ?? '(none)'}`)
+    process.exit(2)
+  }
+  process.stdout.write(readSessionLog(String(target)))
+  process.exit(0)
+}
+
 if (process.argv.includes('--all')) {
   const list = allSessions(String(arg('workspace', '') || ''))
   const rows = list.map(s => ({ ...s, summary: summarize(s.file) }))
