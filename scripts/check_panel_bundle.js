@@ -529,12 +529,16 @@ function checkFidelity(artifactRel, half) {
   for (const panel of PANELS) {
     const rel = panel[half]
     const raw = fs.readFileSync(path.join(repo, rel), 'utf8')
-    // 生成器只去掉源文件末尾空白（文件末尾换行），比对时照同一条变换
-    const body = raw.replace(/\s*$/, '')
+    // 生成器做两件事：① 把版本占位符换成 package.json 的 version ② 去掉源文件末尾空白。
+    // 比对必须照同一条变换走，否则"原文逐字嵌进产物"会因为占位符被判红（这不是不一致，
+    // 是生成器的确定性替换）。占位符只有构建期存在，源码里永远不该出现版本字面量。
+    const pkgVersion = JSON.parse(fs.readFileSync(path.join(repo, 'dsh-plugins/dsh-sleuth-panels/package.json'), 'utf8')).version
+    const subbed = raw.replace(/__PANEL_VERSION__/g, pkgVersion)   // 生成器对**替换后**的文本算指纹
+    const body = subbed.replace(/\s*$/, '')
     const label = panel.id + ' ' + half
 
     check(artifact.includes(body), label + ' 原文逐字嵌进产物（' + rel + '）')
-    check(artifact.includes('sha256:' + fingerprint(raw)),
+    check(artifact.includes('sha256:' + fingerprint(subbed)),
       label + ' 产物标记的源文件指纹与当前源文件一致')
   }
 }
