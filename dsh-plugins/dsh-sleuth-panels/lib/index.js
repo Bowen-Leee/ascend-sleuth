@@ -1,6 +1,6 @@
 /* eslint-disable */
 // 生成物 —— 勿手改。由 `node scripts/build_panel_bundle.js` 从下列源文件拼出：
-//   dsh-plugins/ascend-panel/panel-host.js  (sha256:5ab83af4d474)
+//   dsh-plugins/ascend-panel/panel-host.js  (sha256:2f4885d18d53)
 //   dsh-plugins/ev-panel/panel-host.js  (sha256:e45522d60c58)
 // 校验：`node scripts/build_panel_bundle.js --check`（源文件改了没重跑生成器即红）。
 //
@@ -81,7 +81,7 @@ const PANELS = [
     id: 'ascend-panel',
     build(harness) {
       return (function () {
-// ---- dsh-plugins/ascend-panel/panel-host.js (sha256:5ab83af4d474) 原文开始 ----
+// ---- dsh-plugins/ascend-panel/panel-host.js (sha256:2f4885d18d53) 原文开始 ----
 return {
   apply(ctx) {
     const fs = ctx.get('fs')
@@ -512,7 +512,8 @@ return {
                 return {
                   calls: r.toolCallCount || 0,
                   ms: r.toolTotalMs || 0,
-                  tok: (t.uncached || 0) + (t.cache_read || 0) + (t.out || 0),
+                  // 四类都算：展开区的 token 条也按四类画，同一张卡里两个数必须对得上
+                  tok: (t.uncached || 0) + (t.cache_read || 0) + (t.cache_write || 0) + (t.out || 0),
                   stepms: sc.map(x => x.ms),
                 }
               } catch (e) { return null }

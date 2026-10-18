@@ -1,6 +1,6 @@
 /* eslint-disable */
 // 生成物 —— 勿手改。由 `node scripts/build_panel_bundle.js` 从下列源文件拼出：
-//   dsh-plugins/ascend-panel/panel-client.js  (sha256:e0389a838f3c)
+//   dsh-plugins/ascend-panel/panel-client.js  (sha256:af32d109b0cc)
 //   dsh-plugins/ev-panel/panel-client.js  (sha256:9e836d4c1993)
 // 校验：`node scripts/build_panel_bundle.js --check`。
 //
@@ -63,7 +63,7 @@ window.__ModuleLoader__.load({
       id: 'ascend-panel',
       build(host, styles) {
         return (function () {
-// ---- dsh-plugins/ascend-panel/panel-client.js (sha256:e0389a838f3c) 原文开始 ----
+// ---- dsh-plugins/ascend-panel/panel-client.js (sha256:af32d109b0cc) 原文开始 ----
 return {
   apply(ctx) {
     const slots = ctx.get('slots')
@@ -185,6 +185,9 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
       resolved: { label: '已解决', color: 'var(--c-green)', acc: 'var(--acc-green)' },
       in_progress: { label: '进行中', color: 'var(--c-blue)', acc: 'var(--acc-blue)' },
       escalated: { label: '已升级', color: 'var(--c-amber)', acc: 'var(--acc-amber)' },
+      // 「不跟了」写的就是 archived（词表在仓库根 trace-status.yaml）。缺这一项，面板会把它显示成
+      // 灰色的「未知」——用户自己标的结局看不出来，等于没记。
+      archived: { label: '已归档（不跟了）', color: 'var(--c-gray)', acc: 'var(--acc-gray)' },
       unknown: { label: '未知', color: 'var(--c-gray)', acc: 'var(--acc-gray)' },
     }
     const RESUMEABLE = { in_progress: true, escalated: true }
@@ -218,7 +221,7 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
     // 构建时注入的面板包版本（`scripts/build_panel_bundle.js` 把占位符换成 package.json 的 version）。
     // 为什么要有：面板是「装进 profile 的常驻插件 + 浏览器按 rev 缓存」两层，改完看不到新版时
     // 无法区分"装的还是旧包"与"浏览器缓存了旧 bundle"。有这个串，一眼就能判。
-    const PANEL_VERSION = '0.4.1'
+    const PANEL_VERSION = '0.4.2'
 
     function shortUrl(u) {
       const s = String(u).replace(/^https?:\/\//i, '')
@@ -768,7 +771,9 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
       const bars = React.createElement('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 8, alignItems: 'end', height: 84 } },
         [1, 2, 3, 4, 5, 6].map(n => {
           const r = byStep[n]
-          const ms = r ? (r.ms || 0) : null
+          // 有这一步但没记耗时 → null（画虚线写「本次没记」）。**不能 `|| 0`**：
+          // 那会把"没测到"画成"0 秒"，与本面板「没有数据不写 0」的规则相反。
+          const ms = (r && typeof r.ms === 'number') ? r.ms : null
           const h = ms ? Math.max(4, Math.round(ms / maxMs * 100)) : 0
           // 「这些秒数到底是什么」：tooltip 给出调用次数、token 与用到的工具
           const tip = (function () {
@@ -788,13 +793,20 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
                 background: ms === null ? 'transparent' : 'var(--acc-amber-bg, color-mix(in srgb, ' + T.warn + ' 10%, transparent))',
                 border: ms === null ? '1px dashed ' + T.border : 'none' } },
               ms ? React.createElement('i', { style: { display: 'block', width: '100%', height: h + '%', background: 'var(--acc-amber, ' + T.warn + ')', borderRadius: 3 } }) : null),
-            React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', fontSize: 'var(--t-md2)', color: T.text2 } },
-              React.createElement('span', null, String(n)),
-              React.createElement('span', { className: 'sleu-num', style: { color: T.text } }, ms === null ? '—' : msText(ms))))
+            React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', gap: 4, fontSize: 'var(--t-md2)', color: T.text2 } },
+              React.createElement('span', { style: { whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' } }, n + ' ' + STEP_SHORT[n]),
+              React.createElement('span', { className: 'sleu-num', style: { color: T.text, whiteSpace: 'nowrap' } }, ms === null ? '—' : msText(ms))),
+            React.createElement('div', { style: { fontSize: 'var(--t-md2)', color: T.text2, whiteSpace: 'nowrap' } },
+              ms === null
+                ? '本次没记'
+                : (r.calls || 0) + ' 次 · ' + thousands(
+                    ((r.tokens || {}).uncached || 0) + ((r.tokens || {}).cache_read || 0) + ((r.tokens || {}).out || 0))))
         }))
       // ② 检索漏斗
       const cand = (retr.considered || []).length
       const loaded = (retr.loaded || []).length
+      // 命中 = 轨迹里有 hit 事件（阶段一命中到某条 case）。**不取 active_case**：
+      // 那是「最终定位到哪一案」，与阶段一命中不是同一件事（见 docs/mechanism/diagnosis-observability.md）。
       const hit = retr.hitCase ? 1 : 0
       const fmax = Math.max(cand, loaded, hit, 1)
       const frow = (label, v) => React.createElement('div', { key: label, style: { display: 'grid', gridTemplateColumns: '52px 1fr 34px', gap: 8, alignItems: 'center', fontSize: 'var(--t-tiny)' } },
@@ -803,7 +815,8 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
         React.createElement('span', { className: 'sleu-num', style: { textAlign: 'right', color: T.text2 } }, String(v)))
       // ③ token 堆叠
       const tk = (rec && rec.tokens) ? rec.tokens : null
-      const sum = tk ? (tk.uncached || 0) + (tk.cache_read || 0) + (tk.out || 0) : 0
+      // 四类都算：同一张卡里，收起态的 token 列与这里必须对得上（host 的列表口径也一起改）
+      const sum = tk ? (tk.uncached || 0) + (tk.cache_read || 0) + (tk.cache_write || 0) + (tk.out || 0) : 0
       const seg = (v, c) => React.createElement('i', { style: { display: 'block', height: '100%', width: (sum ? v / sum * 100 : 0) + '%', background: c } })
       const tokRow = (label, v) => React.createElement('div', { key: label, style: { display: 'flex', justifyContent: 'space-between', fontSize: 'var(--t-tiny)', color: T.text2 } },
         React.createElement('span', null, label), React.createElement('b', { className: 'sleu-num', style: { fontWeight: 500, color: T.text } }, thousands(v)))
@@ -830,15 +843,17 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
           h3('检索', cand ? cand + ' → ' + loaded + ' → ' + hit : ''),
           React.createElement('div', { style: { display: 'grid', gap: 4 } }, frow('展开候选', cand), frow('载入正文', loaded), frow('命中', hit)),
           React.createElement('div', { style: { marginTop: 6, fontSize: 'var(--t-tiny)', color: T.text2, lineHeight: 1.5 } },
-            cand ? '展开 = 筛选时看过的候选；载入 = load_full 取过全文；命中 = 定位到的 case' : '轨迹里没有候选清单')),
+            cand ? '展开 = 筛选时看过的候选；载入 = load_full 取过全文；命中 = 轨迹里的 hit 事件（阶段一）' : '轨迹里没有候选清单')),
         React.createElement('div', { style: { minWidth: 0 } },
           h3('token', sum ? thousands(sum) : ''),
           React.createElement('div', { style: { display: 'flex', height: 16, borderRadius: 2, overflow: 'hidden', background: 'var(--hair)' } },
             seg(tk ? tk.cache_read : 0, 'var(--acc-amber, ' + T.warn + ')'),
             seg(tk ? tk.uncached : 0, T.brand),
+            seg(tk ? tk.cache_write : 0, 'var(--d-purple, #7c3aed)'),
             seg(tk ? tk.out : 0, 'var(--acc-red, ' + T.error + ')')),
           React.createElement('div', { style: { display: 'grid', gap: 2, marginTop: 6 } },
-            tokRow('缓存读', tk ? tk.cache_read : 0), tokRow('未缓存', tk ? tk.uncached : 0), tokRow('输出', tk ? tk.out : 0))),
+            tokRow('缓存读', tk ? tk.cache_read : 0), tokRow('未缓存', tk ? tk.uncached : 0),
+            tokRow('缓存写', tk ? tk.cache_write : 0), tokRow('输出', tk ? tk.out : 0))),
       )
     }
 
@@ -1040,7 +1055,10 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
       const d5Rec = (steps && steps.record) ? steps.record : null
       const d5Retr = retrievalOf(steps && steps.list)
       const d5StepRows = stepsOf(steps && steps.list)
-      const d5HitCaseId = (d5Rec && d5Rec.hitCase) || d5Retr.hitCase || (caseKindOf(s) === 'case' ? s.activeCase : null)
+      // 两个 id 分开存：`hit` 事件命中的案例（阶段一）与 `active_case`（最终定位）不是同一件事，
+      // 同格显示会让读者在"上面写没命中、下面却有 id"之间对不上。
+      const d5HitCaseId = (d5Rec && d5Rec.hitCase) || d5Retr.hitCase || null
+      const d5FinalCaseId = (caseKindOf(s) === 'case' ? s.activeCase : null) || null
       const d5SedId = (d5Rec && d5Rec.sedimented && d5Rec.sedimented.caseId) || (sed && (sed.caseId || sed.case_id)) || null
       const d5SedState = (d5Rec && d5Rec.sedimented && d5Rec.sedimented.state) || sedState || null
       const d5FbOutcome = (d5Rec && d5Rec.feedback && d5Rec.feedback.outcome) || s.feedback || null
@@ -1077,13 +1095,19 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
         d5Rec && d5Rec.strength === 'self-report' ? React.createElement('div', { style: { marginTop: 5 } },
           React.createElement('span', { style: tinyBadge('var(--d-purple)'), title: '结论强度档的 self-report：来源会话自证，与确定性读数不同权' }, '自证')) : null,
         React.createElement(LineRow, { label: '根因' }, d5RootCause || (conclusionStep ? NOT_RECORDED : '还没有结论事件（这单没收尾）')),
-        React.createElement(LineRow, { label: '命中案例', title: steps && steps.caseMeta && steps.caseMeta.title },
+        // 阶段一命中与最终定位是两件事（命中 A 最终沉淀成 B 是真实情形），所以分两行写，
+        // 不要挤成一格——读者会拿"命中"判知识覆盖，混着写会判错。
+        React.createElement(LineRow, { label: '命中案例（hit）', title: steps && steps.caseMeta && steps.caseMeta.title },
           d5HitCaseId
             ? React.createElement(React.Fragment, null,
                 React.createElement('code', { className: 'sleu-mono', style: { color: T.success } }, d5HitCaseId),
-                steps && steps.caseMeta && steps.caseMeta.title ? ' ' + steps.caseMeta.title : '',
-                d5MetaOf(steps && steps.caseMeta) ? '（' + d5MetaOf(steps.caseMeta) + '）' : '（分数：' + NOT_RECORDED + '）')
+                d5HitCaseId === d5FinalCaseId && steps && steps.caseMeta && steps.caseMeta.title ? ' ' + steps.caseMeta.title : '',
+                d5HitCaseId === d5FinalCaseId && d5MetaOf(steps && steps.caseMeta) ? '（' + d5MetaOf(steps.caseMeta) + '）' : '')
             : React.createElement('span', { style: { color: T.text2 } }, '本单没有命中案例')),
+        React.createElement(LineRow, { label: '最终定位', title: 'trace 的 active_case：这一单最后定位到的案例，可能与阶段一命中的不是同一条' },
+          d5FinalCaseId
+            ? React.createElement('code', { className: 'sleu-mono', style: { color: T.text2 } }, d5FinalCaseId)
+            : React.createElement('span', { style: { color: T.text2 } }, '未定位到知识库 case')),
         React.createElement(LineRow, { label: '沉淀到', title: steps && steps.sedimentMeta && steps.sedimentMeta.title },
           d5SedId
             ? React.createElement(React.Fragment, null,
@@ -1133,7 +1157,8 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
               React.createElement(Cell, { label: '展开候选', value: d5Retr.considered.length ? d5Retr.considered.length + ' 条' : '0 条' }),
               React.createElement(Cell, { label: '载入正文', value: d5Retr.loaded.length ? d5Retr.loaded.length + ' 条' : '0 条' }),
               React.createElement(Cell, { label: '排除', value: d5Retr.excluded.length ? d5Retr.excluded.length + ' 条' : '0 条' }),
-              React.createElement(Cell, { label: '命中', value: d5Retr.hitCase || d5HitCaseId || null, mono: true, missingText: '没有命中' }),
+              React.createElement(Cell, { label: '命中（hit 事件）', value: d5HitCaseId, mono: true, missingText: '没有命中' }),
+              React.createElement(Cell, { label: '最终定位', value: d5FinalCaseId, mono: true, missingText: '未定位到 case' }),
             )
           : React.createElement(LineRow, { label: '候选' }, React.createElement('span', { style: { color: T.text2 } }, '轨迹里没有候选清单（没有 candidates / considered_candidates / excluded_cases 记录）')),
         d5Retr.excluded.length ? React.createElement(LineRow, { label: '被排除的' },
@@ -1219,6 +1244,14 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
           '读数有值但读端算不出来的归「不可解读」，不列在这里。'),
       )
 
+      // 检索明细：图上只有三个数，具体候选 id / 被排除的 / 先验三态与消费点在这里，默认收起。
+      const d5RetrievalCollapsed = (open && steps && steps.list && steps.list.length)
+        ? React.createElement('details', { style: { marginBottom: 10 } },
+            React.createElement('summary', { style: { cursor: 'pointer', fontSize: 'var(--t-sm)', color: T.text2, padding: '4px 0' } },
+              '检索明细（候选 id / 被排除的 / 先验三态与消费点）'),
+            d5Retrieval)
+        : null
+
       // 指标带 = 三张图（六步柱 / 检索漏斗 / token 条）。它替代了原来「各步」「检索」两块文字：
       // 那两块的信息被图吸收，重复才是密度高的根源。
       const band = (open && steps && steps.list && steps.list.length)
@@ -1234,8 +1267,10 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
               React.createElement('div', { style: { fontSize: 13.5, color: T.text, whiteSpace: 'pre-wrap', wordBreak: 'break-word', lineHeight: 1.68 } }, steps.summary),
             ) : null,
             d5Conclusion,
-            d5Steps,
-            d5Retrieval,
+            // 「各步」与指标带的六步柱是同一批数：柱图已经画了耗时与调用，再铺一遍只会互相矛盾
+            // （旧版每行还写「耗时占比：本次没记」，紧接上方写着合计 10.0s）。
+            // 「检索」保留，但折成明细——图给的是 展开→载入→命中 三个数，这里给的是具体 id 与先验三态。
+            d5RetrievalCollapsed,
             d5Cost,
             d5NotRecorded,
             // —— 沉淀区：case 与先验候选**分家**（2026-09 重做，修两个实测误读）——
@@ -1751,7 +1786,23 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
               body ? React.createElement('div', { style: { gridColumn: '1', padding: '12px 16px', borderTop: '1px solid ' + T.border, background: T.bg2, minWidth: 0 } }, body) : null,
               React.createElement('div', { style: { gridColumn: '2', padding: '12px 16px 14px 0', borderTop: '1px solid ' + T.border, position: 'sticky', top: 8, alignSelf: 'start', minWidth: 0 } },
                 reportBlock,
-                actionArea),
+                actionArea,
+                // 会话块：这单对应哪个 harness 会话、用的是哪个知识库版本、花了多少——维护者接手时要看。
+                (function () {
+                  const rec = (steps && steps.record) || null
+                  if (!rec) return null
+                  const kv = (k, v) => React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', gap: 8, fontSize: 'var(--t-tiny)', padding: '1px 0', color: T.text2 } },
+                    React.createElement('span', null, k),
+                    React.createElement('span', { className: 'sleu-mono', style: { color: T.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, v))
+                  return React.createElement('div', { style: { marginTop: 8, padding: '8px 10px', border: '1px solid ' + T.border, borderRadius: 8 } },
+                    React.createElement('div', { style: { fontSize: 'var(--t-md2)', letterSpacing: '.12em', textTransform: 'uppercase', color: T.text2, marginBottom: 4 } }, '会话'),
+                    kv('harness 会话', rec.harnessSession || NOT_RECORDED),
+                    kv('知识库版本', rec.kbRev || NOT_RECORDED),
+                    kv('工具耗时', rec.toolTotalMs ? msText(rec.toolTotalMs) : NOT_RECORDED),
+                    kv('调用次数', rec.toolCallCount ? String(rec.toolCallCount) : NOT_RECORDED),
+                    kv('停止原因', rec.outcome && rec.outcome.stopReason ? String(rec.outcome.stopReason) : NOT_RECORDED))
+                })(),
+              ),
             )
           : null,
       )
@@ -1797,7 +1848,12 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
           (s.framework || '').toLowerCase().includes(q) ||
           (s.platform || '').toLowerCase().includes(q) ||
           (s.category || '').toLowerCase().includes(q) ||
-          (s.activeCase || '').toLowerCase().includes(q)
+          (s.activeCase || '').toLowerCase().includes(q) ||
+          // 工程师的第一动作是搜症状（报错词、算子名、平台）。问题背景就是那句话，
+          // 它在副行显示却搜不到时，人会读成"没有同类案例"。
+          (s.summarySnippet || '').toLowerCase().includes(q) ||
+          (s.waitingFor || '').toLowerCase().includes(q) ||
+          (s.lastOutput || '').toLowerCase().includes(q)
         )
       }
       if (kbFilter === 'kb') sessions = sessions.filter(s => caseKindOf(s) === 'case' && s.activeCaseInKb)
@@ -1884,6 +1940,15 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
               React.createElement('div', { style: { fontSize: 15, fontWeight: 600, color: T.text, marginBottom: 6 } }, emptyTitle),
               emptyHint)
           : React.createElement('div', null,
+              // 列头：与每一行共用 ROW_COLS。没有它，读者不知道 6 / 11 是什么、10.0s 是工具耗时还是总耗时。
+              React.createElement('div', { style: { display: 'grid', gridTemplateColumns: ROW_COLS, gap: 10, padding: '0 16px 6px', borderBottom: '1px solid var(--hair)' } },
+                ['状态', '会话', '框架 · 平台 · 类别', '用户事件 / Agent 事件', '每步工具耗时', '工具耗时', 'token', ''].map((h, i) =>
+                  React.createElement('span', {
+                    key: i,
+                    title: i === 3 ? '斜杠左边是用户贴材料的条数，右边是 Agent 记录动作的条数' : (i === 4 ? '每根小条是一步的工具耗时（窗口内调用之和，不含模型思考）；空位=该步没有事件' : null),
+                    style: { fontSize: 'var(--t-md2)', letterSpacing: '.11em', textTransform: 'uppercase', color: T.text2,
+                             textAlign: (i >= 5 && i <= 6) ? 'right' : 'left', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
+                  }, h))),
               sessions.map(s => React.createElement(SessionCard, { key: s.file, session: s, sessionId: sessionId })),
             ),
       )

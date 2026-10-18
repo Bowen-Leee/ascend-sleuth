@@ -428,7 +428,8 @@ return {
                 return {
                   calls: r.toolCallCount || 0,
                   ms: r.toolTotalMs || 0,
-                  tok: (t.uncached || 0) + (t.cache_read || 0) + (t.out || 0),
+                  // 四类都算：展开区的 token 条也按四类画，同一张卡里两个数必须对得上
+                  tok: (t.uncached || 0) + (t.cache_read || 0) + (t.cache_write || 0) + (t.out || 0),
                   stepms: sc.map(x => x.ms),
                 }
               } catch (e) { return null }
