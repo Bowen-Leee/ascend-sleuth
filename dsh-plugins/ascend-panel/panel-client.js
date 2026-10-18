@@ -1983,14 +1983,27 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
             + (drift ? '，索引落后 ' + drift + ' 条 → 跑 build_index.py' : '，索引与磁盘一致'),
         }))
       }
-      if (c.lowConfidence) caseRows.push(React.createElement(MetricRow, { key: 'lc', label: '低置信占比（评分 <0.5）', value: c.lowConfidence + ' / ' + c.total + ' (' + pct(c.lowConfidence, c.total) + ')', warn: (c.lowConfidence / c.total) > 0.4 }))
+      // 阈值与告警线都从数据里读（`metrics/gates.yaml` 的 health 段，host 一并带下来）。
+      // 读不到时 host 给兜底值并把 thresholdsFrom 标成 builtin——这里在标题上写明，
+      // 不让读者把兜底值当成"库里声明的线"。
+      const th = (health && health.thresholds) || null
+      const thBuiltin = !!(health && health.thresholdsFrom === 'builtin')
+      const thNote = thBuiltin ? '；阈值来自内置兜底（gates.yaml 的 health 段没读到）' : ''
+      if (c.lowConfidence) caseRows.push(React.createElement(MetricRow, { key: 'lc',
+        label: '低置信占比（评分 <' + (th ? th.case_low_confidence_score : '0.5') + '）',
+        value: c.lowConfidence + ' / ' + c.total + ' (' + pct(c.lowConfidence, c.total) + ')',
+        title: '低置信占比超过 ' + (th ? th.case_low_confidence_alert_ratio : '0.4') + ' 会告警' + thNote,
+        warn: (c.lowConfidence / c.total) > (th ? th.case_low_confidence_alert_ratio : 0.4) }))
       if (c.byCategory && Object.keys(c.byCategory).length) {
         caseRows.push(React.createElement(MetricRow, { key: 'bc', label: 'category 分布', value: Object.keys(c.byCategory).map(k => (CATEGORY_LABELS[k] || k) + ' ' + c.byCategory[k]).join(' · ') }))
       }
       const refRows = []
       if (r.total) refRows.push(React.createElement(MetricRow, { key: 'rt', label: 'reference 总数', value: r.total }))
       if (r.draftCount !== undefined) refRows.push(React.createElement(MetricRow, { key: 'rd', label: '未审草稿（draft）', value: r.draftCount + ' / ' + r.total, warn: r.draftCount > 0 }))
-      if (r.staleCount !== undefined) refRows.push(React.createElement(MetricRow, { key: 'rs', label: '过期未核（>90天）', value: r.staleCount, warn: r.staleCount > 0 }))
+      if (r.staleCount !== undefined) refRows.push(React.createElement(MetricRow, { key: 'rs',
+        label: '过期未核（>' + (th ? th.reference_stale_days : '90') + ' 天）',
+        title: '先验的 last_verified 超过 ' + (th ? th.reference_stale_days : '90') + ' 天算过期' + thNote,
+        value: r.staleCount, warn: r.staleCount > 0 }))
       if (r.byType && Object.keys(r.byType).length) {
         const top = Object.keys(r.byType).slice(0, 4)
         refRows.push(React.createElement(MetricRow, { key: 'rtp', label: 'type 分布（前 4）', value: top.map(t => t + ' ' + r.byType[t]).join(' · ') }))

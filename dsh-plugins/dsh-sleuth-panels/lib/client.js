@@ -1,6 +1,6 @@
 /* eslint-disable */
 // 生成物 —— 勿手改。由 `node scripts/build_panel_bundle.js` 从下列源文件拼出：
-//   dsh-plugins/ascend-panel/panel-client.js  (sha256:6c15105cdf59)
+//   dsh-plugins/ascend-panel/panel-client.js  (sha256:4c537e9de716)
 //   dsh-plugins/ev-panel/panel-client.js  (sha256:9e836d4c1993)
 // 校验：`node scripts/build_panel_bundle.js --check`。
 //
@@ -63,7 +63,7 @@ window.__ModuleLoader__.load({
       id: 'ascend-panel',
       build(host, styles) {
         return (function () {
-// ---- dsh-plugins/ascend-panel/panel-client.js (sha256:6c15105cdf59) 原文开始 ----
+// ---- dsh-plugins/ascend-panel/panel-client.js (sha256:4c537e9de716) 原文开始 ----
 return {
   apply(ctx) {
     const slots = ctx.get('slots')
@@ -221,7 +221,7 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
     // 构建时注入的面板包版本（`scripts/build_panel_bundle.js` 把占位符换成 package.json 的 version）。
     // 为什么要有：面板是「装进 profile 的常驻插件 + 浏览器按 rev 缓存」两层，改完看不到新版时
     // 无法区分"装的还是旧包"与"浏览器缓存了旧 bundle"。有这个串，一眼就能判。
-    const PANEL_VERSION = '0.5.3'
+    const PANEL_VERSION = '0.5.4'
 
     function shortUrl(u) {
       const s = String(u).replace(/^https?:\/\//i, '')
@@ -2049,14 +2049,27 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
             + (drift ? '，索引落后 ' + drift + ' 条 → 跑 build_index.py' : '，索引与磁盘一致'),
         }))
       }
-      if (c.lowConfidence) caseRows.push(React.createElement(MetricRow, { key: 'lc', label: '低置信占比（评分 <0.5）', value: c.lowConfidence + ' / ' + c.total + ' (' + pct(c.lowConfidence, c.total) + ')', warn: (c.lowConfidence / c.total) > 0.4 }))
+      // 阈值与告警线都从数据里读（`metrics/gates.yaml` 的 health 段，host 一并带下来）。
+      // 读不到时 host 给兜底值并把 thresholdsFrom 标成 builtin——这里在标题上写明，
+      // 不让读者把兜底值当成"库里声明的线"。
+      const th = (health && health.thresholds) || null
+      const thBuiltin = !!(health && health.thresholdsFrom === 'builtin')
+      const thNote = thBuiltin ? '；阈值来自内置兜底（gates.yaml 的 health 段没读到）' : ''
+      if (c.lowConfidence) caseRows.push(React.createElement(MetricRow, { key: 'lc',
+        label: '低置信占比（评分 <' + (th ? th.case_low_confidence_score : '0.5') + '）',
+        value: c.lowConfidence + ' / ' + c.total + ' (' + pct(c.lowConfidence, c.total) + ')',
+        title: '低置信占比超过 ' + (th ? th.case_low_confidence_alert_ratio : '0.4') + ' 会告警' + thNote,
+        warn: (c.lowConfidence / c.total) > (th ? th.case_low_confidence_alert_ratio : 0.4) }))
       if (c.byCategory && Object.keys(c.byCategory).length) {
         caseRows.push(React.createElement(MetricRow, { key: 'bc', label: 'category 分布', value: Object.keys(c.byCategory).map(k => (CATEGORY_LABELS[k] || k) + ' ' + c.byCategory[k]).join(' · ') }))
       }
       const refRows = []
       if (r.total) refRows.push(React.createElement(MetricRow, { key: 'rt', label: 'reference 总数', value: r.total }))
       if (r.draftCount !== undefined) refRows.push(React.createElement(MetricRow, { key: 'rd', label: '未审草稿（draft）', value: r.draftCount + ' / ' + r.total, warn: r.draftCount > 0 }))
-      if (r.staleCount !== undefined) refRows.push(React.createElement(MetricRow, { key: 'rs', label: '过期未核（>90天）', value: r.staleCount, warn: r.staleCount > 0 }))
+      if (r.staleCount !== undefined) refRows.push(React.createElement(MetricRow, { key: 'rs',
+        label: '过期未核（>' + (th ? th.reference_stale_days : '90') + ' 天）',
+        title: '先验的 last_verified 超过 ' + (th ? th.reference_stale_days : '90') + ' 天算过期' + thNote,
+        value: r.staleCount, warn: r.staleCount > 0 }))
       if (r.byType && Object.keys(r.byType).length) {
         const top = Object.keys(r.byType).slice(0, 4)
         refRows.push(React.createElement(MetricRow, { key: 'rtp', label: 'type 分布（前 4）', value: top.map(t => t + ' ' + r.byType[t]).join(' · ') }))

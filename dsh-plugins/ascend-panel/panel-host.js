@@ -525,9 +525,35 @@ return {
     }
 
     // ---- 知识库健康聚合 ----
+    // 阈值从 `metrics/gates.yaml` 的 health 段读（**不在本文件里写死**）。
+    // 读不到时用内置兜底值，并把 `thresholdsFrom` 标成 builtin——面板据此提示
+    // "这几个线是兜底值，不是库里声明的"，而不是让读者以为它们和判据一致。
+    const HEALTH_DEFAULTS = { case_low_confidence_score: 0.5, case_low_confidence_alert_ratio: 0.4, reference_stale_days: 90 }
+    async function readHealthThresholds(cwd) {
+      try {
+        const target = await fs.resolve('metrics/gates.yaml', { cwd })
+        const text = await fs.readText(target)
+        const doc = parseYaml(text, {})
+        const h = doc && doc.health
+        if (!h || typeof h !== 'object') return { values: Object.assign({}, HEALTH_DEFAULTS), from: 'builtin' }
+        const num = (k) => (typeof h[k] === 'number' && isFinite(h[k])) ? h[k] : HEALTH_DEFAULTS[k]
+        return {
+          values: {
+            case_low_confidence_score: num('case_low_confidence_score'),
+            case_low_confidence_alert_ratio: num('case_low_confidence_alert_ratio'),
+            reference_stale_days: num('reference_stale_days'),
+          },
+          from: 'gates',
+        }
+      } catch (e) {
+        return { values: Object.assign({}, HEALTH_DEFAULTS), from: 'builtin' }
+      }
+    }
+
     async function loadHealth(cwd) {
       try {
-        const out = { cases: {}, references: {} }
+        const th = await readHealthThresholds(cwd)
+        const out = { cases: {}, references: {}, thresholds: th.values, thresholdsFrom: th.from }
         try {
           const target = await fs.resolve('knowledge/_index.yaml', { cwd })
           const text = await fs.readText(target)
@@ -560,7 +586,7 @@ return {
               const scoreM = /^\s+score:\s*([\d.]+)/.exec(line)
               if (scoreM) {
                 curScore = parseFloat(scoreM[1])
-                if (curScore !== null && !isNaN(curScore) && curScore < 0.5) low++
+                if (curScore !== null && !isNaN(curScore) && curScore < out.thresholds.case_low_confidence_score) low++
               }
             }
           }
@@ -615,7 +641,7 @@ return {
               const lm = /^last_verified:\s*['"]?([\d-]+)/m.exec(text)
               if (lm && lm[1]) {
                 const t = new Date(lm[1]).getTime()
-                if (!isNaN(t) && (now - t) > 90 * day) stale++
+                if (!isNaN(t) && (now - t) > out.thresholds.reference_stale_days * day) stale++
               }
               if (/\bcases:\s*\[/m.test(text) || /\bsource_cases:\s*\[/m.test(text)) caseDerived++
             }
