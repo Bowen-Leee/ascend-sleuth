@@ -1,6 +1,6 @@
 /* eslint-disable */
 // 生成物 —— 勿手改。由 `node scripts/build_panel_bundle.js` 从下列源文件拼出：
-//   dsh-plugins/ascend-panel/panel-client.js  (sha256:0117169682aa)
+//   dsh-plugins/ascend-panel/panel-client.js  (sha256:b518b647f9dd)
 //   dsh-plugins/ev-panel/panel-client.js  (sha256:9e836d4c1993)
 // 校验：`node scripts/build_panel_bundle.js --check`。
 //
@@ -63,7 +63,7 @@ window.__ModuleLoader__.load({
       id: 'ascend-panel',
       build(host, styles) {
         return (function () {
-// ---- dsh-plugins/ascend-panel/panel-client.js (sha256:0117169682aa) 原文开始 ----
+// ---- dsh-plugins/ascend-panel/panel-client.js (sha256:b518b647f9dd) 原文开始 ----
 return {
   apply(ctx) {
     const slots = ctx.get('slots')
@@ -215,6 +215,11 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
     // 外部资料链接的短标签：域名 + 最后一段路径（全 URL 在 title 里，点击打开）。
     // 为什么不一整条铺开：github 的 issue 链接有 60+ 字符，三四个就把一行撑爆，而读者要认的
     // 恰恰是"哪个站、哪一条"这两件事。
+    // 构建时注入的面板包版本（`scripts/build_panel_bundle.js` 把占位符换成 package.json 的 version）。
+    // 为什么要有：面板是「装进 profile 的常驻插件 + 浏览器按 rev 缓存」两层，改完看不到新版时
+    // 无法区分"装的还是旧包"与"浏览器缓存了旧 bundle"。有这个串，一眼就能判。
+    const PANEL_VERSION = '0.3.1'
+
     function shortUrl(u) {
       const s = String(u).replace(/^https?:\/\//i, '')
       const seg = s.split('/').filter(Boolean)
@@ -1756,7 +1761,9 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
           nAwaiting ? React.createElement('span', null, nAwaiting + ' 个等回报') : null,
           nAwaiting && nClose ? React.createElement('span', { style: { color: T.text2 } }, '·') : null,
           nClose ? React.createElement('span', null, nClose + ' 个该闭环') : null,
-          React.createElement('span', { style: { color: T.text2, marginLeft: 'auto', fontSize: 12.5 } }, '在查=诊断没结论（含等现场补材料）；等回报=结论已给、fix 没验证｜卡片里点按钮生成指令 → 复制 → 粘到对话执行'),
+          React.createElement('span', { style: { color: T.text2, marginLeft: 'auto', fontSize: 12.5 } },
+            '在查=诊断没结论（含等现场补材料）；等回报=结论已给、fix 没验证｜卡片里点按钮生成指令 → 复制 → 粘到对话执行'),
+          React.createElement('span', { className: 'sleu-mono', title: '面板包版本：与 dsh-plugins/dsh-sleuth-panels/package.json 一致。看到的不是这个版本 = 装的还是旧包，或浏览器缓存了旧 bundle', style: { color: T.text2, fontSize: 'var(--t-md2)', opacity: 0.75 } }, PANEL_VERSION),
         ) : null,
         // 工具栏（筛选 + 搜索）**吸顶**：会话一多就得往下滚，工具不该滚走
         React.createElement('div', { style: { position: 'sticky', top: 0, zIndex: 2, paddingTop: 2, paddingBottom: 8, marginBottom: 4, background: T.bg, backgroundImage: 'var(--surf)' } },
