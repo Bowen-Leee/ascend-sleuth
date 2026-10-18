@@ -2505,8 +2505,11 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
     }
     function CapacityCell({ cell, periods }) {
       // 判据量是**读入 token**（软线 8000 / 硬线 20000，来自 gates.yaml）；条数退成括号里的观察值。
+      // 进度条的分母取**硬线**，所以 40% 的条可能已经挂了「超评估线」的徽标（软线在 40% 处）——
+      // 读者会以为徽标错了。两条线都在条上画刻度，徽标才和条对得上。
       const cap = cell.hard_tok || cell.soft_tok || 0
       const ratio = cap > 0 && cell.tok != null ? cell.tok / cap : 0
+      const softPct = cap > 0 && cell.soft_tok ? Math.min(100, Math.round(cell.soft_tok / cap * 100)) : null
       const over = cell.soft || cell.hard
       const color = cell.hard ? 'var(--acc-red)' : (cell.soft ? 'var(--acc-amber)' : 'var(--acc-green)')
       const dash = cap > 0 ? Math.min(100, Math.round(ratio * 100)) : 0
@@ -2514,8 +2517,9 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
         React.createElement('span', { style: { width: 6, height: 6, borderRadius: 999, background: color, flexShrink: 0 } }),
         React.createElement('span', { style: { flex: '1 1 128px', minWidth: 0, color: over ? T.text : T.text2, fontWeight: over ? 700 : 400, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontFamily: 'var(--font-mono)', fontSize: 12.5 } },
           cell.namespace + ' · ' + cell.category),
-        React.createElement('span', { style: { width: 74, height: 5, borderRadius: 999, background: T.bg2, overflow: 'hidden', flexShrink: 0 } },
-          React.createElement('span', { style: { display: 'block', width: dash + '%', height: '100%', background: color, transition: DUR ? 'width .3s ' + EASE : 'none' } })),
+        React.createElement('span', { title: '分母是硬线 ' + (cell.hard_tok || '—') + ' tok；竖线是软线 ' + (cell.soft_tok || '—') + ' tok', style: { position: 'relative', width: 74, height: 5, borderRadius: 999, background: T.bg2, overflow: 'hidden', flexShrink: 0 } },
+          React.createElement('span', { style: { display: 'block', width: dash + '%', height: '100%', background: color, transition: DUR ? 'width .3s ' + EASE : 'none' } }),
+          softPct ? React.createElement('span', { style: { position: 'absolute', left: softPct + '%', top: 0, bottom: 0, width: 1, background: 'var(--acc-amber)', opacity: 0.9 } }) : null),
         React.createElement('span', { style: { width: 72, textAlign: 'right', fontFamily: 'var(--font-mono)', fontWeight: 600, color: over ? color : T.text, flexShrink: 0 } },
           cell.tok != null ? cell.tok + ' tok' : '—',
           React.createElement('span', { style: { color: T.text2, fontWeight: 400 } }, '（' + cell.count + ' 条）')),
