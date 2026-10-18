@@ -386,7 +386,9 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
     function StrengthBadge(strength) {
       if (strength === '自报') return React.createElement('span', { title: '这个数由 agent 自报，属弱观测：可作趋势与异常信号，不当验收证据', style: tinyBadge('var(--d-purple)') }, '自报')
       if (strength === '代理') return React.createElement('span', { title: '这个数用可计算的量代替真量（近似），看量级不看小数位', style: tinyBadge('var(--d-amber)') }, '代理')
-      if (!strength) return React.createElement('span', { title: '这个指标没在 metrics/gates.yaml 里声明强度档，无法判断它的强度', style: tinyBadge('var(--d-amber)') }, '未声明强度')
+      // 没有强度档就**不挂徽标**。原先这里给每一行挂一个「未声明强度」，而知识库健康 / 流程闭环
+      // 那些计数行（案例数、漏斗）本来就不参与强度体系——满屏的"未声明"只是噪声，
+      // 读者会以为面板坏了。真正缺声明的情形在期卡顶部汇总一次（见 metrics tab 的缺口提示）。
       return null
     }
     function MetricRow({ label, value, small, warn, unreadable, unreadableWhy, total, sub, node, strength }) {
@@ -2728,26 +2730,42 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
           '不据此退休：零选中只说明这一期没有被用到，先查症状词面与标签是否覆盖，再决定动不动条目。'),
       )
       // —— ⑥ 过程动作成本（按工具；生成物只有按工具的分位，逐次明细在本机）——
-      const toolRows = ea.tools.slice().sort((a, b) => (b.calls || 0) - (a.calls || 0))
+      // 过程动作成本：**按 p90 排**（回答"哪个动作最费时间"），并把「等人的 / 等后台任务」
+      // 单列出去——ask_user_question 的 p50 是十几分钟，混进来会把模型动作全压成 0。
+      const WAIT_TOOLS = { ask_user_question: '等人回答', job_output: '等后台任务', job_kill: '等后台任务' }
+      const allTools = ea.tools.slice()
+      const actTools = allTools.filter(t => !WAIT_TOOLS[t.name])
+        .sort((a, b) => (b.p90 || b.p50 || 0) - (a.p90 || a.p50 || 0))
+      const waitTools = allTools.filter(t => WAIT_TOOLS[t.name])
+        .sort((a, b) => (b.p90 || b.p50 || 0) - (a.p90 || a.p50 || 0))
+      const maxP90 = Math.max(1, ...actTools.map(t => t.p90 || t.p50 || 0))
+      // 异常值：p90 超过一小时的多半是"并行调用被拉长"或"等了很久"，不是工具本身慢。
+      // 标出来而不是照原值印，否则读者会把 11.2 h 当成"读文件要 11 小时"。
+      const OUTLIER = 60 * 60 * 1000
+      const toolLine = (t, isWait) => React.createElement('div', {
+        key: t.name, style: { display: 'grid', gridTemplateColumns: 'minmax(0,1fr) 62px 96px 76px', gap: 8, alignItems: 'center', padding: '3px 0', borderTop: '1px solid var(--hair)' },
+      },
+        React.createElement('div', { style: { minWidth: 0, display: 'flex', gap: 6, alignItems: 'baseline' } },
+          React.createElement('code', { className: 'sleu-mono', style: { fontSize: 'var(--t-sm)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, t.name),
+          isWait ? React.createElement('span', { style: { fontSize: 'var(--t-md2)', color: T.text2, whiteSpace: 'nowrap' } }, WAIT_TOOLS[t.name]) : null),
+        React.createElement('span', { className: 'sleu-num', style: { fontSize: 'var(--t-tiny)', textAlign: 'right', color: T.text2 } }, nText(t.calls) + ' 次'),
+        React.createElement('div', { style: { height: 8, background: 'var(--hair)', borderRadius: 2, overflow: 'hidden' } },
+          React.createElement('i', { style: { display: 'block', height: '100%', width: Math.max(2, Math.round((t.p90 || t.p50 || 0) / maxP90 * 100)) + '%', background: isWait ? 'var(--acc-amber, ' + T.warn + ')' : 'var(--acc-purple, #7c3aed)', opacity: 0.8 } })),
+        React.createElement('span', { className: 'sleu-num', style: { fontSize: 'var(--t-tiny)', textAlign: 'right', color: (t.p90 || 0) > OUTLIER ? T.warn : T.text } },
+          'p90 ' + (msText(t.p90) || NOT_RECORDED) + ((t.p90 || 0) > OUTLIER ? ' ⚠' : '')))
       const toolsBlock = React.createElement(Block, {
         title: '过程动作成本', accent: 'var(--acc-purple)',
-        right: React.createElement('span', { style: { fontSize: 'var(--t-tiny)', color: T.text2 } }, '按工具，取生成物的 tools 段'),
+        right: React.createElement('span', { style: { fontSize: 'var(--t-tiny)', color: T.text2 } }, '按 p90 排（越靠上越费时间）'),
       },
-        toolRows.length
-          ? React.createElement('div', null, toolRows.map(t => React.createElement('div', {
-              key: t.name, style: { display: 'flex', alignItems: 'baseline', gap: 10, padding: '3px 0', borderTop: '1px solid var(--hair)', flexWrap: 'wrap' },
-            },
-              React.createElement('code', { className: 'sleu-mono', style: { fontSize: 'var(--t-sm)', minWidth: 84 } }, t.name),
-              React.createElement('span', { className: 'sleu-num', style: { fontSize: 'var(--t-sm)' } }, nText(t.calls) + ' 次调用'),
-              React.createElement('span', { style: { fontSize: 'var(--t-sm)', color: T.text2 } }, 'p50 ' + (msText(t.p50) || NOT_RECORDED) + ' · p90 ' + (msText(t.p90) || NOT_RECORDED)),
-              React.createElement('span', { style: { fontSize: 'var(--t-sm)', color: (t.errors || 0) || (t.timeouts || 0) ? T.warn : T.text2 } },
-                '失败 ' + nText(t.errors) + ' · 超时 ' + nText(t.timeouts)),
-            )))
+        actTools.length
+          ? React.createElement('div', null, actTools.slice(0, 8).map(t => toolLine(t, false)))
           : React.createElement('div', { style: { fontSize: 'var(--t-sm)', color: T.text2, marginTop: 3 } },
               NOT_RECORDED + '：生成物的 tools 段是空的（本机没有可汇总的逐次工具调用明细）'),
-        React.createElement('div', { style: { marginTop: 5, color: T.text2, fontSize: 'var(--t-tiny)', lineHeight: 1.55 } },
-          'p50 / p90 是跨运行按调用次数加权的均值，量级读数；逐次与逐运行的精确值只在本机明细里。'),
-      )
+        waitTools.length ? React.createElement('div', { style: { marginTop: 8 } },
+          React.createElement('div', { style: { fontSize: 'var(--t-md2)', letterSpacing: '.1em', textTransform: 'uppercase', color: T.text2, marginBottom: 2 } }, '等人的 / 等后台任务（不与上面比）'),
+          waitTools.map(t => toolLine(t, true))) : null,
+        React.createElement('div', { style: { marginTop: 6, color: T.text2, fontSize: 'var(--t-md2)', lineHeight: 1.55 } },
+          'p50 / p90 是跨运行按调用次数加权的均值，量级读数。带 ⚠ 的 p90 超过一小时——多半是并行调用被拉长或等了很久，不是工具本身慢。'))
       // —— ⑦ 变差的读数（读数 · 阈值或对照 · 一条动作）——
       const fails = (verdict && Array.isArray(verdict.findings) ? verdict.findings : []).filter(f => f.level === 'fail')
       const worseBlock = React.createElement(Block, {
@@ -2899,8 +2917,17 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
 
       const periods = (!timelineError && r && Array.isArray(r.periods)) ? r.periods : []
       // 指标强度档（3.6 的最后一问「这个数怎么来的」）：随 timeline 一并从 gates.yaml 带下来。
-      // 取不到就是空表——那时每个指标显示「未声明强度」，不默认成确定性。
+      // 取不到就是空表——那时不挂强度徽标（不默认成确定性），并在期卡顶部汇总一次缺口。
       const strengthOf = (!timelineError && r && r.metricStrength && typeof r.metricStrength === 'object') ? r.metricStrength : {}
+      // 强度缺口的**唯一**提示位：把没在 gates.yaml 里声明强度的指标名字列一次。
+      // 逐行挂徽标时它会被读成"面板坏了"（知识库健康那些计数行根本不参与强度体系）。
+      const strengthMissing = (function () {
+        const seen = {}
+        for (const p of periods) for (const k of Object.keys(p.metrics || {})) {
+          if (!(k in (typeof strengthOf === 'object' && strengthOf ? strengthOf : {}))) seen[k] = 1
+        }
+        return Object.keys(seen)
+      })()
       const liveCount = periods.filter(p => p.kind === 'live').length
       const order = { live: 0, replay: 1, example: 2 }
       // 期次新旧：**以期号里的周序为主、recorded_at 为辅**。只用 recorded_at 会有并列：
@@ -3011,6 +3038,10 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
                 ),
                 liveCount === 0 ? React.createElement('div', { style: { marginBottom: 10, padding: 10, background: 'color-mix(in srgb, ' + T.warn + ' 8%, transparent)', border: '1px solid ' + T.border, borderRadius: 9, fontSize: 13.5, color: T.text2 } },
                   '尚无 live 快照。首次活诊断后由 owner 追加（docs/guide/metrics.md 汇总职责）。') : null,
+                // 强度缺口只在这里说一次（不再逐行挂「未声明强度」）
+                strengthMissing.length ? React.createElement('div', { style: { marginBottom: 10, padding: '8px 10px', background: 'color-mix(in srgb, ' + T.warn + ' 8%, transparent)', border: '1px solid ' + T.border, borderRadius: 9, fontSize: 12.5, color: T.text2, lineHeight: 1.6 } },
+                  '有 ' + strengthMissing.length + ' 个指标没在 metrics/gates.yaml 里声明强度档，它们的数不标徽标（不默认成确定性）：',
+                  React.createElement('span', { className: 'sleu-mono', style: { marginLeft: 4 } }, strengthMissing.slice(0, 8).join('、') + (strengthMissing.length > 8 ? ' 等' : ''))) : null,
                 periodCards))
 
       return React.createElement('div', { className: 'sleu', style: { ...base, padding: 20 } },
