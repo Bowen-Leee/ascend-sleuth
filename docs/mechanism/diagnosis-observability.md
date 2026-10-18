@@ -102,7 +102,7 @@ flowchart LR
 | `outcome.fix_emitted` | 是否给出了 fix | 沉淀漏斗的一格 | 顶层 `outcome.fix_emitted`，字段说明在 `diagnosis_state.yaml.example`；现有轨迹里不一定写，缺了就按「本次没记」显示 | 现成 |
 | `sedimented` | 沉淀状态与案例 id | 面板的沉淀漏斗（诊断数 → 沉淀数 → 转正数） | 顶层 `sedimented` | 现成 |
 | `cost.tokens` | 未缓存输入、缓存读、缓存写、输出 | 会话成本中位数与 P90、按动作占比 | 会话日志按 `(turn, step)` 去重、定稿优先 | 已落地 |
-| `cost.step_cost` | 每个诊断步的调用次数、耗时、token，按步切窗口 | 维护者裁最贵的步骤（合并、跳过、换更便宜的做法） | 轨迹事件的 `ts` 切窗口，窗口内的调用与用量归那一步；没有 `ts` 时整段为空 | 已落地 |
+| `cost.step_cost` | 每个诊断步的调用次数、耗时、token、按工具拆开的分项，按步切窗口（收尾段没有 `ended_at` 时标 `window_truncated`） | 维护者裁最贵的步骤（合并、跳过、换更便宜的做法） | 轨迹事件的 `ts` 切窗口，窗口内的调用与用量归那一步；没有 `ts` 时整段为空 | 已落地 |
 | `cost.index_read_tok` | 一次诊断读进来的 token 账，四个分项 | 命名空间 × 类别格子（下文简称格子）的读入成本 | `scripts/index_read_cost.py` 按视图现算；按会话归属取**这次会话实际读了哪些面** | 已落地 |
 | `strength` | 结论强度档（与 3.6 的指标强度不是一回事） | 强度分布 | 见下表 | 已落地 |
 

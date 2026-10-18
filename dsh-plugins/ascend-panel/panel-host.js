@@ -873,6 +873,14 @@ return {
               tokens: { uncached: scalarNum(tk.uncached), cache_read: scalarNum(tk.cache_read),
                         cache_write: scalarNum(tk.cache_write), out: scalarNum(tk.out) },
               tools: Array.isArray(m.tools) ? m.tools.map(x => String(x)) : [],
+              // 按工具拆：读者要知道这几秒是谁占的，只有一个总数判断不了该裁哪个动作
+              byTool: Array.isArray(m.by_tool) ? m.by_tool.map(x => {
+                const o = asMap(x) || {}
+                return { tool: scalarStr(o.tool), calls: scalarNum(o.calls), ms: scalarNum(o.ms),
+                         pending: scalarNum(o.pending) }
+              }) : [],
+              windowTruncated: !!m.window_truncated,
+              msComplete: m.ms_complete !== false,
             })
           }
           return outA

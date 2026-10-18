@@ -382,7 +382,7 @@ def _epoch_ms(v):
         return None
 
 
-def step_cost(trace, log):
+def step_cost(trace, log, trace_doc=None):
     """按诊断步切窗口，把会话日志的调用与 token 折进窗口 → 每步的成本。
 
     **为什么要这一步**：「每步花了多少」是诊断过程唯一能指导动作的读数（哪一步最贵、该裁哪
@@ -406,31 +406,60 @@ def step_cost(trace, log):
     if len(starts) < 2:
         return None                 # 只有一步有时间戳，切不出窗口
     order = sorted(starts, key=lambda k: starts[k])
-    # 末步的右边界是「直到日志末尾」：用 None 表示开区间，不拿最后一个时间点当上界
-    # （否则最后一条调用/用量正好落在边界上会被漏掉）。
+    # 末步的右边界是「直到日志末尾」。**不能拿最后一次调用的开始时间当上界**：
+    # 那次调用的耗时全在它开始之后，用开始时间收尾等于把末步算成 0（实测步 6 就是这样）。
+    # 这里取「最晚的结束时间（t + ms）」；没有结束时间的调用按 t 算，并把它们单独计数。
+    # 收尾边界：优先 `ended_at`（诊断自己写的结束时刻），退到 `updated_at`。
+    # 没有它就只能开区间——那样会话后半段（复核、改面板、跑别的活）全会算进最后一步。
+    end_marked = bool(_epoch_ms(trace_doc.get("ended_at"))) if isinstance(trace_doc, dict) else False
+    end_limit = (_epoch_ms(trace_doc.get("ended_at")) if isinstance(trace_doc, dict) else None) \
+        or (_epoch_ms(trace_doc.get("updated_at")) if isinstance(trace_doc, dict) else None)
     bounds = []
     for i, st in enumerate(order):
         lo = starts[st]
-        hi = starts[order[i + 1]] if i + 1 < len(order) else None
+        # 末步开区间：拿任何一个时间点当上界都会漏掉"正好落在边界上"的最后一次调用/用量
+        # （实测末步因此被算成 0 毫秒）。开区间是唯一不漏的口径，展示时另算实际跨度。
+        hi = starts[order[i + 1]] if i + 1 < len(order) else end_limit
         bounds.append((st, lo, hi))
     out = []
     for st, lo, hi in bounds:
         def inside(t):
             t = t or 0
-            return t >= lo and (hi is None or t < hi)
+            return lo <= t and (hi is None or t < hi)
         calls = [c for c in (log.get("tool_calls") or []) if inside(c.get("t"))]
         ups = [u for u in (log.get("usage_points") or []) if inside(u.get("t"))]
         tok = {"uncached": sum(u["uncached"] for u in ups),
                "cache_read": sum(u["cache_read"] for u in ups),
                "cache_write": sum(u["cache_write"] for u in ups),
                "out": sum(u["out"] for u in ups)}
+        # 按工具拆开：读者要知道"这几秒是 bash 占的还是 read 占的"。只有一个总数时
+        # 没法判断该裁哪个动作。
+        by_tool = {}
+        for c in calls:
+            e = by_tool.setdefault(c["tool"], {"tool": c["tool"], "calls": 0, "ms": 0, "pending": 0})
+            e["calls"] += 1
+            if c.get("ms") is None:
+                # 调用没返回（或日志没有结果事件）→ 记 pending，**不当成 0 毫秒**：
+                # "测到用了 0" 与 "没测到" 混在一起，就会被读成"这步不花钱"。
+                e["pending"] += 1
+            else:
+                e["ms"] += c["ms"]
         out.append({
             "step": st,
-            "from": lo, "to": (hi if hi is not None else (max([c.get("t") or 0 for c in calls] + [u.get("t") or 0 for u in ups] + [lo]))),
+            "from": lo,
+            "to": (hi if hi is not None else max([(c.get("t") or 0) + (c.get("ms") or 0) for c in calls]
+                                                + [u.get("t") or 0 for u in ups] + [lo])),
             "calls": len(calls),
             "ms": sum((c.get("ms") or 0) for c in calls),
+            "ms_complete": all(c.get("ms") is not None for c in calls),
+            # 收尾段没有结束标记、窗口又长到不合理（>30 分钟）时，这一段混进了诊断之外的活。
+            # 标出来让面板写「收尾段未记」——给一个 260 秒的数比不给更坏。
+            # 轨迹没写 `ended_at` 时，收尾段的边界来自 `updated_at`——那之后可能还有复核、
+            # 改面板等诊断之外的活。没有结束标记就不给这一段一个数（面板写「收尾段未记」）。
+            "window_truncated": bool(st == order[-1] and not end_marked),
             "tokens": tok,
             "tools": sorted({c["tool"] for c in calls}),
+            "by_tool": sorted(by_tool.values(), key=lambda x: -(x["ms"] or 0)),
         })
     return out
 
@@ -847,7 +876,7 @@ def session_doc(st, sid, facts, log, log_note, case_files, root) -> dict:
         "cost": {"tokens": (log or {}).get("tokens") or None,
                  # 每步成本：按 `ts` 切窗口把会话日志的调用与 token 折进诊断步。
                  # 轨迹没有 `ts` 时为 None（面板显示「本次没记」，不按顺序硬猜）。
-                 "step_cost": step_cost(st.get("trace") or [], log),
+                 "step_cost": step_cost(st.get("trace") or [], log, st),
                  "index_read_tok": index_read_account(root, facts, case_files,
                                                       category=st.get("detected_category"))},
         "strength": strength_of(facts, self_res),

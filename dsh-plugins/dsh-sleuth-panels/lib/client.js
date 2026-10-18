@@ -1,6 +1,6 @@
 /* eslint-disable */
 // 生成物 —— 勿手改。由 `node scripts/build_panel_bundle.js` 从下列源文件拼出：
-//   dsh-plugins/ascend-panel/panel-client.js  (sha256:1b7f1b86818c)
+//   dsh-plugins/ascend-panel/panel-client.js  (sha256:b80e151beeb9)
 //   dsh-plugins/ev-panel/panel-client.js  (sha256:9e836d4c1993)
 // 校验：`node scripts/build_panel_bundle.js --check`。
 //
@@ -63,7 +63,7 @@ window.__ModuleLoader__.load({
       id: 'ascend-panel',
       build(host, styles) {
         return (function () {
-// ---- dsh-plugins/ascend-panel/panel-client.js (sha256:1b7f1b86818c) 原文开始 ----
+// ---- dsh-plugins/ascend-panel/panel-client.js (sha256:b80e151beeb9) 原文开始 ----
 return {
   apply(ctx) {
     const slots = ctx.get('slots')
@@ -221,7 +221,7 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
     // 构建时注入的面板包版本（`scripts/build_panel_bundle.js` 把占位符换成 package.json 的 version）。
     // 为什么要有：面板是「装进 profile 的常驻插件 + 浏览器按 rev 缓存」两层，改完看不到新版时
     // 无法区分"装的还是旧包"与"浏览器缓存了旧 bundle"。有这个串，一眼就能判。
-    const PANEL_VERSION = '0.4.3'
+    const PANEL_VERSION = '0.4.4'
 
     function shortUrl(u) {
       const s = String(u).replace(/^https?:\/\//i, '')
@@ -335,7 +335,24 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
       return { text: fmtVal(v), num: null, rate: null }
     }
 
-    // 两期对照：只保留"动了"的指标（新增 / 变化），这是"本期发生了什么"的答案
+    // 「升了是好还是坏」：{ok,total} 形状的指标里，`ok` 是好事还是坏事不同。
+    // misdiagnosis_rate 的 ok 就是误诊数（分子），升了是坏事；tier2_hit 升了是好事。
+    // 没有这张表，面板只能按"数值涨了就绿"，误诊从 0 涨到 1 会被画成绿色的 +1。
+    const METRIC_UP = {
+      misdiagnosis_rate: 'bad', attribution_ratio: 'bad',
+      tier2_hit: 'good', routed_accuracy: 'good', feedback_capture: 'good',
+      sessions_total: 'neutral', sediment_total: 'good',
+    }
+    function metricDirection(key, delta) {
+      if (!delta) return 'flat'
+      const up = METRIC_UP[key] || 'neutral'
+      if (up === 'neutral') return 'neutral'
+      return (delta > 0) === (up === 'good') ? 'good' : 'bad'
+    }
+
+    // 两期对照：比**比率**而不是分子。3/3 → 3/5 是变了（准确率掉），
+    // 只比分子会把它们判成"完全一致"（两个都是 3）——静默漏报。
+    // 只保留"动了"的指标（新增 / 变化），这是"本期发生了什么"的答案
     function diffPeriods(prev, cur) {
       if (!cur) return { moved: [], same: 0, prevPeriod: null, curPeriod: null }
       const pm = (prev && prev.metrics) || {}
@@ -347,9 +364,21 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
         const b = metricValue(cm[k])
         const label = METRIC_LABELS[k] || k
         if (a === null) { moved.push({ key: k, label, kind: 'new', to: b.text }); return }
-        // 数值可比值优先比数值；否则比显示文本
-        const changed = (a.num !== null && b.num !== null) ? a.num !== b.num : a.text !== b.text
-        if (changed) moved.push({ key: k, label, kind: 'change', from: a.text, to: b.text, delta: (a.num !== null && b.num !== null) ? b.num - a.num : null })
+        // 有比率就比率；没有比率才退到数值；再退到显示文本
+        const ar = a.rate, br = b.rate
+        const an = a.num, bn = b.num
+        let changed, delta = null
+        if (ar !== null && ar !== undefined && br !== null && br !== undefined) {
+          changed = Math.abs(br - ar) > 1e-9
+          delta = br - ar
+        } else if (an !== null && bn !== null) {
+          changed = an !== bn
+          delta = bn - an
+        } else {
+          changed = a.text !== b.text
+        }
+        if (changed) moved.push({ key: k, label, kind: 'change', from: a.text, to: b.text, delta,
+                                  direction: metricDirection(k, delta) })
         else same++
       })
       // 上期有、本期没有的指标 = 本期不再采集
@@ -851,7 +880,25 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
           head('每步耗时', total ? ('合计 ' + msText(total) + (worst && worst.ms ? ' · 最长是 ' + worst.step + ' ' + STEP_SHORT[worst.step] : '')) : (rec ? '' : '本机明细未生成')),
           bars,
           React.createElement('div', { style: { marginTop: 8, fontSize: 'var(--t-md2)', color: T.text2, lineHeight: 1.45 } },
-            '窗口内工具调用之和，不含模型思考；悬停看每步的次数、token 与工具')),
+            '窗口内工具调用之和，不含模型思考；悬停看每步的次数、token 与工具'),
+          // 按工具拆开：只给一个总数，读者判断不出"这几秒该裁哪个动作"。
+          // 默认收起——它是"要继续查"时才展开的那一层，不占首屏。
+          (function () {
+            const rows = []
+            for (const r of cost) {
+              if (r.windowTruncated) { rows.push([r.step, '收尾段未记（轨迹没有结束标记）', null]); continue }
+              for (const t of (r.byTool || [])) if (t.ms || t.pending) rows.push([r.step, t.tool, t, r])
+            }
+            if (!rows.length) return null
+            return React.createElement('details', { style: { marginTop: 6 } },
+              React.createElement('summary', { style: { cursor: 'pointer', fontSize: 'var(--t-tiny)', color: T.brand, padding: '2px 0' } }, '按工具拆开'),
+              React.createElement('div', { style: { marginTop: 4, display: 'grid', gap: 2 } },
+                rows.map(([step, label, t, r], i) => React.createElement('div', { key: i, style: { display: 'grid', gridTemplateColumns: '26px 1fr auto', gap: 8, alignItems: 'baseline', fontSize: 'var(--t-md2)' } },
+                  React.createElement('span', { style: { color: T.text2 } }, '步 ' + step),
+                  React.createElement('span', { style: { color: T.text2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, label),
+                  React.createElement('span', { className: 'sleu-num', style: { color: T.text, whiteSpace: 'nowrap' } },
+                    t ? ((t.ms || 0) + ' ms · ' + t.calls + ' 次' + (t.pending ? ' · ' + t.pending + ' 未返回' : '')) : '')))))
+          })()),
         React.createElement('div', { style: { minWidth: 0 } }, head('检索路径', ''), funnel),
         React.createElement('div', { style: { minWidth: 0 } },
           head('token', sum ? thousands(sum) : ''),
@@ -2095,8 +2142,9 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
                   unread(m.key) ? React.createElement('span', { title: unread(m.key) === true ? '分母为 0：这个数不可解读' : unread(m.key), style: tinyBadge('var(--d-purple)') }, '不可解读') : null,
                   React.createElement('span', { style: { fontFamily: 'var(--font-mono)', color: T.text } },
                     m.kind === 'change' ? (m.from + ' → ' + m.to) : (m.kind === 'new' ? m.to : m.from)),
-                  m.delta !== null && m.delta !== undefined ? React.createElement('span', { style: { fontSize: 11.5, fontWeight: 700, color: m.delta > 0 ? T.success : (m.delta < 0 ? T.error : T.text2) } },
-                    (m.delta > 0 ? '+' : '') + m.delta) : null,
+                  m.delta !== null && m.delta !== undefined ? React.createElement('span', { style: { fontSize: 11.5, fontWeight: 700,
+                    color: m.direction === 'bad' ? T.error : (m.direction === 'good' ? T.success : T.text2) } },
+                    (m.rate ? ((m.delta > 0 ? '+' : '') + (m.delta * 100).toFixed(0) + '%') : ((m.delta > 0 ? '+' : '') + m.delta))) : null,
                 )
               }),
             )

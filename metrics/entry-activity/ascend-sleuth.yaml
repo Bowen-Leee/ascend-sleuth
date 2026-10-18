@@ -5,330 +5,510 @@
 #
 # `tools` 的 p50_ms/p90_ms 是**按调用次数加权的各运行分位均值**：跨运行的分位数无法从各运行的
 # 分位数精确合成，这里给的是量级读数，逐次与逐运行的精确值只在本机明细里（metrics/entry-activity.local/）。
-covered: {deployment: ascend-sleuth, runs: 4, weeks: [2026-W42], checkouts: [4a923cd, 896493c]}
+covered: {deployment: ascend-sleuth, runs: 6, weeks: [2026-W42], checkouts: [0e5e986, 4a923cd, 896493c]}
 cases:
   VLLM-ASC-10322:
-    totals: {selected: 3, loaded: 2, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+    totals: {selected: 15, loaded: 10, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 5}
     by_week:
-      2026-W42: {selected: 3, loaded: 2, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+      2026-W42: {selected: 15, loaded: 10, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 5}
     recent:
     - {run: 2026-10-17-2124, week: 2026-W42, selected: 3, loaded: 2, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+    - {run: 2026-10-18-2138, week: 2026-W42, selected: 3, loaded: 2, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+    - {run: 2026-10-18-2138, week: 2026-W42, selected: 3, loaded: 2, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+    - {run: 2026-10-18-2139, week: 2026-W42, selected: 3, loaded: 2, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+    - {run: 2026-10-18-2139, week: 2026-W42, selected: 3, loaded: 2, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
   VLLM-ASC-10500:
-    totals: {selected: 0, loaded: 0, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+    totals: {selected: 0, loaded: 0, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 5}
     by_week:
-      2026-W42: {selected: 0, loaded: 0, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+      2026-W42: {selected: 0, loaded: 0, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 5}
     recent:
     - {run: 2026-10-17-2124, week: 2026-W42, selected: 0, loaded: 0, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+    - {run: 2026-10-18-2138, week: 2026-W42, selected: 0, loaded: 0, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+    - {run: 2026-10-18-2138, week: 2026-W42, selected: 0, loaded: 0, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+    - {run: 2026-10-18-2139, week: 2026-W42, selected: 0, loaded: 0, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+    - {run: 2026-10-18-2139, week: 2026-W42, selected: 0, loaded: 0, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
   VLLM-ASC-10610:
-    totals: {selected: 3, loaded: 2, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+    totals: {selected: 15, loaded: 10, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 5}
     by_week:
-      2026-W42: {selected: 3, loaded: 2, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+      2026-W42: {selected: 15, loaded: 10, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 5}
     recent:
     - {run: 2026-10-17-2124, week: 2026-W42, selected: 3, loaded: 2, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+    - {run: 2026-10-18-2138, week: 2026-W42, selected: 3, loaded: 2, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+    - {run: 2026-10-18-2138, week: 2026-W42, selected: 3, loaded: 2, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+    - {run: 2026-10-18-2139, week: 2026-W42, selected: 3, loaded: 2, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+    - {run: 2026-10-18-2139, week: 2026-W42, selected: 3, loaded: 2, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
   VLLM-ASC-10834:
-    totals: {selected: 0, loaded: 0, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+    totals: {selected: 0, loaded: 0, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 5}
     by_week:
-      2026-W42: {selected: 0, loaded: 0, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+      2026-W42: {selected: 0, loaded: 0, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 5}
     recent:
     - {run: 2026-10-17-2124, week: 2026-W42, selected: 0, loaded: 0, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+    - {run: 2026-10-18-2138, week: 2026-W42, selected: 0, loaded: 0, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+    - {run: 2026-10-18-2138, week: 2026-W42, selected: 0, loaded: 0, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+    - {run: 2026-10-18-2139, week: 2026-W42, selected: 0, loaded: 0, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+    - {run: 2026-10-18-2139, week: 2026-W42, selected: 0, loaded: 0, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
   VLLM-ASC-10944:
-    totals: {selected: 1, loaded: 0, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+    totals: {selected: 5, loaded: 0, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 5}
     by_week:
-      2026-W42: {selected: 1, loaded: 0, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+      2026-W42: {selected: 5, loaded: 0, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 5}
     recent:
     - {run: 2026-10-17-2124, week: 2026-W42, selected: 1, loaded: 0, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+    - {run: 2026-10-18-2138, week: 2026-W42, selected: 1, loaded: 0, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+    - {run: 2026-10-18-2138, week: 2026-W42, selected: 1, loaded: 0, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+    - {run: 2026-10-18-2139, week: 2026-W42, selected: 1, loaded: 0, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+    - {run: 2026-10-18-2139, week: 2026-W42, selected: 1, loaded: 0, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
   VLLM-ASC-10998:
-    totals: {selected: 3, loaded: 2, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+    totals: {selected: 15, loaded: 10, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 5}
     by_week:
-      2026-W42: {selected: 3, loaded: 2, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+      2026-W42: {selected: 15, loaded: 10, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 5}
     recent:
     - {run: 2026-10-18-0749, week: 2026-W42, selected: 3, loaded: 2, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+    - {run: 2026-10-18-2138, week: 2026-W42, selected: 3, loaded: 2, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+    - {run: 2026-10-18-2138, week: 2026-W42, selected: 3, loaded: 2, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+    - {run: 2026-10-18-2139, week: 2026-W42, selected: 3, loaded: 2, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+    - {run: 2026-10-18-2139, week: 2026-W42, selected: 3, loaded: 2, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
   VLLM-ASC-12030:
-    totals: {selected: 3, loaded: 1, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+    totals: {selected: 15, loaded: 5, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 5}
     by_week:
-      2026-W42: {selected: 3, loaded: 1, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+      2026-W42: {selected: 15, loaded: 5, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 5}
     recent:
     - {run: 2026-10-17-2124, week: 2026-W42, selected: 3, loaded: 1, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+    - {run: 2026-10-18-2138, week: 2026-W42, selected: 3, loaded: 1, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+    - {run: 2026-10-18-2138, week: 2026-W42, selected: 3, loaded: 1, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+    - {run: 2026-10-18-2139, week: 2026-W42, selected: 3, loaded: 1, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+    - {run: 2026-10-18-2139, week: 2026-W42, selected: 3, loaded: 1, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
   VLLM-ASC-12430:
     totals: {selected: 0, loaded: 0, resolved: 0, misdiagnosed: 0, self_resolved: 1, excluded: 0, baseline: True}
     by_week: {}
     recent: []
   VLLM-ASC-12461:
-    totals: {selected: 2, loaded: 1, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+    totals: {selected: 10, loaded: 5, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 5}
     by_week:
-      2026-W42: {selected: 2, loaded: 1, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+      2026-W42: {selected: 10, loaded: 5, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 5}
     recent:
     - {run: 2026-10-17-2124, week: 2026-W42, selected: 2, loaded: 1, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+    - {run: 2026-10-18-2138, week: 2026-W42, selected: 2, loaded: 1, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+    - {run: 2026-10-18-2138, week: 2026-W42, selected: 2, loaded: 1, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+    - {run: 2026-10-18-2139, week: 2026-W42, selected: 2, loaded: 1, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+    - {run: 2026-10-18-2139, week: 2026-W42, selected: 2, loaded: 1, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
   VLLM-ASC-12640:
-    totals: {selected: 4, loaded: 3, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+    totals: {selected: 20, loaded: 15, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 5}
     by_week:
-      2026-W42: {selected: 4, loaded: 3, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+      2026-W42: {selected: 20, loaded: 15, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 5}
     recent:
     - {run: 2026-10-17-2124, week: 2026-W42, selected: 4, loaded: 3, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+    - {run: 2026-10-18-2138, week: 2026-W42, selected: 4, loaded: 3, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+    - {run: 2026-10-18-2138, week: 2026-W42, selected: 4, loaded: 3, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+    - {run: 2026-10-18-2139, week: 2026-W42, selected: 4, loaded: 3, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+    - {run: 2026-10-18-2139, week: 2026-W42, selected: 4, loaded: 3, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
   VLLM-ASC-12723:
     totals: {selected: 0, loaded: 0, resolved: 1, misdiagnosed: 0, self_resolved: 0, excluded: 0, baseline: True}
     last_hit: '2026-W35'
     by_week: {}
     recent: []
   VLLM-ASC-12989:
-    totals: {selected: 4, loaded: 2, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 0}
+    totals: {selected: 20, loaded: 10, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 0}
     by_week:
-      2026-W42: {selected: 4, loaded: 2, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 0}
+      2026-W42: {selected: 20, loaded: 10, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 0}
     recent:
     - {run: 2026-10-17-2124, week: 2026-W42, selected: 4, loaded: 2, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 0}
+    - {run: 2026-10-18-2138, week: 2026-W42, selected: 4, loaded: 2, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 0}
+    - {run: 2026-10-18-2138, week: 2026-W42, selected: 4, loaded: 2, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 0}
+    - {run: 2026-10-18-2139, week: 2026-W42, selected: 4, loaded: 2, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 0}
+    - {run: 2026-10-18-2139, week: 2026-W42, selected: 4, loaded: 2, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 0}
   VLLM-ASC-13050:
-    totals: {selected: 2, loaded: 1, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 0}
+    totals: {selected: 10, loaded: 5, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 0}
     by_week:
-      2026-W42: {selected: 2, loaded: 1, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 0}
+      2026-W42: {selected: 10, loaded: 5, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 0}
     recent:
     - {run: 2026-10-17-2124, week: 2026-W42, selected: 2, loaded: 1, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 0}
+    - {run: 2026-10-18-2138, week: 2026-W42, selected: 2, loaded: 1, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 0}
+    - {run: 2026-10-18-2138, week: 2026-W42, selected: 2, loaded: 1, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 0}
+    - {run: 2026-10-18-2139, week: 2026-W42, selected: 2, loaded: 1, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 0}
+    - {run: 2026-10-18-2139, week: 2026-W42, selected: 2, loaded: 1, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 0}
   VLLM-ASC-13070:
-    totals: {selected: 3, loaded: 1, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+    totals: {selected: 15, loaded: 5, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 5}
     by_week:
-      2026-W42: {selected: 3, loaded: 1, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+      2026-W42: {selected: 15, loaded: 5, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 5}
     recent:
     - {run: 2026-10-17-2124, week: 2026-W42, selected: 3, loaded: 1, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+    - {run: 2026-10-18-2138, week: 2026-W42, selected: 3, loaded: 1, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+    - {run: 2026-10-18-2138, week: 2026-W42, selected: 3, loaded: 1, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+    - {run: 2026-10-18-2139, week: 2026-W42, selected: 3, loaded: 1, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+    - {run: 2026-10-18-2139, week: 2026-W42, selected: 3, loaded: 1, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
   VLLM-ASC-13329:
-    totals: {selected: 1, loaded: 1, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+    totals: {selected: 5, loaded: 5, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 5}
     by_week:
-      2026-W42: {selected: 1, loaded: 1, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+      2026-W42: {selected: 5, loaded: 5, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 5}
     recent:
     - {run: 2026-10-17-2124, week: 2026-W42, selected: 1, loaded: 1, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+    - {run: 2026-10-18-2138, week: 2026-W42, selected: 1, loaded: 1, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+    - {run: 2026-10-18-2138, week: 2026-W42, selected: 1, loaded: 1, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+    - {run: 2026-10-18-2139, week: 2026-W42, selected: 1, loaded: 1, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+    - {run: 2026-10-18-2139, week: 2026-W42, selected: 1, loaded: 1, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
   VLLM-ASC-13688:
-    totals: {selected: 0, loaded: 0, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+    totals: {selected: 0, loaded: 0, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 5}
     by_week:
-      2026-W42: {selected: 0, loaded: 0, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+      2026-W42: {selected: 0, loaded: 0, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 5}
     recent:
     - {run: 2026-10-17-2124, week: 2026-W42, selected: 0, loaded: 0, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+    - {run: 2026-10-18-2138, week: 2026-W42, selected: 0, loaded: 0, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+    - {run: 2026-10-18-2138, week: 2026-W42, selected: 0, loaded: 0, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+    - {run: 2026-10-18-2139, week: 2026-W42, selected: 0, loaded: 0, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+    - {run: 2026-10-18-2139, week: 2026-W42, selected: 0, loaded: 0, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
   VLLM-ASC-13934:
-    totals: {selected: 3, loaded: 2, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+    totals: {selected: 15, loaded: 10, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 5}
     by_week:
-      2026-W42: {selected: 3, loaded: 2, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+      2026-W42: {selected: 15, loaded: 10, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 5}
     recent:
     - {run: 2026-10-18-0749, week: 2026-W42, selected: 3, loaded: 2, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+    - {run: 2026-10-18-2138, week: 2026-W42, selected: 3, loaded: 2, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+    - {run: 2026-10-18-2138, week: 2026-W42, selected: 3, loaded: 2, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+    - {run: 2026-10-18-2139, week: 2026-W42, selected: 3, loaded: 2, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+    - {run: 2026-10-18-2139, week: 2026-W42, selected: 3, loaded: 2, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
   VLLM-ASC-14273:
-    totals: {selected: 1, loaded: 1, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+    totals: {selected: 5, loaded: 5, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 5}
     by_week:
-      2026-W42: {selected: 1, loaded: 1, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+      2026-W42: {selected: 5, loaded: 5, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 5}
     recent:
     - {run: 2026-10-17-2124, week: 2026-W42, selected: 1, loaded: 1, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+    - {run: 2026-10-18-2138, week: 2026-W42, selected: 1, loaded: 1, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+    - {run: 2026-10-18-2138, week: 2026-W42, selected: 1, loaded: 1, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+    - {run: 2026-10-18-2139, week: 2026-W42, selected: 1, loaded: 1, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+    - {run: 2026-10-18-2139, week: 2026-W42, selected: 1, loaded: 1, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
   VLLM-ASC-14320:
-    totals: {selected: 1, loaded: 1, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+    totals: {selected: 5, loaded: 5, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 5}
     by_week:
-      2026-W42: {selected: 1, loaded: 1, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+      2026-W42: {selected: 5, loaded: 5, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 5}
     recent:
     - {run: 2026-10-17-2124, week: 2026-W42, selected: 1, loaded: 1, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+    - {run: 2026-10-18-2138, week: 2026-W42, selected: 1, loaded: 1, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+    - {run: 2026-10-18-2138, week: 2026-W42, selected: 1, loaded: 1, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+    - {run: 2026-10-18-2139, week: 2026-W42, selected: 1, loaded: 1, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+    - {run: 2026-10-18-2139, week: 2026-W42, selected: 1, loaded: 1, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
   VLLM-ASC-14363:
-    totals: {selected: 3, loaded: 1, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+    totals: {selected: 15, loaded: 5, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 5}
     by_week:
-      2026-W42: {selected: 3, loaded: 1, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+      2026-W42: {selected: 15, loaded: 5, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 5}
     recent:
     - {run: 2026-10-17-2124, week: 2026-W42, selected: 3, loaded: 1, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+    - {run: 2026-10-18-2138, week: 2026-W42, selected: 3, loaded: 1, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+    - {run: 2026-10-18-2138, week: 2026-W42, selected: 3, loaded: 1, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+    - {run: 2026-10-18-2139, week: 2026-W42, selected: 3, loaded: 1, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+    - {run: 2026-10-18-2139, week: 2026-W42, selected: 3, loaded: 1, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
   VLLM-ASC-15087:
     totals: {selected: 0, loaded: 0, resolved: 1, misdiagnosed: 0, self_resolved: 0, excluded: 0, baseline: True}
     by_week: {}
     recent: []
   VLLM-ASC-7635:
-    totals: {selected: 2, loaded: 1, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+    totals: {selected: 10, loaded: 5, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 5}
     by_week:
-      2026-W42: {selected: 2, loaded: 1, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+      2026-W42: {selected: 10, loaded: 5, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 5}
     recent:
     - {run: 2026-10-17-2124, week: 2026-W42, selected: 2, loaded: 1, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+    - {run: 2026-10-18-2138, week: 2026-W42, selected: 2, loaded: 1, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+    - {run: 2026-10-18-2138, week: 2026-W42, selected: 2, loaded: 1, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+    - {run: 2026-10-18-2139, week: 2026-W42, selected: 2, loaded: 1, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+    - {run: 2026-10-18-2139, week: 2026-W42, selected: 2, loaded: 1, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
   VLLM-ASC-7856:
-    totals: {selected: 3, loaded: 1, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+    totals: {selected: 15, loaded: 5, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 5}
     by_week:
-      2026-W42: {selected: 3, loaded: 1, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+      2026-W42: {selected: 15, loaded: 5, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 5}
     recent:
     - {run: 2026-10-17-2124, week: 2026-W42, selected: 3, loaded: 1, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+    - {run: 2026-10-18-2138, week: 2026-W42, selected: 3, loaded: 1, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+    - {run: 2026-10-18-2138, week: 2026-W42, selected: 3, loaded: 1, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+    - {run: 2026-10-18-2139, week: 2026-W42, selected: 3, loaded: 1, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+    - {run: 2026-10-18-2139, week: 2026-W42, selected: 3, loaded: 1, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
   VLLM-ASC-9005:
-    totals: {selected: 2, loaded: 0, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 0}
+    totals: {selected: 10, loaded: 0, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 0}
     by_week:
-      2026-W42: {selected: 2, loaded: 0, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 0}
+      2026-W42: {selected: 10, loaded: 0, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 0}
     recent:
     - {run: 2026-10-17-2124, week: 2026-W42, selected: 2, loaded: 0, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 0}
+    - {run: 2026-10-18-2138, week: 2026-W42, selected: 2, loaded: 0, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 0}
+    - {run: 2026-10-18-2138, week: 2026-W42, selected: 2, loaded: 0, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 0}
+    - {run: 2026-10-18-2139, week: 2026-W42, selected: 2, loaded: 0, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 0}
+    - {run: 2026-10-18-2139, week: 2026-W42, selected: 2, loaded: 0, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 0}
   VLLM-ASC-9024:
-    totals: {selected: 0, loaded: 0, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+    totals: {selected: 0, loaded: 0, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 5}
     by_week:
-      2026-W42: {selected: 0, loaded: 0, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+      2026-W42: {selected: 0, loaded: 0, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 5}
     recent:
     - {run: 2026-10-17-2124, week: 2026-W42, selected: 0, loaded: 0, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+    - {run: 2026-10-18-2138, week: 2026-W42, selected: 0, loaded: 0, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+    - {run: 2026-10-18-2138, week: 2026-W42, selected: 0, loaded: 0, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+    - {run: 2026-10-18-2139, week: 2026-W42, selected: 0, loaded: 0, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+    - {run: 2026-10-18-2139, week: 2026-W42, selected: 0, loaded: 0, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
   VLLM-ASC-9596:
-    totals: {selected: 1, loaded: 1, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+    totals: {selected: 5, loaded: 5, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 5}
     by_week:
-      2026-W42: {selected: 1, loaded: 1, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+      2026-W42: {selected: 5, loaded: 5, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 5}
     recent:
     - {run: 2026-10-17-2124, week: 2026-W42, selected: 1, loaded: 1, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+    - {run: 2026-10-18-2138, week: 2026-W42, selected: 1, loaded: 1, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+    - {run: 2026-10-18-2138, week: 2026-W42, selected: 1, loaded: 1, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+    - {run: 2026-10-18-2139, week: 2026-W42, selected: 1, loaded: 1, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+    - {run: 2026-10-18-2139, week: 2026-W42, selected: 1, loaded: 1, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
   VLLM-ASC-9769:
-    totals: {selected: 0, loaded: 0, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+    totals: {selected: 0, loaded: 0, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 5}
     by_week:
-      2026-W42: {selected: 0, loaded: 0, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+      2026-W42: {selected: 0, loaded: 0, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 5}
     recent:
     - {run: 2026-10-17-2124, week: 2026-W42, selected: 0, loaded: 0, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+    - {run: 2026-10-18-2138, week: 2026-W42, selected: 0, loaded: 0, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+    - {run: 2026-10-18-2138, week: 2026-W42, selected: 0, loaded: 0, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+    - {run: 2026-10-18-2139, week: 2026-W42, selected: 0, loaded: 0, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+    - {run: 2026-10-18-2139, week: 2026-W42, selected: 0, loaded: 0, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
   VLLM-ASC-9887:
-    totals: {selected: 2, loaded: 1, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+    totals: {selected: 10, loaded: 5, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 5}
     by_week:
-      2026-W42: {selected: 2, loaded: 1, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+      2026-W42: {selected: 10, loaded: 5, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 5}
     recent:
     - {run: 2026-10-17-2124, week: 2026-W42, selected: 2, loaded: 1, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+    - {run: 2026-10-18-2138, week: 2026-W42, selected: 2, loaded: 1, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+    - {run: 2026-10-18-2138, week: 2026-W42, selected: 2, loaded: 1, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+    - {run: 2026-10-18-2139, week: 2026-W42, selected: 2, loaded: 1, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+    - {run: 2026-10-18-2139, week: 2026-W42, selected: 2, loaded: 1, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
 references:
   aclnn-quant-modes-and-sparsemode:
-    totals: {lookups: 1, hit: 1, miss: 0, skipped: 0}
-    purpose: {background: 1}
+    totals: {lookups: 5, hit: 5, miss: 0, skipped: 0}
+    purpose: {background: 5}
     by_week:
-      2026-W42: {lookups: 1, hit: 1, miss: 0, skipped: 0, purpose: {background: 1}}
+      2026-W42: {lookups: 5, hit: 5, miss: 0, skipped: 0, purpose: {background: 5}}
     recent:
     - {run: 2026-10-17-2124, week: 2026-W42, lookups: 1, hit: 1, miss: 0, skipped: 0, purpose: {background: 1}}
+    - {run: 2026-10-18-2138, week: 2026-W42, lookups: 1, hit: 1, miss: 0, skipped: 0, purpose: {background: 1}}
+    - {run: 2026-10-18-2138, week: 2026-W42, lookups: 1, hit: 1, miss: 0, skipped: 0, purpose: {background: 1}}
+    - {run: 2026-10-18-2139, week: 2026-W42, lookups: 1, hit: 1, miss: 0, skipped: 0, purpose: {background: 1}}
+    - {run: 2026-10-18-2139, week: 2026-W42, lookups: 1, hit: 1, miss: 0, skipped: 0, purpose: {background: 1}}
   aclnn-type-promotion-broadcast-and-format:
-    totals: {lookups: 1, hit: 1, miss: 0, skipped: 0}
-    purpose: {background: 1}
+    totals: {lookups: 5, hit: 5, miss: 0, skipped: 0}
+    purpose: {background: 5}
     by_week:
-      2026-W42: {lookups: 1, hit: 1, miss: 0, skipped: 0, purpose: {background: 1}}
+      2026-W42: {lookups: 5, hit: 5, miss: 0, skipped: 0, purpose: {background: 5}}
     recent:
     - {run: 2026-10-17-2124, week: 2026-W42, lookups: 1, hit: 1, miss: 0, skipped: 0, purpose: {background: 1}}
+    - {run: 2026-10-18-2138, week: 2026-W42, lookups: 1, hit: 1, miss: 0, skipped: 0, purpose: {background: 1}}
+    - {run: 2026-10-18-2138, week: 2026-W42, lookups: 1, hit: 1, miss: 0, skipped: 0, purpose: {background: 1}}
+    - {run: 2026-10-18-2139, week: 2026-W42, lookups: 1, hit: 1, miss: 0, skipped: 0, purpose: {background: 1}}
+    - {run: 2026-10-18-2139, week: 2026-W42, lookups: 1, hit: 1, miss: 0, skipped: 0, purpose: {background: 1}}
   aicore-error-fault-patterns:
-    totals: {lookups: 2, hit: 1, miss: 1, skipped: 0}
-    purpose: {signature: 2}
+    totals: {lookups: 10, hit: 5, miss: 5, skipped: 0}
+    purpose: {signature: 10}
     by_week:
-      2026-W42: {lookups: 2, hit: 1, miss: 1, skipped: 0, purpose: {signature: 2}}
+      2026-W42: {lookups: 10, hit: 5, miss: 5, skipped: 0, purpose: {signature: 10}}
     recent:
     - {run: 2026-10-17-2124, week: 2026-W42, lookups: 2, hit: 1, miss: 1, skipped: 0, purpose: {signature: 2}}
+    - {run: 2026-10-18-2138, week: 2026-W42, lookups: 2, hit: 1, miss: 1, skipped: 0, purpose: {signature: 2}}
+    - {run: 2026-10-18-2138, week: 2026-W42, lookups: 2, hit: 1, miss: 1, skipped: 0, purpose: {signature: 2}}
+    - {run: 2026-10-18-2139, week: 2026-W42, lookups: 2, hit: 1, miss: 1, skipped: 0, purpose: {signature: 2}}
+    - {run: 2026-10-18-2139, week: 2026-W42, lookups: 2, hit: 1, miss: 1, skipped: 0, purpose: {signature: 2}}
   ascend-310p-known-limits:
-    totals: {lookups: 1, hit: 1, miss: 0, skipped: 0}
-    purpose: {background: 1}
+    totals: {lookups: 5, hit: 5, miss: 0, skipped: 0}
+    purpose: {background: 5}
     by_week:
-      2026-W42: {lookups: 1, hit: 1, miss: 0, skipped: 0, purpose: {background: 1}}
+      2026-W42: {lookups: 5, hit: 5, miss: 0, skipped: 0, purpose: {background: 5}}
     recent:
     - {run: 2026-10-17-2124, week: 2026-W42, lookups: 1, hit: 1, miss: 0, skipped: 0, purpose: {background: 1}}
+    - {run: 2026-10-18-2138, week: 2026-W42, lookups: 1, hit: 1, miss: 0, skipped: 0, purpose: {background: 1}}
+    - {run: 2026-10-18-2138, week: 2026-W42, lookups: 1, hit: 1, miss: 0, skipped: 0, purpose: {background: 1}}
+    - {run: 2026-10-18-2139, week: 2026-W42, lookups: 1, hit: 1, miss: 0, skipped: 0, purpose: {background: 1}}
+    - {run: 2026-10-18-2139, week: 2026-W42, lookups: 1, hit: 1, miss: 0, skipped: 0, purpose: {background: 1}}
   ascend-moe-comm-triage:
-    totals: {lookups: 2, hit: 2, miss: 0, skipped: 0}
-    purpose: {fix: 1, procedure: 1}
+    totals: {lookups: 10, hit: 10, miss: 0, skipped: 0}
+    purpose: {fix: 5, procedure: 5}
     by_week:
-      2026-W42: {lookups: 2, hit: 2, miss: 0, skipped: 0, purpose: {fix: 1, procedure: 1}}
+      2026-W42: {lookups: 10, hit: 10, miss: 0, skipped: 0, purpose: {fix: 5, procedure: 5}}
     recent:
     - {run: 2026-10-17-2124, week: 2026-W42, lookups: 2, hit: 2, miss: 0, skipped: 0, purpose: {fix: 1, procedure: 1}}
+    - {run: 2026-10-18-2138, week: 2026-W42, lookups: 2, hit: 2, miss: 0, skipped: 0, purpose: {fix: 1, procedure: 1}}
+    - {run: 2026-10-18-2138, week: 2026-W42, lookups: 2, hit: 2, miss: 0, skipped: 0, purpose: {fix: 1, procedure: 1}}
+    - {run: 2026-10-18-2139, week: 2026-W42, lookups: 2, hit: 2, miss: 0, skipped: 0, purpose: {fix: 1, procedure: 1}}
+    - {run: 2026-10-18-2139, week: 2026-W42, lookups: 2, hit: 2, miss: 0, skipped: 0, purpose: {fix: 1, procedure: 1}}
   ascend-process-interrupt-triage:
-    totals: {lookups: 2, hit: 1, miss: 0, skipped: 0}
-    purpose: {procedure: 2}
+    totals: {lookups: 10, hit: 5, miss: 0, skipped: 0}
+    purpose: {procedure: 10}
     by_week:
-      2026-W42: {lookups: 2, hit: 1, miss: 0, skipped: 0, purpose: {procedure: 2}}
+      2026-W42: {lookups: 10, hit: 5, miss: 0, skipped: 0, purpose: {procedure: 10}}
     recent:
     - {run: 2026-10-17-2124, week: 2026-W42, lookups: 2, hit: 1, miss: 0, skipped: 0, purpose: {procedure: 2}}
+    - {run: 2026-10-18-2138, week: 2026-W42, lookups: 2, hit: 1, miss: 0, skipped: 0, purpose: {procedure: 2}}
+    - {run: 2026-10-18-2138, week: 2026-W42, lookups: 2, hit: 1, miss: 0, skipped: 0, purpose: {procedure: 2}}
+    - {run: 2026-10-18-2139, week: 2026-W42, lookups: 2, hit: 1, miss: 0, skipped: 0, purpose: {procedure: 2}}
+    - {run: 2026-10-18-2139, week: 2026-W42, lookups: 2, hit: 1, miss: 0, skipped: 0, purpose: {procedure: 2}}
   ascend-vllm-spec-decode-mtp-triage:
-    totals: {lookups: 1, hit: 1, miss: 0, skipped: 0}
-    purpose: {signature: 1}
+    totals: {lookups: 5, hit: 5, miss: 0, skipped: 0}
+    purpose: {signature: 5}
     by_week:
-      2026-W42: {lookups: 1, hit: 1, miss: 0, skipped: 0, purpose: {signature: 1}}
+      2026-W42: {lookups: 5, hit: 5, miss: 0, skipped: 0, purpose: {signature: 5}}
     recent:
     - {run: 2026-10-17-2124, week: 2026-W42, lookups: 1, hit: 1, miss: 0, skipped: 0, purpose: {signature: 1}}
+    - {run: 2026-10-18-2138, week: 2026-W42, lookups: 1, hit: 1, miss: 0, skipped: 0, purpose: {signature: 1}}
+    - {run: 2026-10-18-2138, week: 2026-W42, lookups: 1, hit: 1, miss: 0, skipped: 0, purpose: {signature: 1}}
+    - {run: 2026-10-18-2139, week: 2026-W42, lookups: 1, hit: 1, miss: 0, skipped: 0, purpose: {signature: 1}}
+    - {run: 2026-10-18-2139, week: 2026-W42, lookups: 1, hit: 1, miss: 0, skipped: 0, purpose: {signature: 1}}
   cann-hdk:
-    totals: {lookups: 3, hit: 2, miss: 0, skipped: 0}
-    purpose: {signature: 1, background: 1, fix: 1}
+    totals: {lookups: 15, hit: 10, miss: 0, skipped: 0}
+    purpose: {signature: 5, background: 5, fix: 5}
     by_week:
-      2026-W42: {lookups: 3, hit: 2, miss: 0, skipped: 0, purpose: {signature: 1, background: 1, fix: 1}}
+      2026-W42: {lookups: 15, hit: 10, miss: 0, skipped: 0, purpose: {signature: 5, background: 5, fix: 5}}
     recent:
     - {run: 2026-10-17-2124, week: 2026-W42, lookups: 3, hit: 2, miss: 0, skipped: 0, purpose: {signature: 1, background: 1, fix: 1}}
+    - {run: 2026-10-18-2138, week: 2026-W42, lookups: 3, hit: 2, miss: 0, skipped: 0, purpose: {signature: 1, background: 1, fix: 1}}
+    - {run: 2026-10-18-2138, week: 2026-W42, lookups: 3, hit: 2, miss: 0, skipped: 0, purpose: {signature: 1, background: 1, fix: 1}}
+    - {run: 2026-10-18-2139, week: 2026-W42, lookups: 3, hit: 2, miss: 0, skipped: 0, purpose: {signature: 1, background: 1, fix: 1}}
+    - {run: 2026-10-18-2139, week: 2026-W42, lookups: 3, hit: 2, miss: 0, skipped: 0, purpose: {signature: 1, background: 1, fix: 1}}
   cann-runtime-error-codes:
-    totals: {lookups: 4, hit: 2, miss: 1, skipped: 0}
-    purpose: {signature: 2, background: 1, fix: 1}
+    totals: {lookups: 20, hit: 10, miss: 5, skipped: 0}
+    purpose: {signature: 10, background: 5, fix: 5}
     by_week:
-      2026-W42: {lookups: 4, hit: 2, miss: 1, skipped: 0, purpose: {signature: 2, background: 1, fix: 1}}
+      2026-W42: {lookups: 20, hit: 10, miss: 5, skipped: 0, purpose: {signature: 10, background: 5, fix: 5}}
     recent:
     - {run: 2026-10-17-2124, week: 2026-W42, lookups: 4, hit: 2, miss: 1, skipped: 0, purpose: {signature: 2, background: 1, fix: 1}}
+    - {run: 2026-10-18-2138, week: 2026-W42, lookups: 4, hit: 2, miss: 1, skipped: 0, purpose: {signature: 2, background: 1, fix: 1}}
+    - {run: 2026-10-18-2138, week: 2026-W42, lookups: 4, hit: 2, miss: 1, skipped: 0, purpose: {signature: 2, background: 1, fix: 1}}
+    - {run: 2026-10-18-2139, week: 2026-W42, lookups: 4, hit: 2, miss: 1, skipped: 0, purpose: {signature: 2, background: 1, fix: 1}}
+    - {run: 2026-10-18-2139, week: 2026-W42, lookups: 4, hit: 2, miss: 1, skipped: 0, purpose: {signature: 2, background: 1, fix: 1}}
   fabricmem-unified-addressing-and-transfer:
-    totals: {lookups: 1, hit: 1, miss: 0, skipped: 0}
-    purpose: {background: 1}
+    totals: {lookups: 5, hit: 5, miss: 0, skipped: 0}
+    purpose: {background: 5}
     by_week:
-      2026-W42: {lookups: 1, hit: 1, miss: 0, skipped: 0, purpose: {background: 1}}
+      2026-W42: {lookups: 5, hit: 5, miss: 0, skipped: 0, purpose: {background: 5}}
     recent:
     - {run: 2026-10-18-0749, week: 2026-W42, lookups: 1, hit: 1, miss: 0, skipped: 0, purpose: {background: 1}}
+    - {run: 2026-10-18-2138, week: 2026-W42, lookups: 1, hit: 1, miss: 0, skipped: 0, purpose: {background: 1}}
+    - {run: 2026-10-18-2138, week: 2026-W42, lookups: 1, hit: 1, miss: 0, skipped: 0, purpose: {background: 1}}
+    - {run: 2026-10-18-2139, week: 2026-W42, lookups: 1, hit: 1, miss: 0, skipped: 0, purpose: {background: 1}}
+    - {run: 2026-10-18-2139, week: 2026-W42, lookups: 1, hit: 1, miss: 0, skipped: 0, purpose: {background: 1}}
   fractal-nz-layout:
-    totals: {lookups: 1, hit: 1, miss: 0, skipped: 0}
-    purpose: {background: 1}
+    totals: {lookups: 5, hit: 5, miss: 0, skipped: 0}
+    purpose: {background: 5}
     by_week:
-      2026-W42: {lookups: 1, hit: 1, miss: 0, skipped: 0, purpose: {background: 1}}
+      2026-W42: {lookups: 5, hit: 5, miss: 0, skipped: 0, purpose: {background: 5}}
     recent:
     - {run: 2026-10-17-2124, week: 2026-W42, lookups: 1, hit: 1, miss: 0, skipped: 0, purpose: {background: 1}}
+    - {run: 2026-10-18-2138, week: 2026-W42, lookups: 1, hit: 1, miss: 0, skipped: 0, purpose: {background: 1}}
+    - {run: 2026-10-18-2138, week: 2026-W42, lookups: 1, hit: 1, miss: 0, skipped: 0, purpose: {background: 1}}
+    - {run: 2026-10-18-2139, week: 2026-W42, lookups: 1, hit: 1, miss: 0, skipped: 0, purpose: {background: 1}}
+    - {run: 2026-10-18-2139, week: 2026-W42, lookups: 1, hit: 1, miss: 0, skipped: 0, purpose: {background: 1}}
   hixl-error-codes:
-    totals: {lookups: 1, hit: 1, miss: 0, skipped: 0}
-    purpose: {signature: 1}
+    totals: {lookups: 5, hit: 5, miss: 0, skipped: 0}
+    purpose: {signature: 5}
     by_week:
-      2026-W42: {lookups: 1, hit: 1, miss: 0, skipped: 0, purpose: {signature: 1}}
+      2026-W42: {lookups: 5, hit: 5, miss: 0, skipped: 0, purpose: {signature: 5}}
     recent:
     - {run: 2026-10-18-0749, week: 2026-W42, lookups: 1, hit: 1, miss: 0, skipped: 0, purpose: {signature: 1}}
+    - {run: 2026-10-18-2138, week: 2026-W42, lookups: 1, hit: 1, miss: 0, skipped: 0, purpose: {signature: 1}}
+    - {run: 2026-10-18-2138, week: 2026-W42, lookups: 1, hit: 1, miss: 0, skipped: 0, purpose: {signature: 1}}
+    - {run: 2026-10-18-2139, week: 2026-W42, lookups: 1, hit: 1, miss: 0, skipped: 0, purpose: {signature: 1}}
+    - {run: 2026-10-18-2139, week: 2026-W42, lookups: 1, hit: 1, miss: 0, skipped: 0, purpose: {signature: 1}}
   hixl-tool-route-and-comm-res:
-    totals: {lookups: 1, hit: 1, miss: 0, skipped: 0}
-    purpose: {background: 1}
+    totals: {lookups: 5, hit: 5, miss: 0, skipped: 0}
+    purpose: {background: 5}
     by_week:
-      2026-W42: {lookups: 1, hit: 1, miss: 0, skipped: 0, purpose: {background: 1}}
+      2026-W42: {lookups: 5, hit: 5, miss: 0, skipped: 0, purpose: {background: 5}}
     recent:
     - {run: 2026-10-18-0749, week: 2026-W42, lookups: 1, hit: 1, miss: 0, skipped: 0, purpose: {background: 1}}
+    - {run: 2026-10-18-2138, week: 2026-W42, lookups: 1, hit: 1, miss: 0, skipped: 0, purpose: {background: 1}}
+    - {run: 2026-10-18-2138, week: 2026-W42, lookups: 1, hit: 1, miss: 0, skipped: 0, purpose: {background: 1}}
+    - {run: 2026-10-18-2139, week: 2026-W42, lookups: 1, hit: 1, miss: 0, skipped: 0, purpose: {background: 1}}
+    - {run: 2026-10-18-2139, week: 2026-W42, lookups: 1, hit: 1, miss: 0, skipped: 0, purpose: {background: 1}}
   msllm-startup-version-env-triage:
-    totals: {lookups: 2, hit: 0, miss: 0, skipped: 0}
-    purpose: {signature: 2}
+    totals: {lookups: 10, hit: 0, miss: 0, skipped: 0}
+    purpose: {signature: 10}
     by_week:
-      2026-W42: {lookups: 2, hit: 0, miss: 0, skipped: 0, purpose: {signature: 2}}
+      2026-W42: {lookups: 10, hit: 0, miss: 0, skipped: 0, purpose: {signature: 10}}
     recent:
     - {run: 2026-10-17-2124, week: 2026-W42, lookups: 2, hit: 0, miss: 0, skipped: 0, purpose: {signature: 2}}
+    - {run: 2026-10-18-2138, week: 2026-W42, lookups: 2, hit: 0, miss: 0, skipped: 0, purpose: {signature: 2}}
+    - {run: 2026-10-18-2138, week: 2026-W42, lookups: 2, hit: 0, miss: 0, skipped: 0, purpose: {signature: 2}}
+    - {run: 2026-10-18-2139, week: 2026-W42, lookups: 2, hit: 0, miss: 0, skipped: 0, purpose: {signature: 2}}
+    - {run: 2026-10-18-2139, week: 2026-W42, lookups: 2, hit: 0, miss: 0, skipped: 0, purpose: {signature: 2}}
   operator-error-codes:
-    totals: {lookups: 1, hit: 1, miss: 0, skipped: 0}
-    purpose: {signature: 1}
+    totals: {lookups: 5, hit: 5, miss: 0, skipped: 0}
+    purpose: {signature: 5}
     by_week:
-      2026-W42: {lookups: 1, hit: 1, miss: 0, skipped: 0, purpose: {signature: 1}}
+      2026-W42: {lookups: 5, hit: 5, miss: 0, skipped: 0, purpose: {signature: 5}}
     recent:
     - {run: 2026-10-17-2124, week: 2026-W42, lookups: 1, hit: 1, miss: 0, skipped: 0, purpose: {signature: 1}}
+    - {run: 2026-10-18-2138, week: 2026-W42, lookups: 1, hit: 1, miss: 0, skipped: 0, purpose: {signature: 1}}
+    - {run: 2026-10-18-2138, week: 2026-W42, lookups: 1, hit: 1, miss: 0, skipped: 0, purpose: {signature: 1}}
+    - {run: 2026-10-18-2139, week: 2026-W42, lookups: 1, hit: 1, miss: 0, skipped: 0, purpose: {signature: 1}}
+    - {run: 2026-10-18-2139, week: 2026-W42, lookups: 1, hit: 1, miss: 0, skipped: 0, purpose: {signature: 1}}
   operator-exec-fault-patterns:
-    totals: {lookups: 2, hit: 1, miss: 1, skipped: 0}
-    purpose: {signature: 2}
+    totals: {lookups: 10, hit: 5, miss: 5, skipped: 0}
+    purpose: {signature: 10}
     by_week:
-      2026-W42: {lookups: 2, hit: 1, miss: 1, skipped: 0, purpose: {signature: 2}}
+      2026-W42: {lookups: 10, hit: 5, miss: 5, skipped: 0, purpose: {signature: 10}}
     recent:
     - {run: 2026-10-17-2124, week: 2026-W42, lookups: 2, hit: 1, miss: 1, skipped: 0, purpose: {signature: 2}}
+    - {run: 2026-10-18-2138, week: 2026-W42, lookups: 2, hit: 1, miss: 1, skipped: 0, purpose: {signature: 2}}
+    - {run: 2026-10-18-2138, week: 2026-W42, lookups: 2, hit: 1, miss: 1, skipped: 0, purpose: {signature: 2}}
+    - {run: 2026-10-18-2139, week: 2026-W42, lookups: 2, hit: 1, miss: 1, skipped: 0, purpose: {signature: 2}}
+    - {run: 2026-10-18-2139, week: 2026-W42, lookups: 2, hit: 1, miss: 1, skipped: 0, purpose: {signature: 2}}
   reg-data-movement-fault-patterns:
-    totals: {lookups: 1, hit: 1, miss: 0, skipped: 0}
-    purpose: {signature: 1}
+    totals: {lookups: 5, hit: 5, miss: 0, skipped: 0}
+    purpose: {signature: 5}
     by_week:
-      2026-W42: {lookups: 1, hit: 1, miss: 0, skipped: 0, purpose: {signature: 1}}
+      2026-W42: {lookups: 5, hit: 5, miss: 0, skipped: 0, purpose: {signature: 5}}
     recent:
     - {run: 2026-10-17-2124, week: 2026-W42, lookups: 1, hit: 1, miss: 0, skipped: 0, purpose: {signature: 1}}
+    - {run: 2026-10-18-2138, week: 2026-W42, lookups: 1, hit: 1, miss: 0, skipped: 0, purpose: {signature: 1}}
+    - {run: 2026-10-18-2138, week: 2026-W42, lookups: 1, hit: 1, miss: 0, skipped: 0, purpose: {signature: 1}}
+    - {run: 2026-10-18-2139, week: 2026-W42, lookups: 1, hit: 1, miss: 0, skipped: 0, purpose: {signature: 1}}
+    - {run: 2026-10-18-2139, week: 2026-W42, lookups: 1, hit: 1, miss: 0, skipped: 0, purpose: {signature: 1}}
   runtime-resource-fault-patterns:
-    totals: {lookups: 1, hit: 0, miss: 0, skipped: 0}
-    purpose: {signature: 1}
+    totals: {lookups: 5, hit: 0, miss: 0, skipped: 0}
+    purpose: {signature: 5}
     by_week:
-      2026-W42: {lookups: 1, hit: 0, miss: 0, skipped: 0, purpose: {signature: 1}}
+      2026-W42: {lookups: 5, hit: 0, miss: 0, skipped: 0, purpose: {signature: 5}}
     recent:
     - {run: 2026-10-17-2124, week: 2026-W42, lookups: 1, hit: 0, miss: 0, skipped: 0, purpose: {signature: 1}}
+    - {run: 2026-10-18-2138, week: 2026-W42, lookups: 1, hit: 0, miss: 0, skipped: 0, purpose: {signature: 1}}
+    - {run: 2026-10-18-2138, week: 2026-W42, lookups: 1, hit: 0, miss: 0, skipped: 0, purpose: {signature: 1}}
+    - {run: 2026-10-18-2139, week: 2026-W42, lookups: 1, hit: 0, miss: 0, skipped: 0, purpose: {signature: 1}}
+    - {run: 2026-10-18-2139, week: 2026-W42, lookups: 1, hit: 0, miss: 0, skipped: 0, purpose: {signature: 1}}
   vllm-infer-precision-triage:
-    totals: {lookups: 1, hit: 1, miss: 0, skipped: 0}
-    purpose: {procedure: 1}
+    totals: {lookups: 5, hit: 5, miss: 0, skipped: 0}
+    purpose: {procedure: 5}
     by_week:
-      2026-W42: {lookups: 1, hit: 1, miss: 0, skipped: 0, purpose: {procedure: 1}}
+      2026-W42: {lookups: 5, hit: 5, miss: 0, skipped: 0, purpose: {procedure: 5}}
     recent:
     - {run: 2026-10-17-2124, week: 2026-W42, lookups: 1, hit: 1, miss: 0, skipped: 0, purpose: {procedure: 1}}
+    - {run: 2026-10-18-2138, week: 2026-W42, lookups: 1, hit: 1, miss: 0, skipped: 0, purpose: {procedure: 1}}
+    - {run: 2026-10-18-2138, week: 2026-W42, lookups: 1, hit: 1, miss: 0, skipped: 0, purpose: {procedure: 1}}
+    - {run: 2026-10-18-2139, week: 2026-W42, lookups: 1, hit: 1, miss: 0, skipped: 0, purpose: {procedure: 1}}
+    - {run: 2026-10-18-2139, week: 2026-W42, lookups: 1, hit: 1, miss: 0, skipped: 0, purpose: {procedure: 1}}
   weight-nz-inference-only:
-    totals: {lookups: 1, hit: 1, miss: 0, skipped: 0}
-    purpose: {background: 1}
+    totals: {lookups: 5, hit: 5, miss: 0, skipped: 0}
+    purpose: {background: 5}
     by_week:
-      2026-W42: {lookups: 1, hit: 1, miss: 0, skipped: 0, purpose: {background: 1}}
+      2026-W42: {lookups: 5, hit: 5, miss: 0, skipped: 0, purpose: {background: 5}}
     recent:
     - {run: 2026-10-17-2124, week: 2026-W42, lookups: 1, hit: 1, miss: 0, skipped: 0, purpose: {background: 1}}
+    - {run: 2026-10-18-2138, week: 2026-W42, lookups: 1, hit: 1, miss: 0, skipped: 0, purpose: {background: 1}}
+    - {run: 2026-10-18-2138, week: 2026-W42, lookups: 1, hit: 1, miss: 0, skipped: 0, purpose: {background: 1}}
+    - {run: 2026-10-18-2139, week: 2026-W42, lookups: 1, hit: 1, miss: 0, skipped: 0, purpose: {background: 1}}
+    - {run: 2026-10-18-2139, week: 2026-W42, lookups: 1, hit: 1, miss: 0, skipped: 0, purpose: {background: 1}}
 tools:
-  ask_user_question: {calls: 2, p50_ms: 821713, p90_ms: 821713, errors: 0, timeouts: 0}
-  bash: {calls: 864, p50_ms: 191, p90_ms: 6882, errors: 0, timeouts: 0}
-  create_goal: {calls: 2, p50_ms: 46, p90_ms: 46, errors: 0, timeouts: 0}
-  edit: {calls: 38, p50_ms: 49, p90_ms: 54, errors: 0, timeouts: 0}
-  get_goal: {calls: 2, p50_ms: 23, p90_ms: 23, errors: 0, timeouts: 0}
-  job_kill: {calls: 2, p50_ms: 66, p90_ms: 66, errors: 0, timeouts: 0}
-  job_output: {calls: 34, p50_ms: 60147, p90_ms: 190084, errors: 0, timeouts: 0}
-  list_agents: {calls: 2, p50_ms: 29, p90_ms: 29, errors: 0, timeouts: 0}
-  present: {calls: 2, p50_ms: 27, p90_ms: 27, errors: 0, timeouts: 0}
-  read: {calls: 30, p50_ms: 40, p90_ms: 40487728, errors: 0, timeouts: 0}
-  read_image: {calls: 18, p50_ms: 309, p90_ms: 369, errors: 0, timeouts: 0}
-  send_message: {calls: 4, p50_ms: 28, p90_ms: 29, errors: 0, timeouts: 0}
-  skill: {calls: 4, p50_ms: 132990, p90_ms: 22281798, errors: 0, timeouts: 0}
-  subagent: {calls: 10, p50_ms: 254, p90_ms: 277, errors: 0, timeouts: 0}
-  todo_write: {calls: 2, p50_ms: 26, p90_ms: 26, errors: 0, timeouts: 0}
-  update_goal: {calls: 2, p50_ms: 43, p90_ms: 43, errors: 0, timeouts: 0}
-  write: {calls: 34, p50_ms: 56, p90_ms: 81, errors: 0, timeouts: 0}
+  ask_user_question: {calls: 10, p50_ms: 821713, p90_ms: 821713, errors: 0, timeouts: 0}
+  bash: {calls: 5724, p50_ms: 224, p90_ms: 10694, errors: 0, timeouts: 0}
+  create_goal: {calls: 10, p50_ms: 46, p90_ms: 46, errors: 0, timeouts: 0}
+  edit: {calls: 190, p50_ms: 49, p90_ms: 54, errors: 0, timeouts: 0}
+  get_goal: {calls: 10, p50_ms: 23, p90_ms: 23, errors: 0, timeouts: 0}
+  job_kill: {calls: 10, p50_ms: 66, p90_ms: 66, errors: 0, timeouts: 0}
+  job_output: {calls: 194, p50_ms: 81147, p90_ms: 198167, errors: 0, timeouts: 0}
+  list_agents: {calls: 18, p50_ms: 27, p90_ms: 29, errors: 0, timeouts: 0}
+  present: {calls: 50, p50_ms: 27, p90_ms: 28, errors: 0, timeouts: 0}
+  read: {calls: 150, p50_ms: 46, p90_ms: 72877865, errors: 0, timeouts: 0}
+  read_image: {calls: 274, p50_ms: 309, p90_ms: 370, errors: 0, timeouts: 0}
+  send_message: {calls: 20, p50_ms: 28, p90_ms: 29, errors: 0, timeouts: 0}
+  skill: {calls: 20, p50_ms: 14934316, p90_ms: 34129950, errors: 0, timeouts: 0}
+  subagent: {calls: 66, p50_ms: 201, p90_ms: 280, errors: 0, timeouts: 0}
+  todo_write: {calls: 10, p50_ms: 26, p90_ms: 26, errors: 0, timeouts: 0}
+  update_goal: {calls: 10, p50_ms: 43, p90_ms: 43, errors: 0, timeouts: 0}
+  write: {calls: 202, p50_ms: 57, p90_ms: 73, errors: 0, timeouts: 0}
 cold: {cases: 143}
 cold_never_looked_up:
 - a5-950dt-memory-spec

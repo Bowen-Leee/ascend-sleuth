@@ -1,6 +1,6 @@
 /* eslint-disable */
 // 生成物 —— 勿手改。由 `node scripts/build_panel_bundle.js` 从下列源文件拼出：
-//   dsh-plugins/ascend-panel/panel-host.js  (sha256:2f4885d18d53)
+//   dsh-plugins/ascend-panel/panel-host.js  (sha256:748144652043)
 //   dsh-plugins/ev-panel/panel-host.js  (sha256:e45522d60c58)
 // 校验：`node scripts/build_panel_bundle.js --check`（源文件改了没重跑生成器即红）。
 //
@@ -81,7 +81,7 @@ const PANELS = [
     id: 'ascend-panel',
     build(harness) {
       return (function () {
-// ---- dsh-plugins/ascend-panel/panel-host.js (sha256:2f4885d18d53) 原文开始 ----
+// ---- dsh-plugins/ascend-panel/panel-host.js (sha256:748144652043) 原文开始 ----
 return {
   apply(ctx) {
     const fs = ctx.get('fs')
@@ -957,6 +957,14 @@ return {
               tokens: { uncached: scalarNum(tk.uncached), cache_read: scalarNum(tk.cache_read),
                         cache_write: scalarNum(tk.cache_write), out: scalarNum(tk.out) },
               tools: Array.isArray(m.tools) ? m.tools.map(x => String(x)) : [],
+              // 按工具拆：读者要知道这几秒是谁占的，只有一个总数判断不了该裁哪个动作
+              byTool: Array.isArray(m.by_tool) ? m.by_tool.map(x => {
+                const o = asMap(x) || {}
+                return { tool: scalarStr(o.tool), calls: scalarNum(o.calls), ms: scalarNum(o.ms),
+                         pending: scalarNum(o.pending) }
+              }) : [],
+              windowTruncated: !!m.window_truncated,
+              msComplete: m.ms_complete !== false,
             })
           }
           return outA
