@@ -1689,6 +1689,12 @@ _MS._run_no_pipe = no_fallback`)
         expect('点击后真的取了报告（read-report 被调用 ' + reportCalls.length + ' 次）', reportCalls.length === 1)
         expect('报告给章节跳转与「复制全文」', /TL;DR/.test(texts) && /复制全文/.test(texts))
         expect('报告仍给「打开文件」（长报告要能落到外部）', /打开文件/.test(texts))
+        // 展开态的版式契约：指标带在正文之前、指令区从表头下方挪进右侧操作栏，
+        // 但正文与报告入口必须同时在（挪动不许把任何一件挪丢）。
+        expect('展开态给指标带（工具耗时 / 调用 / token / 步）',
+          /工具耗时/.test(texts) && /步 \/ 事件/.test(texts) && /token/.test(texts))
+        expect('展开态正文与报告入口同时在场（挪进操作栏不等于挪丢）',
+          /轨迹|用户输入/.test(texts) && /收起报告/.test(texts))
         expect('报告默认停在 TL;DR 节（正文里先给结论）', /现象：profile_run 崩溃/.test(texts))
         expect('只渲染所选那一节（依据链正文不上屏，避免把整份报告铺开）', !/该构建已脱离分支/.test(texts))
         expect('报告是只读入口（没有写入报告的 RPC）', !/ascend-write-report/.test(ascSrc))

@@ -1,6 +1,6 @@
 /* eslint-disable */
 // 生成物 —— 勿手改。由 `node scripts/build_panel_bundle.js` 从下列源文件拼出：
-//   dsh-plugins/ascend-panel/panel-client.js  (sha256:389b086eb394)
+//   dsh-plugins/ascend-panel/panel-client.js  (sha256:0117169682aa)
 //   dsh-plugins/ev-panel/panel-client.js  (sha256:9e836d4c1993)
 // 校验：`node scripts/build_panel_bundle.js --check`。
 //
@@ -63,7 +63,7 @@ window.__ModuleLoader__.load({
       id: 'ascend-panel',
       build(host, styles) {
         return (function () {
-// ---- dsh-plugins/ascend-panel/panel-client.js (sha256:389b086eb394) 原文开始 ----
+// ---- dsh-plugins/ascend-panel/panel-client.js (sha256:0117169682aa) 原文开始 ----
 return {
   apply(ctx) {
     const slots = ctx.get('slots')
@@ -736,6 +736,28 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
       return order.map(k => ({ action: byAction[k].action, count: byAction[k].n, groups: byAction[k].groups, rework: byAction[k].n > 1 }))
     }
 
+    // 指标带：展开区最上面那一条，横贯整行。
+    // 为什么横着铺而不放侧栏：六步成本天生是横向比较（哪一步最高），竖排要上下扫；
+    // 表格行展开刚好给了一整行的宽度，侧栏会把它压成缩略图。
+    function MetricsBand(props) {
+      const rec = props.rec || null
+      const s = props.session || {}
+      const tk = rec && rec.tokens ? rec.tokens : null
+      const tokSum = tk ? (tk.uncached || 0) + (tk.cache_read || 0) + (tk.out || 0) : null
+      const cell = (label, value, note) => React.createElement('div', { style: { minWidth: 0 } },
+        React.createElement('div', { style: { fontSize: 'var(--t-tiny)', letterSpacing: '.1em', textTransform: 'uppercase', color: T.text2, marginBottom: 2 } }, label),
+        React.createElement('div', { className: 'sleu-num', style: { fontSize: 'var(--t-xl)', lineHeight: 1.15, color: T.text } }, value),
+        note ? React.createElement('div', { style: { fontSize: 'var(--t-tiny)', color: T.text2, marginTop: 2, lineHeight: 1.4 } }, note) : null)
+      return React.createElement('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 14, padding: '2px 0 12px' } },
+        cell('工具耗时', rec && rec.toolTotalMs ? msText(rec.toolTotalMs) : NOT_RECORDED,
+             rec ? '合计（窗口内）' : '本机明细未生成'),
+        cell('调用', rec && rec.toolCallCount ? String(rec.toolCallCount) : NOT_RECORDED, rec ? '工具调用次数' : ''),
+        cell('token', tokSum !== null ? thousands(tokSum) : NOT_RECORDED,
+             tk ? ('缓存读 ' + thousands(tk.cache_read || 0)) : '四类 token 在本机明细里'),
+        cell('步 / 事件', (s.userSteps || 0) + ' / ' + (s.agentSteps || 0), '用户输入 / agent 事件'),
+      )
+    }
+
     function SessionCard(props) {
       const s = props.session
       const ownerSessionId = props.sessionId
@@ -1113,12 +1135,18 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
           '读数有值但读端算不出来的归「不可解读」，不列在这里。'),
       )
 
+      // 指标带的三段：本单读数 / 各步 / 检索。后两段直接复用上面那两块，不重画一份。
+      const band = (open && steps && steps.list && steps.list.length)
+        ? React.createElement('div', null,
+            React.createElement(MetricsBand, { rec: steps.record || null, session: s }),
+            React.createElement('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 10, paddingTop: 4 } },
+              d5Steps, d5Retrieval))
+        : null
       let body = null
       if (open) {
         if (steps && steps.loading) body = React.createElement('div', null, reportBlock, React.createElement('div', { style: { color: T.text2, padding: 10 } }, '加载轨迹…'))
         else if (steps && steps.list && steps.list.length) {
           body = React.createElement('div', null,
-            reportBlock,
             steps.summary ? React.createElement('div', { style: { marginBottom: 10, padding: 10, background: 'color-mix(in srgb, ' + T.brand + ' 6%, transparent)', border: '1px solid ' + T.border, borderRadius: 9 } },
               React.createElement(SectionLabel, { color: T.brand }, '问题背景'),
               React.createElement('div', { style: { fontSize: 13.5, color: T.text, whiteSpace: 'pre-wrap', wordBreak: 'break-word', lineHeight: 1.68 } }, steps.summary),
@@ -1538,7 +1566,7 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
         ) : null,
       )
 
-      return React.createElement('div', { className: 'sleu-card', style: { background: T.bg, backgroundImage: 'var(--surf)', border: '1px solid var(--hair)', borderLeft: '3px solid ' + statusAccent, borderRadius: 12, marginBottom: 10, overflow: 'hidden', boxShadow: 'var(--elev-1)' } },
+      return React.createElement('div', { className: 'sleu-card', style: { background: T.bg, backgroundImage: 'var(--surf)', border: '1px solid var(--hair)', borderLeft: '3px solid ' + statusAccent, borderRadius: 12, marginBottom: 10, boxShadow: 'var(--elev-1)' } },
         React.createElement('button', {
           type: 'button', 'aria-expanded': !!open, onClick: toggle, className: 'sleu-row',
           style: { width: '100%', padding: '12px 16px', cursor: 'pointer', background: 'transparent', border: 'none', textAlign: 'left', color: T.text, font: 'inherit' },
@@ -1589,8 +1617,23 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
             // panel_render_check：占位串只出原值，不出内部说法（占位串 / case id / 字段名）。
             caseKindOf(s) === 'placeholder' ? React.createElement('span', { title: 'trace 里记的定位值（不是知识库里的 case）', className: 'sleu-mono', style: { color: T.text2, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, s.activeCase) : null,
           ),
-          React.createElement('div', { style: { color: T.text2, fontSize: 13.5, marginTop: 4 } },
-            '轨迹: ' + s.userSteps + ' 用户输入 / ' + s.agentSteps + ' agent 步骤'),
+          React.createElement('div', { style: { color: T.text2, fontSize: 13.5, marginTop: 4, display: 'flex', gap: 14, flexWrap: 'wrap', alignItems: 'baseline' } },
+            React.createElement('span', null, '轨迹: ' + s.userSteps + ' 用户输入 / ' + s.agentSteps + ' agent 步骤'),
+            // 成本列：本机明细读得到才给数，读不到写「—」。列表是**扫**的地方，估出来的数会被当成真的。
+            s.cost
+              ? React.createElement('span', { className: 'sleu-num', title: '来自本机明细：工具调用合计耗时与四类 token' },
+                  '工具 ' + msText(s.cost.ms) + ' · ' + s.cost.calls + ' 次 · ' + thousands(s.cost.tok) + ' tok')
+              : React.createElement('span', { style: { color: T.text2 }, title: '本机明细里没有这一单的账单（没关联到会话日志，或还没汇总）' }, '工具耗时 — · token —'),
+            s.cost && s.cost.stepms && s.cost.stepms.length
+              ? React.createElement('span', { style: { display: 'inline-flex', alignItems: 'flex-end', gap: 2, height: 14 }, title: '每步耗时（按轨迹 ts 切窗口）' },
+                  s.cost.stepms.map((v, i) => React.createElement('i', {
+                    key: i,
+                    style: { display: 'block', width: 5, borderRadius: 1, background: 'var(--acc-amber, ' + T.warn + ')', opacity: 0.75,
+                             height: Math.max(2, Math.round(v / Math.max.apply(null, s.cost.stepms) * 14)) + 'px' },
+                  })))
+              : null,
+            s.excludedCount ? React.createElement('span', null, '排除 ' + s.excludedCount + ' 条') : null,
+            s.sedimentCandidates ? React.createElement('span', null, '沉淀建议 ' + s.sedimentCandidates + ' 条') : null),
           // 步数由同一份解析结果算出：解析少了就得说，否则"1 用户输入"看起来像这单只有一步。
           s.parseAnomaly ? React.createElement('div', { style: { color: T.warn, fontSize: 13.5, marginTop: 4, display: 'flex', alignItems: 'center', gap: 6 } },
             React.createElement(Dot, { color: T.warn }),
@@ -1607,9 +1650,19 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
               s.waitingFor ? (s.waitingFor.length > 60 ? s.waitingFor.slice(0, 60) + '…' : s.waitingFor) : '本次诊断缺的材料（见轨迹里的「缺」标记）'),
           ) : null,
         ),
-        // 状态指令区：续接（仅活跃会话） + 闭环四种结局；形态见上方 actionArea 注释
-        actionArea,
-        body ? React.createElement('div', { style: { padding: '12px 16px', borderTop: '1px solid ' + T.border, background: T.bg2 } }, body) : null,
+        // 收起态：指令区（报告入口 + 续接/闭环 + 交接包）就地留在表头下面——
+        // 报告入口藏进展开态，读者会以为面板读不到报告（这条是实测反馈定的，不能省）。
+        // 展开态：指标带横贯一行，下面是「正文 | 操作栏」两栏，指令区挪进右侧操作栏，正文更宽。
+        open ? null : actionArea,
+        open
+          ? React.createElement('div', { style: { display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 264px', alignItems: 'start' } },
+              React.createElement('div', { style: { gridColumn: '1 / -1', minWidth: 0, padding: '0 16px' } }, band),
+              body ? React.createElement('div', { style: { gridColumn: '1', padding: '12px 16px', borderTop: '1px solid ' + T.border, background: T.bg2, minWidth: 0 } }, body) : null,
+              React.createElement('div', { style: { gridColumn: '2', padding: '12px 16px 14px 0', borderTop: '1px solid ' + T.border, position: 'sticky', top: 8, alignSelf: 'start', minWidth: 0 } },
+                reportBlock,
+                actionArea),
+            )
+          : null,
       )
     }
 

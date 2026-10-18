@@ -1,6 +1,6 @@
 /* eslint-disable */
 // 生成物 —— 勿手改。由 `node scripts/build_panel_bundle.js` 从下列源文件拼出：
-//   dsh-plugins/ascend-panel/panel-host.js  (sha256:b419b04cf66d)
+//   dsh-plugins/ascend-panel/panel-host.js  (sha256:5ab83af4d474)
 //   dsh-plugins/ev-panel/panel-host.js  (sha256:e45522d60c58)
 // 校验：`node scripts/build_panel_bundle.js --check`（源文件改了没重跑生成器即红）。
 //
@@ -81,7 +81,7 @@ const PANELS = [
     id: 'ascend-panel',
     build(harness) {
       return (function () {
-// ---- dsh-plugins/ascend-panel/panel-host.js (sha256:b419b04cf66d) 原文开始 ----
+// ---- dsh-plugins/ascend-panel/panel-host.js (sha256:5ab83af4d474) 原文开始 ----
 return {
   apply(ctx) {
     const fs = ctx.get('fs')
@@ -500,6 +500,24 @@ return {
             // 收起态副标题的原料：问题背景段（要回答"这单在查什么"）。不用最后一个事件的 output——
             // 那常常是产出报告 / 续接 / 回报这类记录维护动作，读者看不懂（实测反馈）。
             summarySnippet: doc.summary ? String(doc.summary).replace(/\s+/g, ' ').trim().slice(0, 140) : null,
+            // 列表列要的成本读数：从本机明细读，读不到就给 null（列显示「—」）。
+            // 不在列表里替它估——列表是**扫**的地方，估出来的数会被当成真的。
+            cost: await (async function () {
+              try {
+                const rec = await readLocalRecord(cwd, sessionId)
+                if (!rec || !rec.ok || !rec.record) return null
+                const r = rec.record
+                const t = r.tokens || {}
+                const sc = Array.isArray(r.stepCost) ? r.stepCost : []
+                return {
+                  calls: r.toolCallCount || 0,
+                  ms: r.toolTotalMs || 0,
+                  tok: (t.uncached || 0) + (t.cache_read || 0) + (t.out || 0),
+                  stepms: sc.map(x => x.ms),
+                }
+              } catch (e) { return null }
+            })(),
+            excludedCount: Array.isArray(doc.excluded_cases) ? doc.excluded_cases.length : 0,
             // 反馈债标记：**新口径**是 `feedback.outcome: pending`（配 `feedback.case`），词表见
             // 仓库根 `trace-status.yaml`；旧 trace 里是 `feedback_pending: <case-id>`。本机历史
             // trace 两种都存在，所以两种都读（先新后旧）——只认一种会让另一半会话的"待回报"
@@ -922,6 +940,26 @@ return {
         routed: scalarStr(route.routed),
         hitCase: scalarStr(route.hit_case),
         candidatesConsidered: asList(route.candidates_considered),
+        // 每步成本：按轨迹事件的 ts 切窗口，把会话账单的调用与 token 折进诊断步。
+        // 没有 ts 时摘要脚本给 null（切不出窗口），这里**如实给空数组**，不按事件顺序估。
+        stepCost: (function () {
+          const raw = cost.step_cost
+          if (!Array.isArray(raw)) return []
+          const outA = []
+          for (const r of raw) {
+            const m = asMap(r) || {}
+            const tk = asMap(m.tokens) || {}
+            outA.push({
+              step: scalarNum(m.step),
+              calls: scalarNum(m.calls),
+              ms: scalarNum(m.ms),
+              tokens: { uncached: scalarNum(tk.uncached), cache_read: scalarNum(tk.cache_read),
+                        cache_write: scalarNum(tk.cache_write), out: scalarNum(tk.out) },
+              tools: Array.isArray(m.tools) ? m.tools.map(x => String(x)) : [],
+            })
+          }
+          return outA
+        })(),
         stepCount: scalarNum(steps.count),
         stepActions: (function () {
           const outA = {}
