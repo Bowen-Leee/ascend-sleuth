@@ -1,6 +1,6 @@
 /* eslint-disable */
 // 生成物 —— 勿手改。由 `node scripts/build_panel_bundle.js` 从下列源文件拼出：
-//   dsh-plugins/ascend-panel/panel-client.js  (sha256:4c537e9de716)
+//   dsh-plugins/ascend-panel/panel-client.js  (sha256:6cc4d44786c5)
 //   dsh-plugins/ev-panel/panel-client.js  (sha256:9e836d4c1993)
 // 校验：`node scripts/build_panel_bundle.js --check`。
 //
@@ -63,7 +63,7 @@ window.__ModuleLoader__.load({
       id: 'ascend-panel',
       build(host, styles) {
         return (function () {
-// ---- dsh-plugins/ascend-panel/panel-client.js (sha256:4c537e9de716) 原文开始 ----
+// ---- dsh-plugins/ascend-panel/panel-client.js (sha256:6cc4d44786c5) 原文开始 ----
 return {
   apply(ctx) {
     const slots = ctx.get('slots')
@@ -221,7 +221,7 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
     // 构建时注入的面板包版本（`scripts/build_panel_bundle.js` 把占位符换成 package.json 的 version）。
     // 为什么要有：面板是「装进 profile 的常驻插件 + 浏览器按 rev 缓存」两层，改完看不到新版时
     // 无法区分"装的还是旧包"与"浏览器缓存了旧 bundle"。有这个串，一眼就能判。
-    const PANEL_VERSION = '0.5.4'
+    const PANEL_VERSION = '0.5.5'
 
     function shortUrl(u) {
       const s = String(u).replace(/^https?:\/\//i, '')
@@ -236,9 +236,10 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
       archived: { label: '已沉淀 · Tier3', color: 'var(--c-amber)' },
     }
     const kindMeta = {
-      live: { label: 'live', color: 'var(--c-green)', acc: 'var(--acc-green)', note: '活诊断 · 参与趋势' },
-      replay: { label: 'replay', color: 'var(--c-blue)', acc: 'var(--acc-blue)', note: '离线评估 · 不参与趋势' },
-      example: { label: 'example', color: T.text2, acc: 'var(--acc-gray)', note: '示例' },
+      // 界面用中文；原值（live/replay/example）留在 note 与 tooltip 里——读者不需要先认英文
+      live: { label: '活诊断', color: 'var(--c-green)', acc: 'var(--acc-green)', note: '活诊断 · 参与趋势（kind: live）' },
+      replay: { label: '离线回放', color: 'var(--c-blue)', acc: 'var(--acc-blue)', note: '离线评估 · 不参与趋势（kind: replay）' },
+      example: { label: '示例', color: T.text2, acc: 'var(--acc-gray)', note: '示例（kind: example）' },
     }
     const METRIC_LABELS = {
       sessions_total: '诊断次数', tier2_hit: '知识库命中',
@@ -2173,7 +2174,12 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
       const unread = isUnreadable || (() => false)
       const km = kindMeta[p.kind] || kindMeta.example
       const metricKeys = Object.keys(p.metrics || {})
-      const summary = metricKeys.slice(0, 3).map(k => (METRIC_LABELS[k] || k) + ' ' + metricValue(p.metrics[k]).text).join(' · ')
+      // 收起态摘要取**最该先看的几个**，不是文件里前三个键（那是字段顺序，不是重要性）。
+      // 误诊率与反馈捕获是"这周质量如何"的直接答案，原来恰好都不在里面。
+      const PRIORITY = ['misdiagnosis_rate', 'feedback_capture', 'tier2_hit', 'sessions_total', 'routed_accuracy', 'sediment_total']
+      const ordered = PRIORITY.filter(k => k in (p.metrics || {}))
+        .concat(metricKeys.filter(k => PRIORITY.indexOf(k) < 0))
+      const summary = ordered.slice(0, 4).map(k => (METRIC_LABELS[k] || k) + ' ' + metricValue(p.metrics[k]).text).join(' · ')
       const nUnread = metricKeys.filter(k => unread(k)).length
       return React.createElement('div', { style: { background: T.bg, border: '1px solid ' + T.border, borderRadius: 14, marginBottom: 10, overflow: 'hidden', boxShadow: '0 1px 2px rgba(15,23,42,.04), 0 1px 1px rgba(15,23,42,.03)' } },
         React.createElement('button', {
@@ -2228,7 +2234,7 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
 
     function verdictState(verdict, error) {
       if (error) return { level: 'warn', label: '体检不可用', color: T.warn, accent: 'var(--acc-amber)', note: error }
-      if (!verdict) return { level: 'warn', label: '体检待载入', color: T.text2, accent: 'var(--acc-gray)', note: '体检结果尚未返回' }
+      if (!verdict) return { level: 'warn', label: '体检读取中', color: T.text2, accent: 'var(--acc-gray)', note: '体检结果尚未返回' }
       const cov = verdict.coverage || {}
       const v = verdict.check_verdict
       if (v === 'broken' || (cov.gates_total !== undefined && cov.gates_evaluated < cov.gates_total)) {
@@ -2538,13 +2544,15 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
       const max = Math.max(...vals, 1)
       const delta = vals[vals.length - 1] - vals[0]
       const peakIdx = vals.indexOf(Math.max(...vals))
-      const capLine = cell.cap || last[last.length - 1].cap || null
+      // 这根微条画的是**条数**，而判据量是**token**——同一行两个单位会被读成"和主数字比"。
+      // 条数线已退役（gates.yaml 的 cell_read_* 说明），所以这里**不按它上色**，
+      // 只作"这条路在不在长"的观察，标题里写明它是条数。
       return React.createElement('span', { style: { display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 } },
-        React.createElement('span', { className: 'sleu-bars', title: last.map(r => r.period + ': ' + r.count + (r.cap ? '/' + r.cap : '')).join('\n') },
+        React.createElement('span', { className: 'sleu-bars', title: '条数趋势（仅观察，不参与判据；判据按 token，见左边的数）\n' + last.map(r => r.period + ': ' + r.count + ' 条').join('\n') },
           last.map((r, i) => React.createElement('i', {
             key: i,
-            className: 'sleu-bar' + ((capLine && vals[i] > capLine) ? '' : ' dim'),
-            style: { height: Math.max(2, Math.round((vals[i] / max) * 18)) + 'px', background: (capLine && vals[i] > capLine) ? color : undefined },
+            className: 'sleu-bar dim',
+            style: { height: Math.max(2, Math.round((vals[i] / max) * 18)) + 'px' },
           })),
         ),
         React.createElement('span', {
@@ -2569,7 +2577,7 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
           React.createElement('span', { style: { width: 8, height: 16, borderRadius: 4, background: 'var(--acc-amber)', display: 'inline-block' } }),
           React.createElement('span', { className: 'sleu-title', style: { fontSize: 15, fontWeight: 700 } }, '容量台账'),
           React.createElement('span', { style: { fontSize: 13.5, color: T.text2 } },
-            '逐格：查一次问题要读进来多少字（评估线 ' + (softTok === undefined ? '—' : softTok)
+            '逐格：查一次问题要读进来多少 token（评估线 ' + (softTok === undefined ? '—' : softTok)
             + (hardTok === undefined ? '' : ' / 硬线 ' + hardTok) + '，数值读 metrics/gates.yaml）'),
           hot.length ? React.createElement('span', { style: { marginLeft: 'auto' } }, pill(hot.length + ' 格越界', T.error)) 
                      : React.createElement('span', { style: { marginLeft: 'auto' } }, pill('全部格子正常', T.success)),
@@ -3034,7 +3042,8 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
         ((order[a.kind] ?? 3) - (order[b.kind] ?? 3)) || newer(b, a))
       const shown = kindFilter === 'all' ? allShown : allShown.filter(p => p.kind === kindFilter)
       const filterChips = ['all', 'live', 'replay', 'example']
-      const filterLabels = { all: '全部', live: 'live', replay: 'replay', example: 'example' }
+      // 筛选用中文：kindMeta 里已经备好了 label，别把 live/replay/example 原文甩给读者
+      const filterLabels = { all: '全部', live: kindMeta.live.label, replay: kindMeta.replay.label, example: kindMeta.example.label }
 
       // live 期按时间升序：`lastLive`（判新鲜度）与「本期变化」都依赖"哪个最新"，
       // 不依赖文件里的先后（生成物的顺序是构建产物，不是契约）。
