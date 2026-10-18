@@ -1,6 +1,6 @@
 /* eslint-disable */
 // 生成物 —— 勿手改。由 `node scripts/build_panel_bundle.js` 从下列源文件拼出：
-//   dsh-plugins/ascend-panel/panel-client.js  (sha256:65b8279f7c11)
+//   dsh-plugins/ascend-panel/panel-client.js  (sha256:524b12915173)
 //   dsh-plugins/ev-panel/panel-client.js  (sha256:9e836d4c1993)
 // 校验：`node scripts/build_panel_bundle.js --check`。
 //
@@ -63,7 +63,7 @@ window.__ModuleLoader__.load({
       id: 'ascend-panel',
       build(host, styles) {
         return (function () {
-// ---- dsh-plugins/ascend-panel/panel-client.js (sha256:65b8279f7c11) 原文开始 ----
+// ---- dsh-plugins/ascend-panel/panel-client.js (sha256:524b12915173) 原文开始 ----
 return {
   apply(ctx) {
     const slots = ctx.get('slots')
@@ -221,7 +221,7 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
     // 构建时注入的面板包版本（`scripts/build_panel_bundle.js` 把占位符换成 package.json 的 version）。
     // 为什么要有：面板是「装进 profile 的常驻插件 + 浏览器按 rev 缓存」两层，改完看不到新版时
     // 无法区分"装的还是旧包"与"浏览器缓存了旧 bundle"。有这个串，一眼就能判。
-    const PANEL_VERSION = '0.5.0'
+    const PANEL_VERSION = '0.5.1'
 
     function shortUrl(u) {
       const s = String(u).replace(/^https?:\/\//i, '')
@@ -2706,28 +2706,71 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
             '最后 ' + lastTextOf(x, kind)) : null,
         )
       }
-      const rankTable = (rows, kind, cumulative) => rows.length
-        ? React.createElement('div', null, rows.map(x => rankRow(x, kind, cumulative)))
-        : React.createElement('div', { style: { fontSize: 'var(--t-sm)', color: T.text2, marginTop: 3 } }, NOT_RECORDED + '：这一期没有任何条目被用到')
+      // 一张表 + 本期/累计双列（评审建议的形态 1）。
+      // 为什么改：四张榜平铺时，"本期 vs 累计"要跨两段比对；而且只有一周记录时两段内容几乎相同。
+      // 并成一张表后，同一行内直接看到"这周用了几次 / 历史上用了多少次"。
+      // 三条约束来自评审：① 没有回报就不写 0，写「无人回报」；② 本期为 0 而累计 > 0 的行标出来；
+      // ③ 并列时不假装有名次，只按累计降序 + id，并写明"并列"。
+      const TIE = (rows, key) => {
+        const seen = {}
+        for (const r of rows) { const v = r[key] || 0; if (v > 0) seen[v] = (seen[v] || 0) + 1 }
+        return Object.keys(seen).some(v => seen[v] > 1)
+      }
+      const weekCaseMap = {}
+      for (const w of weeklyCases) weekCaseMap[w.id] = w
+      const weekRefMap = {}
+      for (const w of weeklyRefs) weekRefMap[w.id] = w
+      const anyFeedback = ea.cases.some(c => (c.resolved || 0) + (c.misdiagnosed || 0) > 0)
+      const cell = (v, opts) => React.createElement('span', {
+        className: 'sleu-num',
+        style: { textAlign: 'right', fontSize: 'var(--t-tiny)', color: (opts && opts.dim) ? T.text2 : T.text, whiteSpace: 'nowrap' },
+      }, v)
+      const headRow = (cols) => React.createElement('div', { style: { display: 'grid', gridTemplateColumns: cols.map(c => c.w).join(' '), gap: 8, padding: '0 0 4px', borderBottom: '1px solid ' + T.border } },
+        cols.map(c => React.createElement('span', { key: c.k, style: { fontSize: 'var(--t-md2)', letterSpacing: '.08em', textTransform: 'uppercase', color: T.text2, textAlign: c.r ? 'right' : 'left' } }, c.k)))
+      const caseCols = [{ k: '条目', w: 'minmax(0,1fr)' }, { k: '本期', w: '42px', r: 1 }, { k: '累计', w: '42px', r: 1 },
+        { k: anyFeedback ? '解决' : '回报', w: anyFeedback ? '42px' : '58px', r: 1 },
+        { k: anyFeedback ? '误诊' : '', w: anyFeedback ? '42px' : '0px', r: 1 },
+        { k: '排除', w: '42px', r: 1 }, { k: '最后', w: '62px', r: 1 }]
+      const refCols = [{ k: '先验条目', w: 'minmax(0,1fr)' }, { k: '本期', w: '42px', r: 1 }, { k: '累计', w: '42px', r: 1 },
+        { k: '命中', w: '42px', r: 1 }, { k: '未命中', w: '48px', r: 1 }, { k: '未查', w: '42px', r: 1 }, { k: '最后', w: '62px', r: 1 }]
+      const mergedRow = (x, kind) => {
+        const isRef = kind === 'ref'
+        const w = isRef ? weekRefMap[x.id] : weekCaseMap[x.id]
+        const now = isRef ? ((w && w.lookups) || 0) : ((w && w.selected) || 0)
+        const cum = isRef ? (x.lookups || 0) : (x.selected || 0)
+        const cols = isRef ? refCols : caseCols
+        const title = x.title || ''
+        return React.createElement('div', { key: x.id, style: { display: 'grid', gridTemplateColumns: cols.map(c => c.w).join(' '), gap: 8, padding: '3px 0', borderBottom: '1px solid ' + T.bg2, alignItems: 'baseline' } },
+          React.createElement('span', { title: title, style: { minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } },
+            React.createElement('code', { className: 'sleu-mono', style: { fontSize: 'var(--t-tiny)', color: T.text } }, x.id),
+            title ? React.createElement('span', { style: { fontSize: 'var(--t-tiny)', color: T.text2, marginLeft: 6 } }, title.slice(0, 42)) : null),
+          cell(now || (cum ? '—' : '0'), { dim: !now }),
+          cell(cum),
+          ...(isRef
+            ? [cell(x.hit || 0), cell(x.miss || 0), cell(x.skipped || 0)]
+            : (anyFeedback
+                ? [cell(x.resolved || 0), cell(x.misdiagnosed || 0)]
+                : [React.createElement('span', { key: 'fb', style: { textAlign: 'right', fontSize: 'var(--t-md2)', color: T.text2, whiteSpace: 'nowrap' } }, '无人回报'), null])),
+          cell(isRef ? (x.lastWeek || '—') : (x.lastHit || '—'), { dim: true }))
+      }
+      const section = (label, kind, rows, cols) => React.createElement('div', { style: { marginTop: 8 } },
+        React.createElement('div', { style: { fontSize: 'var(--t-sm)', fontWeight: 600, marginBottom: 3 } }, label),
+        rows.length
+          ? React.createElement('div', null, headRow(cols), rows.slice(0, 12).map(x => mergedRow(x, kind)),
+              rows.length > 12 ? React.createElement('div', { style: { fontSize: 'var(--t-tiny)', color: T.text2, marginTop: 3 } }, '另有 ' + (rows.length - 12) + ' 条未列出（按累计降序）') : null)
+          : React.createElement('div', { style: { fontSize: 'var(--t-sm)', color: T.text2, marginTop: 3 } }, NOT_RECORDED + '：这一期没有任何条目被用到'))
       const usage = React.createElement(Block, {
         title: '条目使用', accent: 'var(--acc-green)',
         right: React.createElement('span', { style: { fontSize: 'var(--t-tiny)', color: T.text2 } },
-          '计数含义：选中 / 读正文 / 解决 / 误诊 / 自证 / 排除；先验按查询与三态'),
+          wk ? ('「本期」= ' + wk + ' · 「累计」= 全部期') : '生成物没有期号'),
       },
-        React.createElement('div', { style: { fontSize: 'var(--t-sm)', fontWeight: 600, marginTop: 2 } },
-          wk ? ('本期增量榜（' + wk + '）') : '本期增量榜'),
-        wk ? rankTable(weeklyCases.slice(0, 8), 'case', false) : React.createElement('div', { style: { fontSize: 'var(--t-sm)', color: T.text2, marginTop: 3 } }, UNREADABLE + '：生成物没有期号'),
-        wk ? rankTable(weeklyRefs.slice(0, 8), 'ref', false) : null,
-        React.createElement('div', { style: { fontSize: 'var(--t-sm)', fontWeight: 600, marginTop: 10 } }, '跨期累计榜（含搬运行）'),
-        rankTable(cumCases.slice(0, 8), 'case', true),
-        rankTable(cumRefs.slice(0, 8), 'ref', true),
-        (cumCases.length + cumRefs.length + weeklyCases.length + weeklyRefs.length) > 16
-          ? React.createElement('div', { style: { fontSize: 'var(--t-tiny)', color: T.text2, marginTop: 4 } },
-              '四张榜各只列前 8 条：本期案例 ' + weeklyCases.length + ' 条、本期先验 ' + weeklyRefs.length
-              + ' 条、累计案例 ' + cumCases.length + ' 条、累计先验 ' + cumRefs.length + ' 条有记录。')
-          : null,
+        wk ? null : React.createElement('div', { style: { fontSize: 'var(--t-sm)', color: T.text2, marginTop: 3 } }, UNREADABLE + '：生成物没有期号，本期列不可读'),
+        section('案例' + (TIE(cumCases, 'selected') ? '（按累计选中降序；并列的按 id，不代表名次）' : ''), 'case', cumCases, caseCols),
+        section('先验' + (TIE(cumRefs, 'lookups') ? '（按累计查询降序；并列的按 id，不代表名次）' : ''), 'ref', cumRefs, refCols),
         React.createElement('div', { style: { marginTop: 5, color: T.text2, fontSize: 'var(--t-tiny)', lineHeight: 1.55 } },
-          '案例行的「最后」读生成物的 last_hit（最近一次解决或误诊所在周）；先验行的「最后」读 references.<id>.recent 里最近一次运行所处的周。'),
+          anyFeedback
+            ? '「解决 / 误诊」由现场回报派生；「排除」是被候选过滤丢掉，与「被使用」是两件事。'
+            : '「解决 / 误诊」这一列本期没有任何回报，所以写「无人回报」而不是 0——0 会被读成"用了但没用"。'),
       )
       // —— ⑤ 长期零选中（不据此退休）——
       const neverSelected = ea.cases.filter(c => c.selected === 0 && !c.baseline)
