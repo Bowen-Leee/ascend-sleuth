@@ -831,7 +831,7 @@ async function main() {
   }
   expect('知识库健康保留', mt.includes('知识库健康'))
   expect('流程闭环保留', mt.includes('流程闭环'))
-  expect('实时计算保留', mt.includes('实时计算'))
+  expect('不再把脚本 stdout 当界面（「实时计算」块已删）', !mt.includes('实时计算'))
   expect('默认收起期卡数量少于总期数（避免平铺）', (mt.match(/项$/gm) || []).length <= periods.length)
 
   // ================= 指标 tab · 数据源的三种结局（2026-09-13 补）=================
@@ -894,7 +894,7 @@ async function main() {
     const nt = (await renderAsync(ascSrc, { sessionId: 'sess-1' }, noTl)).text
     expect('timeline 读不到：明说期次不可读', nt.includes('期次与趋势不可读'), nt.slice(0, 120))
     expect('timeline 读不到：判决卡仍在（不整页早退）', nt.includes('现在什么坏了'))
-    expect('timeline 读不到：实时计算仍在（host 的承诺与界面一致）', nt.includes('实时计算'))
+    expect('timeline 读不到：不出现已删的「实时计算」块', !nt.includes('实时计算'))
     expect('timeline 读不到：不谎称「尚无 live 快照」', !nt.includes('尚无 live 快照'))
     expect('timeline 读不到：头部计数如实（不是 0 期 · live 0）', nt.includes('期次不可读'))
 
@@ -2837,10 +2837,9 @@ print(json.dumps([{'role': s(t.get('role')), 'step': s(t.get('step')), 'action':
       const d = driveHost(ascHostSrc, NO_SVC)
       const needFsRpcs = ['ascend-traces-list', 'ascend-traces-detail', 'ascend-update-sedimented',
         'ascend-metrics-load', 'ascend-read-report', 'ascend-kb-health', 'ascend-process-health']
-      const noFsRpcs = ['ascend-open-evidence', 'ascend-metrics-verdict', 'ascend-metrics-live',
-        'ascend-export-trace']
-      expect('ascend-panel：fs 缺失时仍注册全部 11 个 RPC',
-        Object.keys(d.regs).length === 11, Object.keys(d.regs).join(','))
+      const noFsRpcs = ['ascend-open-evidence', 'ascend-metrics-verdict', 'ascend-export-trace']
+      expect('ascend-panel：fs 缺失时仍注册全部 10 个 RPC（「实时计算」那条已随块一起删）',
+        Object.keys(d.regs).length === 10, Object.keys(d.regs).join(','))
       expect('ascend-panel：返回可用的 disposer', typeof d.disposer === 'function')
       expect('ascend-panel：导出交接包的 RPC 已注册（fs 缺失不影响它）', !!d.regs['ascend-export-trace'])
       for (const rpc of needFsRpcs) {

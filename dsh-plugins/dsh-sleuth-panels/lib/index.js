@@ -1,6 +1,6 @@
 /* eslint-disable */
 // 生成物 —— 勿手改。由 `node scripts/build_panel_bundle.js` 从下列源文件拼出：
-//   dsh-plugins/ascend-panel/panel-host.js  (sha256:748144652043)
+//   dsh-plugins/ascend-panel/panel-host.js  (sha256:0a8286c57f88)
 //   dsh-plugins/ev-panel/panel-host.js  (sha256:e45522d60c58)
 // 校验：`node scripts/build_panel_bundle.js --check`（源文件改了没重跑生成器即红）。
 //
@@ -81,7 +81,7 @@ const PANELS = [
     id: 'ascend-panel',
     build(harness) {
       return (function () {
-// ---- dsh-plugins/ascend-panel/panel-host.js (sha256:748144652043) 原文开始 ----
+// ---- dsh-plugins/ascend-panel/panel-host.js (sha256:0a8286c57f88) 原文开始 ----
 return {
   apply(ctx) {
     const fs = ctx.get('fs')
@@ -2304,12 +2304,6 @@ return {
       return loadMetricsVerdict(cwd, !!(args && args.refresh === true))
     })
 
-    const liveDisposer = harness.handle('ascend-metrics-live', async (args) => {
-      const sessionId = args && args.sessionId ? String(args.sessionId) : null
-      const cwd = await resolveCwd(sessionId)
-      return runLiveMetrics(cwd)
-    })
-
     // 导出交接包（跨机继续定位）。与 open-evidence 一样只依赖 shell，不需要 fs 服务。
     const exportDisposer = harness.handle('ascend-export-trace', async (args) => {
       const sessionId = args && args.sessionId ? String(args.sessionId) : null
@@ -2330,7 +2324,6 @@ return {
       if (healthDisposer) healthDisposer()
       if (processDisposer) processDisposer()
       if (verdictDisposer) verdictDisposer()
-      if (liveDisposer) liveDisposer()
       if (exportDisposer) exportDisposer()
     }
   },

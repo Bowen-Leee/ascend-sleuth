@@ -2220,12 +2220,6 @@ return {
       return loadMetricsVerdict(cwd, !!(args && args.refresh === true))
     })
 
-    const liveDisposer = harness.handle('ascend-metrics-live', async (args) => {
-      const sessionId = args && args.sessionId ? String(args.sessionId) : null
-      const cwd = await resolveCwd(sessionId)
-      return runLiveMetrics(cwd)
-    })
-
     // 导出交接包（跨机继续定位）。与 open-evidence 一样只依赖 shell，不需要 fs 服务。
     const exportDisposer = harness.handle('ascend-export-trace', async (args) => {
       const sessionId = args && args.sessionId ? String(args.sessionId) : null
@@ -2246,7 +2240,6 @@ return {
       if (healthDisposer) healthDisposer()
       if (processDisposer) processDisposer()
       if (verdictDisposer) verdictDisposer()
-      if (liveDisposer) liveDisposer()
       if (exportDisposer) exportDisposer()
     }
   },

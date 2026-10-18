@@ -1,6 +1,6 @@
 /* eslint-disable */
 // 生成物 —— 勿手改。由 `node scripts/build_panel_bundle.js` 从下列源文件拼出：
-//   dsh-plugins/ascend-panel/panel-client.js  (sha256:b80e151beeb9)
+//   dsh-plugins/ascend-panel/panel-client.js  (sha256:65b8279f7c11)
 //   dsh-plugins/ev-panel/panel-client.js  (sha256:9e836d4c1993)
 // 校验：`node scripts/build_panel_bundle.js --check`。
 //
@@ -63,7 +63,7 @@ window.__ModuleLoader__.load({
       id: 'ascend-panel',
       build(host, styles) {
         return (function () {
-// ---- dsh-plugins/ascend-panel/panel-client.js (sha256:b80e151beeb9) 原文开始 ----
+// ---- dsh-plugins/ascend-panel/panel-client.js (sha256:65b8279f7c11) 原文开始 ----
 return {
   apply(ctx) {
     const slots = ctx.get('slots')
@@ -221,7 +221,7 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
     // 构建时注入的面板包版本（`scripts/build_panel_bundle.js` 把占位符换成 package.json 的 version）。
     // 为什么要有：面板是「装进 profile 的常驻插件 + 浏览器按 rev 缓存」两层，改完看不到新版时
     // 无法区分"装的还是旧包"与"浏览器缓存了旧 bundle"。有这个串，一眼就能判。
-    const PANEL_VERSION = '0.4.4'
+    const PANEL_VERSION = '0.5.0'
 
     function shortUrl(u) {
       const s = String(u).replace(/^https?:\/\//i, '')
@@ -2848,7 +2848,9 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
         React.createElement('div', { style: { marginTop: 5, fontSize: 'var(--t-tiny)', color: T.text2, lineHeight: 1.55 } },
           '不可解读 ≠ 0：没有数据与"读数是 0"是两件事。样本量小于 5 的条目在榜上标「小样本」。'))
       return React.createElement('div', { style: { marginBottom: 12 } },
-        cover, unreadableBlock, needBlock, usage, zeroBlock, toolsBlock, worseBlock, todoBlock)
+        // 「变差的读数」与「本期该做」不再单独出块：判决里已经逐条给了判据、处置与可复制指令，
+        // 同一批 fail 在四处各说一遍是这一屏最大的重复来源（评审逐行列了四处行号）。
+        cover, unreadableBlock, needBlock, usage, zeroBlock, toolsBlock)
     }
 
 
@@ -2860,7 +2862,6 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
       // 判决（闭环体检）：首屏的真正主角。缺它时如实报"体检不可用"，不假装一切正常。
       const [verdict, setVerdict] = React.useState(null)
       const [kindFilter, setKindFilter] = React.useState('live')
-      const [calc, setCalc] = React.useState(null)
       const [showDataNote, setShowDataNote] = React.useState(false)
       const [fbCmd, setFbCmd] = React.useState(false)
       const [copied, setCopied] = React.useState(null)
@@ -2899,7 +2900,7 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
       const base = { fontFamily: 'var(--font-sans)', fontSize: 'var(--t-base)', color: T.text }
       if (state.loading) return React.createElement('div', { className: 'sleu', style: { ...base, padding: 20, color: T.text2 } }, '加载指标…')
       const r = state.data
-      // timeline 读不到时**不再整页早退**：判决、知识库健康、实时计算都不经过 timeline
+      // timeline 读不到时**不再整页早退**：判决、知识库健康、累计读数都不经过 timeline
       // （host 侧就是这么分的），早退等于把"能用的一半"也一起藏了——旧实现如此，并且
       // host 的提示文案还写着"闭环判决仍然可用"，界面与承诺相反。
       const timelineError = (!r || !r.ok) ? ((r && r.error) || '未知错误') : null
@@ -2981,13 +2982,6 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
 
       function doCopy(txt, key) { copyText(txt).then(ok => setCopied(ok ? key : 'fail')) }
 
-      function runCalc() {
-        setCalc({ busy: true })
-        host.call('ascend-metrics-live', { sessionId: sessionId || null })
-          .then(rr => setCalc({ busy: false, data: rr }))
-          .catch(e => setCalc({ busy: false, data: { ok: false, error: 'RPC 失败: ' + String(e && e.message || e) } }))
-      }
-
       // timeline 的三种结局分开渲染：**读不到** / **解析不出期次** / 正常。
       // 中间那一态是本轮实测出来的缺口：解析器与文件结构不符时，旧实现拿到空数组，
       // 于是显示「尚无 live 快照」——文件里 3 期 live 摆着，面板说没有。数据在、结论假，
@@ -3025,7 +3019,7 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
       const timelineBlock = timelineError
         ? timelineWarnCard(
             '期次与趋势不可读',
-            'metrics/timeline.yaml 读不到：' + timelineError + '。上面的判决与下面的实时计算不经过它，仍按各自的数据源显示。',
+            'metrics/timeline.yaml 读不到：' + timelineError + '。上面的判决与累计读数不经过它，仍按各自的数据源显示。',
             null)
         : (timelineUnparsed
             ? timelineWarnCard(
@@ -3054,15 +3048,15 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
         ),
         // ① 状态条：快照新鲜度 + 索引/磁盘 drift + 一句判读
         React.createElement(StatusBar, { verdict: vd, error: verdictErr, onRefresh: refreshVerdict, refreshing: verdictBusy }),
-        // ①' 累计读数（条目使用记录）：首屏四问——覆盖 / 不可解读 / 需处理 / 条目使用，
-        // 加长期零选中、过程动作成本、变差的读数与本期该做。数据是生成物 + 体检判决两处，
+        // ①' 判决：**首屏第一块落到动作**。它原来排在四张榜之后，读者要滚过一整屏读数
+        // 才看到"这周该做什么"；而它是全屏唯一带可复制指令的块。
+        React.createElement(VerdictCard, { verdict: vd, error: verdictErr, pending: verdictPending, copiedKey: copied, onCopy: doCopy }),
+        // ② 累计读数（条目使用记录）：读数与明细。判决已经给出"该做什么"，这里是"凭什么"。
         // 生成物读不到时只报缺件与重建命令（不解析源文件自行求和）。
         React.createElement(EntryActivityBoard, {
           ea: (r && r.entryActivity) || null, health: health, verdict: vd,
           onCopy: doCopy, copied: copied,
         }),
-        // ② 判决：只列要处理的，附证据 + 下一步 + 可复制指令
-        React.createElement(VerdictCard, { verdict: vd, error: verdictErr, pending: verdictPending, copiedKey: copied, onCopy: doCopy }),
         // ③ 闭环检验（判据全貌，含正常项）+ 容量台账（**逐格**，与判据同口径）
         // ③ 体检器失效时，判决条的"处置"含义完全不同——单独说清，不让读者把
         // "没有结论"读成"没有问题"（这一条正是假绿的反面：宁可吵，不可静默）
@@ -3075,31 +3069,8 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
           React.createElement(ProcessPanel, { proc: proc }),
         ),
         feedbackAlert,
-        // ⑤ 数据来源说明（早期 trace 缺事件的历史欠账）
-        React.createElement('div', { style: { marginBottom: 10 } },
-          React.createElement('button', { type: 'button', 'aria-expanded': showDataNote, onClick: () => setShowDataNote(!showDataNote), style: { background: 'transparent', border: 'none', padding: 0, fontSize: 13.5, color: T.text2, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, font: 'inherit' } },
-            React.createElement(Chevron, { open: showDataNote, color: T.text2 }),
-            '数据来源说明'),
-          showDataNote ? React.createElement('div', { style: { marginTop: 6, padding: '8px 10px', background: T.bg2, border: '1px solid ' + T.border, borderRadius: 8, fontSize: 13.5, color: T.text2, lineHeight: 1.6 } },
-            '2026-08 之前的诊断没有记录四类事件：feedback、attribution、tier3、triage_semantic；'
-            + '因此反馈捕获、误诊归因、Tier3 兜底三项指标偏低，不代表真实水平。',
-            React.createElement('br', null),
-            '新诊断已完整记录，这三项指标会随新 trace 累积逐步回到真实水平。') : null,
-        ),
         // ⑥ 趋势：本期 vs 上期差分 + 期卡（timeline 不可读 / 解析不出期次时**分开说清**）
         timelineBlock,
-        React.createElement('div', { style: { marginTop: 14, paddingTop: 10, borderTop: '1px dashed ' + T.border, fontSize: 13.5, color: T.text2 } },
-          React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6, flexWrap: 'wrap' } },
-            React.createElement('span', { style: { fontWeight: 700, color: T.text } }, '实时计算'),
-            React.createElement('span', null, '运行 trace_metrics.py 计算当前指标（与 timeline 对照）'),
-            React.createElement('button', { type: 'button', onClick: runCalc, disabled: !!(calc && calc.busy), style: { ...btnGhost, marginLeft: 'auto' } }, calc && calc.busy ? '计算中…' : '运行'),
-          ),
-          calc && !calc.busy && calc.data ? (
-            calc.data.ok
-              ? React.createElement('pre', { style: { background: T.bg, border: '1px solid ' + T.border, borderRadius: 9, padding: 10, fontSize: 13.5, whiteSpace: 'pre-wrap', wordBreak: 'break-word', color: T.text, maxHeight: 320, overflowY: 'auto', lineHeight: 1.65 } }, calc.data.output)
-              : React.createElement('div', { style: { color: T.error } }, calc.data.error || '计算失败')
-          ) : null,
-        ),
       )
     }
 
