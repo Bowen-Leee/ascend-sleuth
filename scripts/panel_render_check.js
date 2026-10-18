@@ -1691,8 +1691,8 @@ _MS._run_no_pipe = no_fallback`)
         expect('报告仍给「打开文件」（长报告要能落到外部）', /打开文件/.test(texts))
         // 展开态的版式契约：指标带在正文之前、指令区从表头下方挪进右侧操作栏，
         // 但正文与报告入口必须同时在（挪动不许把任何一件挪丢）。
-        expect('展开态给指标带（工具耗时 / 调用 / token / 步）',
-          /工具耗时/.test(texts) && /步 \/ 事件/.test(texts) && /token/.test(texts))
+        expect('展开态给指标带（每步耗时 / 检索 / token 三张图）',
+          /每步耗时/.test(texts) && /检索/.test(texts) && /token/.test(texts))
         expect('展开态正文与报告入口同时在场（挪进操作栏不等于挪丢）',
           /轨迹|用户输入/.test(texts) && /收起报告/.test(texts))
         expect('报告默认停在 TL;DR 节（正文里先给结论）', /现象：profile_run 崩溃/.test(texts))
@@ -2348,8 +2348,8 @@ print(json.dumps([{'role': s(t.get('role')), 'step': s(t.get('step')), 'action':
       /\(ev\.inlineChars \|\| ev\.inline\.length\)/.test(ascSrc))
     expect('client：原文被截断时如实说（不静默截断）',
       /此处显示前 ' \+ ev\.inline\.length \+ ' 字'/.test(ascSrc))
-    expect('client：轨迹默认只铺前 8 步',
-      /const STEP_PREVIEW = 8/.test(ascSrc) && /showAllSteps \? shown : shown\.slice\(0, STEP_PREVIEW\)/.test(ascSrc))
+    expect('client：轨迹默认只铺前 3 步（展开区要能一屏读完）',
+      /const STEP_PREVIEW = 3/.test(ascSrc) && /showAllSteps \? shown : shown\.slice\(0, STEP_PREVIEW\)/.test(ascSrc))
     expect('client：展开/收起是一处开关（不是两个各自为政的按钮）',
       /'展开剩余 ' \+ moreSteps \+ ' 步'/.test(ascSrc) && /'收起，只看前 ' \+ STEP_PREVIEW \+ ' 步'/.test(ascSrc))
     expect('client：轨迹列表自带渲染上限（与报告区同手法）', /maxHeight: 620, overflowY: 'auto'/.test(ascSrc))

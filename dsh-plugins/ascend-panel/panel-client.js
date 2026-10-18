@@ -675,25 +675,79 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
       return order.map(k => ({ action: byAction[k].action, count: byAction[k].n, groups: byAction[k].groups, rework: byAction[k].n > 1 }))
     }
 
+    // 收起态一行的列宽：列头与每一行共用这一份，改一处就同时改两边（分开写必然错位）。
+    const ROW_COLS = '78px minmax(0,1fr) 150px 64px 66px 62px 62px 20px'
+
     // 指标带：展开区最上面那一条，横贯整行。
     // 为什么横着铺而不放侧栏：六步成本天生是横向比较（哪一步最高），竖排要上下扫；
     // 表格行展开刚好给了一整行的宽度，侧栏会把它压成缩略图。
+    // 指标带 = 三张图，替代原来的四段文字：
+    //   ① 六步耗时柱（缺数据的步画虚线空框，不当天花板）② 检索漏斗 ③ token 堆叠条
+    // 为什么要图：四段文字里三段的数字本来就是同一批，读者要在脑子里做对比；图把对比直接画出来。
     function MetricsBand(props) {
       const rec = props.rec || null
-      const s = props.session || {}
-      const tk = rec && rec.tokens ? rec.tokens : null
-      const tokSum = tk ? (tk.uncached || 0) + (tk.cache_read || 0) + (tk.out || 0) : null
-      const cell = (label, value, note) => React.createElement('div', { style: { minWidth: 0 } },
-        React.createElement('div', { style: { fontSize: 'var(--t-tiny)', letterSpacing: '.1em', textTransform: 'uppercase', color: T.text2, marginBottom: 2 } }, label),
-        React.createElement('div', { className: 'sleu-num', style: { fontSize: 'var(--t-xl)', lineHeight: 1.15, color: T.text } }, value),
-        note ? React.createElement('div', { style: { fontSize: 'var(--t-tiny)', color: T.text2, marginTop: 2, lineHeight: 1.4 } }, note) : null)
-      return React.createElement('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 14, padding: '2px 0 12px' } },
-        cell('工具耗时', rec && rec.toolTotalMs ? msText(rec.toolTotalMs) : NOT_RECORDED,
-             rec ? '合计（窗口内）' : '本机明细未生成'),
-        cell('调用', rec && rec.toolCallCount ? String(rec.toolCallCount) : NOT_RECORDED, rec ? '工具调用次数' : ''),
-        cell('token', tokSum !== null ? thousands(tokSum) : NOT_RECORDED,
-             tk ? ('缓存读 ' + thousands(tk.cache_read || 0)) : '四类 token 在本机明细里'),
-        cell('步 / 事件', (s.userSteps || 0) + ' / ' + (s.agentSteps || 0), '用户输入 / agent 事件'),
+      const retr = props.retr || {}
+      const STEP_SHORT = { 1: '路由', 2: '键触发', 3: '候选验证', 4: '探询', 5: '深度排查', 6: '结论' }
+      const cost = (rec && Array.isArray(rec.stepCost)) ? rec.stepCost : []
+      const byStep = {}
+      for (const r of cost) byStep[r.step] = r
+      const maxMs = Math.max(1, ...cost.map(r => r.ms || 0))
+      const total = cost.reduce((a, r) => a + (r.ms || 0), 0)
+      const worst = cost.slice().sort((a, b) => (b.ms || 0) - (a.ms || 0))[0]
+      const h3 = (label, note) => React.createElement('div', { style: { display: 'flex', alignItems: 'baseline', gap: 6, marginBottom: 7 } },
+        React.createElement('span', { style: { fontSize: 'var(--t-md2)', letterSpacing: '.12em', textTransform: 'uppercase', color: T.text2 } }, label),
+        note ? React.createElement('span', { style: { fontSize: 'var(--t-tiny)', color: T.text2 } }, note) : null)
+
+      // ① 六步柱
+      const bars = React.createElement('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 8, alignItems: 'end', height: 84 } },
+        [1, 2, 3, 4, 5, 6].map(n => {
+          const r = byStep[n]
+          const ms = r ? (r.ms || 0) : null
+          const h = ms ? Math.max(4, Math.round(ms / maxMs * 100)) : 0
+          return React.createElement('div', { key: n, title: STEP_SHORT[n] + ' ' + (ms === null ? '本次没记' : msText(ms)),
+            style: { display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', height: '100%', gap: 3 } },
+            React.createElement('div', {
+              style: { height: '100%', display: 'flex', alignItems: 'flex-end', borderRadius: 3, overflow: 'hidden',
+                background: ms === null ? 'transparent' : 'var(--acc-amber-bg, color-mix(in srgb, ' + T.warn + ' 10%, transparent))',
+                border: ms === null ? '1px dashed ' + T.border : 'none' } },
+              ms ? React.createElement('i', { style: { display: 'block', width: '100%', height: h + '%', background: 'var(--acc-amber, ' + T.warn + ')', borderRadius: 3 } }) : null),
+            React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', fontSize: 'var(--t-md2)', color: T.text2 } },
+              React.createElement('span', null, String(n)),
+              React.createElement('span', { className: 'sleu-num', style: { color: T.text } }, ms === null ? '—' : msText(ms))))
+        }))
+      // ② 检索漏斗
+      const cand = (retr.considered || []).length
+      const loaded = (retr.loaded || []).length
+      const hit = retr.hitCase ? 1 : 0
+      const fmax = Math.max(cand, loaded, hit, 1)
+      const frow = (label, v) => React.createElement('div', { key: label, style: { display: 'grid', gridTemplateColumns: '52px 1fr 34px', gap: 8, alignItems: 'center', fontSize: 'var(--t-tiny)' } },
+        React.createElement('span', { style: { color: T.text2 } }, label),
+        React.createElement('div', { style: { height: 16, background: v ? 'var(--acc-purple, #7c3aed)' : 'var(--hair)', opacity: v ? 0.85 : 1, borderRadius: 2, width: Math.max(v ? 3 : 4, Math.round(v / fmax * 100)) + '%' } }),
+        React.createElement('span', { className: 'sleu-num', style: { textAlign: 'right', color: T.text2 } }, String(v)))
+      // ③ token 堆叠
+      const tk = (rec && rec.tokens) ? rec.tokens : null
+      const sum = tk ? (tk.uncached || 0) + (tk.cache_read || 0) + (tk.out || 0) : 0
+      const seg = (v, c) => React.createElement('i', { style: { display: 'block', height: '100%', width: (sum ? v / sum * 100 : 0) + '%', background: c } })
+      const tokRow = (label, v) => React.createElement('div', { key: label, style: { display: 'flex', justifyContent: 'space-between', fontSize: 'var(--t-tiny)', color: T.text2 } },
+        React.createElement('span', null, label), React.createElement('b', { className: 'sleu-num', style: { fontWeight: 500, color: T.text } }, thousands(v)))
+
+      return React.createElement('div', { style: { display: 'grid', gridTemplateColumns: '1.15fr 1fr 1fr', gap: 22, padding: '2px 0 14px', borderBottom: '1px solid ' + T.border } },
+        React.createElement('div', { style: { minWidth: 0 } },
+          h3('每步耗时', total ? '合计 ' + msText(total) + (worst ? ' · 最贵步 ' + worst.step : '') : (rec ? '' : '本机明细未生成')),
+          bars),
+        React.createElement('div', { style: { minWidth: 0 } },
+          h3('检索', cand ? cand + ' → ' + loaded + ' → ' + hit : ''),
+          React.createElement('div', { style: { display: 'grid', gap: 4 } }, frow('展开候选', cand), frow('载入正文', loaded), frow('命中', hit)),
+          React.createElement('div', { style: { marginTop: 6, fontSize: 'var(--t-tiny)', color: T.text2, lineHeight: 1.5 } },
+            cand ? '展开 = 筛选时看过的候选；载入 = load_full 取过全文；命中 = 定位到的 case' : '轨迹里没有候选清单')),
+        React.createElement('div', { style: { minWidth: 0 } },
+          h3('token', sum ? thousands(sum) : ''),
+          React.createElement('div', { style: { display: 'flex', height: 16, borderRadius: 2, overflow: 'hidden', background: 'var(--hair)' } },
+            seg(tk ? tk.cache_read : 0, 'var(--acc-amber, ' + T.warn + ')'),
+            seg(tk ? tk.uncached : 0, T.brand),
+            seg(tk ? tk.out : 0, 'var(--acc-red, ' + T.error + ')')),
+          React.createElement('div', { style: { display: 'grid', gap: 2, marginTop: 6 } },
+            tokRow('缓存读', tk ? tk.cache_read : 0), tokRow('未缓存', tk ? tk.uncached : 0), tokRow('输出', tk ? tk.out : 0))),
       )
     }
 
@@ -1074,12 +1128,10 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
           '读数有值但读端算不出来的归「不可解读」，不列在这里。'),
       )
 
-      // 指标带的三段：本单读数 / 各步 / 检索。后两段直接复用上面那两块，不重画一份。
+      // 指标带 = 三张图（六步柱 / 检索漏斗 / token 条）。它替代了原来「各步」「检索」两块文字：
+      // 那两块的信息被图吸收，重复才是密度高的根源。
       const band = (open && steps && steps.list && steps.list.length)
-        ? React.createElement('div', null,
-            React.createElement(MetricsBand, { rec: steps.record || null, session: s }),
-            React.createElement('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 10, paddingTop: 4 } },
-              d5Steps, d5Retrieval))
+        ? React.createElement(MetricsBand, { rec: steps.record || null, retr: d5Retr })
         : null
       let body = null
       if (open) {
@@ -1144,7 +1196,7 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
               // 步数多时**默认只铺前 8 步**：读者要的是"查到哪了"，而 30 步的 trace 全铺开是一屏
               // 读不完的过程记录（实测反馈："带了很多和问题无关的记录"——同一病因，上一轮修的是
               // 记录维护类动作与 reason）。折叠只影响列表：结论块在轨迹之后单独一块，不受它影响。
-              const STEP_PREVIEW = 8
+              const STEP_PREVIEW = 3
               const visible = showAllSteps ? shown : shown.slice(0, STEP_PREVIEW)
               const moreSteps = shown.length - visible.length
               return React.createElement('div', null,
@@ -1510,11 +1562,33 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
           type: 'button', 'aria-expanded': !!open, onClick: toggle, className: 'sleu-row',
           style: { width: '100%', padding: '12px 16px', cursor: 'pointer', background: 'transparent', border: 'none', textAlign: 'left', color: T.text, font: 'inherit' },
         },
-          React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' } },
-            React.createElement('span', { style: { display: 'flex', alignItems: 'center', gap: 5, color: meta.color, fontSize: 12.5, fontWeight: 600 } },
+          // 一行读完：状态 / 会话 / 平台·类别 / 步·动作 / 每步耗时 / 工具耗时 / token / 箭头。
+          // 列宽与上方的列头逐字对齐（同一份 gridTemplateColumns），否则表格读起来是错位的。
+          React.createElement('div', { style: { display: 'grid', gridTemplateColumns: ROW_COLS, alignItems: 'center', gap: 10, width: '100%' } },
+            React.createElement('span', { style: { display: 'flex', alignItems: 'center', gap: 5, color: meta.color, fontSize: 'var(--t-md2)', fontWeight: 600, whiteSpace: 'nowrap' } },
               React.createElement(Dot, { color: meta.color }),
               meta.label),
-            React.createElement('span', { className: 'sleu-mono', style: { fontWeight: 700, fontSize: 14.5, letterSpacing: '.01em' } }, s.sessionId),
+            React.createElement('span', { className: 'sleu-mono', style: { fontWeight: 700, fontSize: 'var(--t-sm)', letterSpacing: '.01em', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, s.sessionId),
+            React.createElement('span', { style: { color: T.text2, fontSize: 11.5, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' } },
+              [s.framework, s.platform, s.category].filter(Boolean).join(' · ') || '—'),
+            React.createElement('span', { className: 'sleu-num', style: { color: T.text2, fontSize: 11.5, whiteSpace: 'nowrap' } },
+              s.userSteps + ' / ' + s.agentSteps),
+            React.createElement('span', { style: { display: 'flex', alignItems: 'flex-end', gap: 2, height: 16, justifyContent: 'flex-end' },
+              title: (s.cost && s.cost.stepms && s.cost.stepms.length) ? '每步耗时（按轨迹 ts 切窗口，空步留空隙）' : '本机明细里没有每步耗时' },
+              (s.cost && s.cost.stepms && s.cost.stepms.length)
+                ? s.cost.stepms.map((v, i) => React.createElement('i', { key: i, style: {
+                    display: 'block', width: 5, borderRadius: 1, background: v ? 'var(--acc-amber, ' + T.warn + ')' : 'var(--hair)',
+                    opacity: v ? 0.8 : 1,
+                    height: Math.max(2, Math.round(v / Math.max.apply(null, s.cost.stepms) * 16)) + 'px' } }))
+                : React.createElement('span', { style: { color: T.text2, fontSize: 'var(--t-tiny)' } }, '—')),
+            React.createElement('span', { className: 'sleu-num', style: { color: T.text2, fontSize: 11.5, textAlign: 'right', whiteSpace: 'nowrap' } },
+              (s.cost && s.cost.ms) ? msText(s.cost.ms) : '—'),
+            React.createElement('span', { className: 'sleu-num', style: { color: T.text2, fontSize: 11.5, textAlign: 'right', whiteSpace: 'nowrap' } },
+              (s.cost && s.cost.tok) ? thousands(s.cost.tok) : '—'),
+            React.createElement('span', { style: { display: 'flex', justifyContent: 'flex-end' } }, React.createElement(Chevron, { open: open })),
+          ),
+          // 第二行：一句"这单在查什么" + 外来标记 + 更新时间。收起态只留这些，其余细节在展开态。
+          React.createElement('div', { style: { display: 'flex', alignItems: 'baseline', gap: 8, marginTop: 3, flexWrap: 'nowrap', minWidth: 0 } },
             kbTag,
             // 外来单（从另一台机器接手来的）：标在收起来的卡片上，因为"这单不是本机开的"
             // 会影响怎么读它的状态——比如知识库版本不一致时，候选集可能与 trace 记的对不上。
@@ -1529,16 +1603,13 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
                 + (s.handoff.kbRevMatch === false ? ' · 接手时本机知识库版本与上家不一致' : '')
                 + (s.handoff.needs ? ' · 上家留了 ' + s.handoff.needs + ' 条待补材料' : ''),
             }, '外来 · ' + (s.handoff.host ? String(s.handoff.host).split('.')[0] : '别机')) : null,
-            React.createElement('span', { style: { marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 } },
-              rel ? React.createElement('span', { style: { color: T.text2, fontSize: 12.5 } }, '更新 ' + rel) : null,
-              React.createElement(Chevron, { open: open }),
-            ),
+            rel ? React.createElement('span', { style: { marginLeft: 'auto', color: T.text2, fontSize: 11.5, whiteSpace: 'nowrap' } }, '更新 ' + rel) : null,
           ),
           // 副行：**收起态显示"这单在查什么"**——取 trace 的问题背景段（host 带的 summarySnippet）。
           // 旧版显示"最后一步 · Agent" + 最后一个事件的 output，读者看不懂：最后一个事件常常是
           // 产出报告 / 续接 / 回报这类**记录维护**动作（实测反馈："最后一步……让人看不懂也觉得很奇怪"），
           // 它回答的是"记录被改了什么"，不是"这单在查什么"。没有背景段才退回最后一个事件的输出。
-          React.createElement('div', { style: { color: T.text2, fontSize: 13.5, marginTop: 5, lineHeight: 1.6, display: 'flex', gap: 6, alignItems: 'baseline' } },
+          React.createElement('div', { style: { color: T.text2, fontSize: 12.5, marginTop: 2, lineHeight: 1.55, display: 'flex', gap: 6, alignItems: 'baseline', minWidth: 0 } },
             !open && (s.summarySnippet || s.lastOutput)
               ? React.createElement(React.Fragment, null,
                   React.createElement('span', { style: { color: T.text2, flexShrink: 0 } }, s.summarySnippet ? '背景' : '末条记录'),
@@ -1556,23 +1627,11 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
             // panel_render_check：占位串只出原值，不出内部说法（占位串 / case id / 字段名）。
             caseKindOf(s) === 'placeholder' ? React.createElement('span', { title: 'trace 里记的定位值（不是知识库里的 case）', className: 'sleu-mono', style: { color: T.text2, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, s.activeCase) : null,
           ),
-          React.createElement('div', { style: { color: T.text2, fontSize: 13.5, marginTop: 4, display: 'flex', gap: 14, flexWrap: 'wrap', alignItems: 'baseline' } },
-            React.createElement('span', null, '轨迹: ' + s.userSteps + ' 用户输入 / ' + s.agentSteps + ' agent 步骤'),
-            // 成本列：本机明细读得到才给数，读不到写「—」。列表是**扫**的地方，估出来的数会被当成真的。
-            s.cost
-              ? React.createElement('span', { className: 'sleu-num', title: '来自本机明细：工具调用合计耗时与四类 token' },
-                  '工具 ' + msText(s.cost.ms) + ' · ' + s.cost.calls + ' 次 · ' + thousands(s.cost.tok) + ' tok')
-              : React.createElement('span', { style: { color: T.text2 }, title: '本机明细里没有这一单的账单（没关联到会话日志，或还没汇总）' }, '工具耗时 — · token —'),
-            s.cost && s.cost.stepms && s.cost.stepms.length
-              ? React.createElement('span', { style: { display: 'inline-flex', alignItems: 'flex-end', gap: 2, height: 14 }, title: '每步耗时（按轨迹 ts 切窗口）' },
-                  s.cost.stepms.map((v, i) => React.createElement('i', {
-                    key: i,
-                    style: { display: 'block', width: 5, borderRadius: 1, background: 'var(--acc-amber, ' + T.warn + ')', opacity: 0.75,
-                             height: Math.max(2, Math.round(v / Math.max.apply(null, s.cost.stepms) * 14)) + 'px' },
-                  })))
-              : null,
-            s.excludedCount ? React.createElement('span', null, '排除 ' + s.excludedCount + ' 条') : null,
-            s.sedimentCandidates ? React.createElement('span', null, '沉淀建议 ' + s.sedimentCandidates + ' 条') : null),
+          (s.excludedCount || s.sedimentCandidates)
+            ? React.createElement('div', { style: { color: T.text2, fontSize: 11.5, marginTop: 3, display: 'flex', gap: 12, flexWrap: 'wrap' } },
+                s.excludedCount ? React.createElement('span', null, '排除 ' + s.excludedCount + ' 条') : null,
+                s.sedimentCandidates ? React.createElement('span', null, '沉淀建议 ' + s.sedimentCandidates + ' 条') : null)
+            : null,
           // 步数由同一份解析结果算出：解析少了就得说，否则"1 用户输入"看起来像这单只有一步。
           s.parseAnomaly ? React.createElement('div', { style: { color: T.warn, fontSize: 13.5, marginTop: 4, display: 'flex', alignItems: 'center', gap: 6 } },
             React.createElement(Dot, { color: T.warn }),
