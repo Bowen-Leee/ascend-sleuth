@@ -704,7 +704,18 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
           const r = byStep[n]
           const ms = r ? (r.ms || 0) : null
           const h = ms ? Math.max(4, Math.round(ms / maxMs * 100)) : 0
-          return React.createElement('div', { key: n, title: STEP_SHORT[n] + ' ' + (ms === null ? '本次没记' : msText(ms)),
+          // 「这些秒数到底是什么」：tooltip 给出调用次数、token 与用到的工具
+          const tip = (function () {
+            if (ms === null) return STEP_SHORT[n] + '：这一步在轨迹里没有事件，本次没记'
+            const t = r.tokens || {}
+            const tok = (t.uncached || 0) + (t.cache_read || 0) + (t.out || 0)
+            return STEP_SHORT[n]
+              + '\n耗时 ' + msText(ms) + '（窗口内工具调用耗时之和，不含模型思考）'
+              + '\n调用 ' + (r.calls || 0) + ' 次'
+              + (tok ? '\ntoken ' + thousands(tok) : '')
+              + ((r.tools && r.tools.length) ? '\n工具 ' + r.tools.slice(0, 6).join(' / ') : '')
+          })()
+          return React.createElement('div', { key: n, title: tip,
             style: { display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', height: '100%', gap: 3 } },
             React.createElement('div', {
               style: { height: '100%', display: 'flex', alignItems: 'flex-end', borderRadius: 3, overflow: 'hidden',
@@ -731,10 +742,24 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
       const tokRow = (label, v) => React.createElement('div', { key: label, style: { display: 'flex', justifyContent: 'space-between', fontSize: 'var(--t-tiny)', color: T.text2 } },
         React.createElement('span', null, label), React.createElement('b', { className: 'sleu-num', style: { fontWeight: 500, color: T.text } }, thousands(v)))
 
+      // 耗时是窗口内**工具调用**的耗时之和，不含模型思考；最贵那一步再点明它由几次调用、
+      // 哪些工具、多少 token 构成——否则读者只知道"5 秒"，不知道这 5 秒在干什么。
+      const worstNote = (function () {
+        if (!worst) return null
+        const t = worst.tokens || {}
+        const tok = (t.uncached || 0) + (t.cache_read || 0) + (t.out || 0)
+        const tools = (worst.tools || []).slice(0, 3).join(' / ')
+        return '最贵步 ' + worst.step + '：' + (worst.calls || 0) + ' 次调用'
+          + (tools ? '（' + tools + '）' : '') + ' · ' + msText(worst.ms || 0)
+          + (tok ? ' · ' + thousands(tok) + ' tok' : '')
+      })()
       return React.createElement('div', { style: { display: 'grid', gridTemplateColumns: '1.15fr 1fr 1fr', gap: 22, padding: '2px 0 14px', borderBottom: '1px solid ' + T.border } },
         React.createElement('div', { style: { minWidth: 0 } },
-          h3('每步耗时', total ? '合计 ' + msText(total) + (worst ? ' · 最贵步 ' + worst.step : '') : (rec ? '' : '本机明细未生成')),
-          bars),
+          h3('每步耗时', total ? '合计 ' + msText(total) : (rec ? '' : '本机明细未生成')),
+          bars,
+          React.createElement('div', { style: { marginTop: 6, fontSize: 'var(--t-tiny)', color: T.text2, lineHeight: 1.5 } },
+            '耗时 = 该步时间窗内工具调用的耗时之和，不含模型思考',
+            worstNote ? React.createElement('div', { style: { marginTop: 2, color: T.text } }, worstNote) : null)),
         React.createElement('div', { style: { minWidth: 0 } },
           h3('检索', cand ? cand + ' → ' + loaded + ' → ' + hit : ''),
           React.createElement('div', { style: { display: 'grid', gap: 4 } }, frow('展开候选', cand), frow('载入正文', loaded), frow('命中', hit)),
@@ -1574,7 +1599,9 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
             React.createElement('span', { className: 'sleu-num', style: { color: T.text2, fontSize: 11.5, whiteSpace: 'nowrap' } },
               s.userSteps + ' / ' + s.agentSteps),
             React.createElement('span', { style: { display: 'flex', alignItems: 'flex-end', gap: 2, height: 16, justifyContent: 'flex-end' },
-              title: (s.cost && s.cost.stepms && s.cost.stepms.length) ? '每步耗时（按轨迹 ts 切窗口，空步留空隙）' : '本机明细里没有每步耗时' },
+              title: (s.cost && s.cost.stepms && s.cost.stepms.length)
+                ? '每步耗时：每根柱是那一步时间窗内工具调用的耗时之和（不含模型思考），空位=该步没有事件'
+                : '本机明细里没有每步耗时（轨迹事件没带 ts，或还没汇总）' },
               (s.cost && s.cost.stepms && s.cost.stepms.length)
                 ? s.cost.stepms.map((v, i) => React.createElement('i', { key: i, style: {
                     display: 'block', width: 5, borderRadius: 1, background: v ? 'var(--acc-amber, ' + T.warn + ')' : 'var(--hair)',
