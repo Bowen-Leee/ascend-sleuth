@@ -15,6 +15,7 @@
 | 只读边界 | 面板是只读可视化 + 指令生成器；不做决策与写入 | 人审（`skills/preload-panel/SKILL.md`） |
 | 依赖缺失时的退化 | 拿不到数据时给一行说明 + 可行的下一步，不占位、不拿别处的数据冒充 | `node scripts/panel_render_check.js`（退化路径一节，含 5 个缺件用例） |
 | 面板包产物 | 面板源码（`dsh-plugins/<面板>/panel-host.js`、`panel-client.js`）是唯一真源，`dsh-plugins/dsh-sleuth-panels/lib/` 是生成物 | `node scripts/build_panel_bundle.js --check` |
+| 面板包版本 | `package.json` 的 `version` 是安装器的判新旧依据：**改源码后必须递增，并重跑生成器**（版本号在构建时注入 `lib/client.js` 的 `PANEL_VERSION`，只改一处会不一致）。不递增，`panel_install` 会判"已是最新"不换装（实测踩过）；忘了 bump 时用 `--force` 强制换装 | 人审（`--check` 看不出内容是否变了） |
 | 面板包可加载性 | 常驻插件包适配层的 host 四样（`harness.handle` → prefix 路由、信封格式、`harness.defineTool` 的 parameters 归一化、`shell.run` → `execute` + `result()`）+ client 的 `host.call` 映射（渲染三个 tab 的首屏各验一条 RPC）+ 三处名字对齐（`package.json` / `cordis.patch.yml` / 产物 export） | `node scripts/check_panel_bundle.js` |
 | 面板包外部契约 | 已安装 DSH 的五条接缝：`webServer.register(route)` 含 prefix、`connection.requestRejection`、client 沙箱的 `styles.insert`、页面产物格式 `__ModuleLoader__.load`、shell 的 `resolve` + `execute` | 同上（末段 DSH 探针；`--selftest-dsh` 自测） |
 
