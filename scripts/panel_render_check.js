@@ -168,6 +168,12 @@ import yaml, json
 d = yaml.safe_load(open('metrics/timeline.yaml', encoding='utf-8'))
 print(json.dumps(d['periods'], ensure_ascii=False, default=str))
 `], { cwd: repo, env: PY_ENV }).toString())
+// 指标强度档的权威口径来自 gates.yaml —— 用它做面板侧解析器的对照（拿被测实现当对照等于没测）
+const pyStrength = JSON.parse(pyRun(['-c', `
+import yaml, json
+d = yaml.safe_load(open('metrics/gates.yaml', encoding='utf-8'))
+print(json.dumps(d.get('metric_strength') or {}, ensure_ascii=False))
+`], { cwd: repo, env: PY_ENV }).toString())
 
 // 演进判决（面板首屏的判决层）。**允许非零退出**：evolution_health.py 的退出码是结论
 // （0 全评过无越界 / 1 有违反 / 2 有判据没被评估），像 metrics_health 一样——有违反时它
@@ -825,7 +831,7 @@ async function main() {
   }
   expect('知识库健康保留', mt.includes('知识库健康'))
   expect('流程闭环保留', mt.includes('流程闭环'))
-  expect('实时计算保留', mt.includes('实时计算'))
+  expect('不再把脚本 stdout 当界面（「实时计算」块已删）', !mt.includes('实时计算'))
   expect('默认收起期卡数量少于总期数（避免平铺）', (mt.match(/项$/gm) || []).length <= periods.length)
 
   // ================= 指标 tab · 数据源的三种结局（2026-09-13 补）=================
@@ -855,6 +861,23 @@ async function main() {
     expect('真实 timeline.yaml：live 期被认出来（≥1 期）', jsPeriods.filter(p => p.kind === 'live').length >= 1)
     expect('真实 timeline.yaml：notes 也读到了（期卡展开要显示）', jsPeriods.some(p => String(p.notes || '').trim().length > 0))
 
+    // 指标强度档（3.6 的最后一问「这个数怎么来的」）。为什么单测这一层：强度档决定读者能不能
+    // 把一个数当硬读数——`自报` 是 agent 自己记的判断，面板把它与确定性读数长得一样，读的人
+    // 就会拿它当验收证据。解析器取不到时必须落到「未声明强度」，**不能默认成确定性**。
+    const stFrom = hostSrc.indexOf('function parseMetricStrength')
+    const stTo = hostSrc.indexOf('async function loadTimeline')
+    expect('host 指标强度解析器可抽出', stFrom > 0 && stTo > stFrom)
+    const stf = new Function(hostSrc.slice(stFrom, stTo) + '\nreturn { parseMetricStrength: parseMetricStrength };')()
+    const st = stf.parseMetricStrength(tlText)
+    const pySt = pyStrength
+    expect('真实 timeline.yaml：强度档条数与 gates.yaml 一致（' + Object.keys(st).length + ' / ' + Object.keys(pySt).length + '）',
+      Object.keys(st).length === Object.keys(pySt).length && Object.keys(st).length > 0)
+    expect('真实 timeline.yaml：强度档逐条一致', Object.keys(pySt).every(k => st[k] === pySt[k]),
+      Object.keys(pySt).filter(k => st[k] !== pySt[k]).map(k => k + ':' + st[k] + '≠' + pySt[k]).join(','))
+    expect('自报的指标被认出来（`attribution_ratio`）', st.attribution_ratio === '自报', String(st.attribution_ratio))
+    expect('客户端为强度档给徽标，且未声明时不冒充确定性',
+      /StrengthBadge\(strength\)/.test(ascSrc) && /未声明强度/.test(ascSrc) && /自报/.test(ascSrc))
+
     // 加载窗口：判决 RPC 未返回时**不能说"没问题"**。窗口真实存在——timeline 是文件读，
     // 判决要 spawn Python；旧实现在这段窗口里按"0 条 findings"走绿分支，打印
     // 「本期无阻塞项 · 按 0 条判据检查，全部通过」（"按 0 条判据检查"本身是结论不可用）。
@@ -871,7 +894,7 @@ async function main() {
     const nt = (await renderAsync(ascSrc, { sessionId: 'sess-1' }, noTl)).text
     expect('timeline 读不到：明说期次不可读', nt.includes('期次与趋势不可读'), nt.slice(0, 120))
     expect('timeline 读不到：判决卡仍在（不整页早退）', nt.includes('现在什么坏了'))
-    expect('timeline 读不到：实时计算仍在（host 的承诺与界面一致）', nt.includes('实时计算'))
+    expect('timeline 读不到：不出现已删的「实时计算」块', !nt.includes('实时计算'))
     expect('timeline 读不到：不谎称「尚无 live 快照」', !nt.includes('尚无 live 快照'))
     expect('timeline 读不到：头部计数如实（不是 0 期 · live 0）', nt.includes('期次不可读'))
 
@@ -1565,8 +1588,10 @@ _MS._run_no_pipe = no_fallback`)
       const resumeMd = fs.readFileSync(path.join(repo, 'skills/resume-diagnosis/SKILL.md'), 'utf8')
       expect('resume 按 feedback.case 的两种取值分支',
         /真实 case id/.test(resumeMd) && /占位串 `pending-investigation`/.test(resumeMd))
-      expect('占位串分支不回写 confidence，且明确不是终态',
-        /不要求回写 confidence/.test(resumeMd) && /不是终态/.test(resumeMd))
+      // 断言的是「占位串那一支不做结算、且明说不是终态」这条行为，不是某一版措辞：
+      // 计数落点从案例字段搬到条目使用记录之后，这句话的动词从「回写」变成了「记结算」。
+      expect('占位串分支不做现场结算，且明确不是终态',
+        /不要求记 (feedback )?结算|不要求回写 confidence/.test(resumeMd) && /不是终态/.test(resumeMd))
       const procMd = fs.readFileSync(path.join(repo, 'skills/diagnose/references/diagnosis-procedure.md'), 'utf8')
       expect('diagnose 写明未命中时的 case 填占位串（不是 case id）',
         /未命中但给了建议 → 占位串/.test(procMd))
@@ -1664,6 +1689,12 @@ _MS._run_no_pipe = no_fallback`)
         expect('点击后真的取了报告（read-report 被调用 ' + reportCalls.length + ' 次）', reportCalls.length === 1)
         expect('报告给章节跳转与「复制全文」', /TL;DR/.test(texts) && /复制全文/.test(texts))
         expect('报告仍给「打开文件」（长报告要能落到外部）', /打开文件/.test(texts))
+        // 展开态的版式契约：指标带在正文之前、指令区从表头下方挪进右侧操作栏，
+        // 但正文与报告入口必须同时在（挪动不许把任何一件挪丢）。
+        expect('展开态给指标带（每步耗时 / 检索 / token 三张图）',
+          /每步耗时/.test(texts) && /检索/.test(texts) && /token/.test(texts))
+        expect('展开态正文与报告入口同时在场（挪进操作栏不等于挪丢）',
+          /轨迹|用户输入/.test(texts) && /收起报告/.test(texts))
         expect('报告默认停在 TL;DR 节（正文里先给结论）', /现象：profile_run 崩溃/.test(texts))
         expect('只渲染所选那一节（依据链正文不上屏，避免把整份报告铺开）', !/该构建已脱离分支/.test(texts))
         expect('报告是只读入口（没有写入报告的 RPC）', !/ascend-write-report/.test(ascSrc))
@@ -2317,8 +2348,8 @@ print(json.dumps([{'role': s(t.get('role')), 'step': s(t.get('step')), 'action':
       /\(ev\.inlineChars \|\| ev\.inline\.length\)/.test(ascSrc))
     expect('client：原文被截断时如实说（不静默截断）',
       /此处显示前 ' \+ ev\.inline\.length \+ ' 字'/.test(ascSrc))
-    expect('client：轨迹默认只铺前 8 步',
-      /const STEP_PREVIEW = 8/.test(ascSrc) && /showAllSteps \? shown : shown\.slice\(0, STEP_PREVIEW\)/.test(ascSrc))
+    expect('client：轨迹默认只铺前 3 步（展开区要能一屏读完）',
+      /const STEP_PREVIEW = 3/.test(ascSrc) && /showAllSteps \? shown : shown\.slice\(0, STEP_PREVIEW\)/.test(ascSrc))
     expect('client：展开/收起是一处开关（不是两个各自为政的按钮）',
       /'展开剩余 ' \+ moreSteps \+ ' 步'/.test(ascSrc) && /'收起，只看前 ' \+ STEP_PREVIEW \+ ' 步'/.test(ascSrc))
     expect('client：轨迹列表自带渲染上限（与报告区同手法）', /maxHeight: 620, overflowY: 'auto'/.test(ascSrc))
@@ -2806,10 +2837,9 @@ print(json.dumps([{'role': s(t.get('role')), 'step': s(t.get('step')), 'action':
       const d = driveHost(ascHostSrc, NO_SVC)
       const needFsRpcs = ['ascend-traces-list', 'ascend-traces-detail', 'ascend-update-sedimented',
         'ascend-metrics-load', 'ascend-read-report', 'ascend-kb-health', 'ascend-process-health']
-      const noFsRpcs = ['ascend-open-evidence', 'ascend-metrics-verdict', 'ascend-metrics-live',
-        'ascend-export-trace']
-      expect('ascend-panel：fs 缺失时仍注册全部 11 个 RPC',
-        Object.keys(d.regs).length === 11, Object.keys(d.regs).join(','))
+      const noFsRpcs = ['ascend-open-evidence', 'ascend-metrics-verdict', 'ascend-export-trace']
+      expect('ascend-panel：fs 缺失时仍注册全部 10 个 RPC（「实时计算」那条已随块一起删）',
+        Object.keys(d.regs).length === 10, Object.keys(d.regs).join(','))
       expect('ascend-panel：返回可用的 disposer', typeof d.disposer === 'function')
       expect('ascend-panel：导出交接包的 RPC 已注册（fs 缺失不影响它）', !!d.regs['ascend-export-trace'])
       for (const rpc of needFsRpcs) {

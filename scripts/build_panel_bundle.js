@@ -51,8 +51,19 @@ const PANELS = [
   },
 ]
 
+// 面板包版本：写进 client 产物，运行时显示在诊断 tab 上。
+// 面板是「装进 profile 的常驻插件 + 浏览器按 rev 缓存 bundle」两层，改完看不到新版时
+// 无法区分"装的还是旧包"与"浏览器缓存了旧 bundle"——有这个串，一眼能判。
+const PANEL_PKG = 'dsh-plugins/dsh-sleuth-panels/package.json'
+
+function panelVersion() {
+  return JSON.parse(fs.readFileSync(path.join(repo, PANEL_PKG), 'utf8')).version
+}
+
 function readSource(rel) {
-  return fs.readFileSync(path.join(repo, rel), 'utf8')
+  const text = fs.readFileSync(path.join(repo, rel), 'utf8')
+  // 占位符替换必须是确定性的（`--check` 会把重新生成的结果与仓库里的产物逐字节比）
+  return text.replace(/__PANEL_VERSION__/g, () => panelVersion())
 }
 
 function fingerprint(text) {
