@@ -167,38 +167,43 @@ async function runInstall(args, io) {
     return 0
   }
 
-  // --sync：给"拉完代码，让这台机器用上最新面板"这一件事一条命令。
-  // 判据是**版本号相等**，与插件管理器自己的去重口径一致（它按 name+version 判"已装"，
-  // 同版本重装报 changed=false、产物不换）。所以版本没变就不该假装装过。
-  // 换版本必须重启 DSH：host 半在进程启动时装载，刷新页面只换浏览器那一半。
-  if (args.sync === true) {
-    const listedSync = classify(await apiCall('pluginManager/listBundles', {}, target, target.cookie))
-    if (listedSync.value === undefined) return describeGuard(listedSync, io, 'pluginManager/listBundles')
-    const name = inspection.status === 'accepted' && inspection.name !== undefined ? inspection.name : localPackageName(args.spec)
-    if (name === null) return 1
-    const localVersion = localPackageVersion(args.spec)
-    const rows = (Array.isArray(listedSync.value) ? listedSync.value : []).filter((one) => one.name === name)
-    const installedVersion = rows.length ? String(rows[0].version) : null
-    if (installedVersion !== null && localVersion !== null && installedVersion === localVersion) {
-      say('  已是最新（' + name + ' ' + localVersion + '）：不用重装，也不用重启。\n')
-      say('  改了面板源码才有下一步：node scripts/build_panel_bundle.js 后把版本号 +1（管理器按 name+version 判重）。\n')
+  // 更新判定：**默认就走这里**，不额外要用户记一条命令。
+  // 判据是版本号相等，与插件管理器自己的去重口径一致（它按 name+version 判"已装"，同版本
+  // 重装返回 changed=false、产物根本不换）。所以：
+  //   已装且版本相同 → 只补使能，明说"不用重装也不用重启"；
+  //   已装但版本不同 → 卸了换装，并明说要重启（host 半在进程启动时装载，刷新页面只换浏览器那一半）。
+  // 这样"用户更新代码后跑 preload-panel"与"用户手跑本脚本"是同一条路，不需要懂版本号。
+  async function versionState(target, io, inspection, spec) {
+    const listed = classify(await apiCall('pluginManager/listBundles', {}, target, target.cookie))
+    if (listed.value === undefined) return { code: describeGuard(listed, io, 'pluginManager/listBundles') }
+    const name = inspection.status === 'accepted' && inspection.name !== undefined ? inspection.name : localPackageName(spec)
+    if (name === null) return { code: 1 }
+    const rows = (Array.isArray(listed.value) ? listed.value : []).filter((one) => one.name === name)
+    return { name: name, rows: rows, local: localPackageVersion(spec), installed: rows.length ? String(rows[0].version) : null }
+  }
+
+  if (args.sync === true || inspection.status === 'refused') {
+    const st = await versionState(target, io, inspection, args.spec)
+    if (st.code !== undefined) return st.code
+    if (st.installed !== null && st.local !== null && st.installed === st.local) {
+      say('  已是最新（' + st.name + ' ' + st.local + '）：不用重装，也不用重启。\n')
+      if (st.rows.length && st.rows[0].enabled !== true) return ensureEnabled(st.name, target, io)
       return 0
     }
-    say('  版本不一致：已装 ' + String(installedVersion) + ' → 仓库里 ' + String(localVersion) + '，换装。\n')
-    if (rows.length) {
-      const removedSync = classify(await apiCall('pluginManager/removeBundle', { name: name }, target, target.cookie))
-      if (removedSync.value === undefined) return describeGuard(removedSync, io, 'pluginManager/removeBundle')
+    if (st.installed !== null) {
+      say('  版本不一致：已装 ' + String(st.installed) + ' → 仓库里 ' + String(st.local) + '，换装。\n')
+      const removed = classify(await apiCall('pluginManager/removeBundle', { name: st.name }, target, target.cookie))
+      if (removed.value === undefined) return describeGuard(removed, io, 'pluginManager/removeBundle')
     }
-    const installedSync = classify(await apiCall('pluginManager/installBundle', { spec: args.spec, options: { enabled: true } }, target, target.cookie))
-    if (installedSync.value === undefined) return describeGuard(installedSync, io, 'pluginManager/installBundle')
-    const ch = installedSync.value
+    const reinstalled = classify(await apiCall('pluginManager/installBundle', { spec: args.spec, options: { enabled: true } }, target, target.cookie))
+    if (reinstalled.value === undefined) return describeGuard(reinstalled, io, 'pluginManager/installBundle')
+    const ch = reinstalled.value
     say('  装好了：changed=' + ch.changed + ' application=' + ch.application + '\n')
     if (ch.application === 'failed' || ch.application === 'cancelled') {
       warn('  安装没成功：' + JSON.stringify(ch.error) + '\n')
       return 1
     }
-    // application 字段在"换版本"时不可靠（实测报 applied 但仍加载旧包），所以结论按动作给，
-    // 不按这个字段给：文件被换过 → 必须重启。
+    // application 在换版本时不可靠（实测报 applied 却仍加载旧包），结论按"文件换没换"给。
     if (ch.changed) say('  **要重启 DSH Desktop 才生效**（host 半在启动时装载；刷新页面只换浏览器那一半）。\n')
     say('  重启后核对：node scripts/panel_install.js --check，以及诊断 tab 右上角的版本串。\n')
     return 0
