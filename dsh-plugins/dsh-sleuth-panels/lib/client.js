@@ -1,6 +1,6 @@
 /* eslint-disable */
 // 生成物 —— 勿手改。由 `node scripts/build_panel_bundle.js` 从下列源文件拼出：
-//   dsh-plugins/ascend-panel/panel-client.js  (sha256:6e4eeb65f3d6)
+//   dsh-plugins/ascend-panel/panel-client.js  (sha256:91a2da95bbf7)
 //   dsh-plugins/ev-panel/panel-client.js  (sha256:9e836d4c1993)
 // 校验：`node scripts/build_panel_bundle.js --check`。
 //
@@ -63,7 +63,7 @@ window.__ModuleLoader__.load({
       id: 'ascend-panel',
       build(host, styles) {
         return (function () {
-// ---- dsh-plugins/ascend-panel/panel-client.js (sha256:6e4eeb65f3d6) 原文开始 ----
+// ---- dsh-plugins/ascend-panel/panel-client.js (sha256:91a2da95bbf7) 原文开始 ----
 return {
   apply(ctx) {
     const slots = ctx.get('slots')
@@ -228,7 +228,7 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
     // 构建时注入的面板包版本（`scripts/build_panel_bundle.js` 把占位符换成 package.json 的 version）。
     // 为什么要有：面板是「装进 profile 的常驻插件 + 浏览器按 rev 缓存」两层，改完看不到新版时
     // 无法区分"装的还是旧包"与"浏览器缓存了旧 bundle"。有这个串，一眼就能判。
-    const PANEL_VERSION = '0.5.5'
+    const PANEL_VERSION = '0.5.6'
 
     function shortUrl(u) {
       const s = String(u).replace(/^https?:\/\//i, '')

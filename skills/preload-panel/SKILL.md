@@ -54,9 +54,10 @@ tab（list 插槽，按 order 排列，可共存）。
 3. 重启后核对两处：`node scripts/panel_install.js --all --check`（版本号等于仓库里的）、以及诊断 tab
    右上角的版本串。版本串看不到最新值，就是浏览器缓存了旧 bundle（DevTools 勾 Disable cache 再刷）。
 
-改面板源码的人另有一步：`node scripts/build_panel_bundle.js` 重建产物，并把
-`dsh-plugins/dsh-sleuth-panels/package.json` 的 version +1——不涨版本，管理器就不会替换
-（实测踩过：源码变了、版本没动，`--sync` 报"已是最新"）。忘了 bump 就用 `--force` 换装。
+改面板源码的人另有一步（三件事同一提交）：`node scripts/build_panel_bundle.js` 重建产物、把
+`dsh-plugins/dsh-sleuth-panels/package.json` 的 version +1、再跑一次生成器（版本号在构建时注入
+`lib/client.js` 的 `PANEL_VERSION`）。不涨版本，管理器就不会替换（实测踩过：源码变了、版本没动，
+`--sync` 报"已是最新"）；忘了 bump 就用 `--force` 换装。
 
 ## 面板清单## 面板清单
 
