@@ -25,7 +25,7 @@
 `parallel_group` 取同一个值。
 
 **本机明细缺件时先补，不要当成面板坏了。** 五块里的 `strength` / `route.hit_case` / `feedback` /
-`cost.*` 都读 `metrics/entry-entry-activity.local/<会话>.yaml`；这个目录为空时整块显示「本次没记」。
+`cost.*` 都读 `metrics/entry-activity.local/<会话>.yaml`；这个目录为空时整块显示「本次没记」。
 补法：先 dry-run 看会写什么，再落盘——
 
 ```bash
