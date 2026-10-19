@@ -15,6 +15,7 @@
 //   node scripts/panel_install.js --remove         # 卸载
 //   node scripts/panel_install.js --spec <spec>    # 换包：绝对路径 / 包名 / git 地址 / tarball
 //   node scripts/panel_install.js --all            # 一次装两个包：面板包 + vllm-kb 接入插件
+//   node scripts/panel_install.js --force          # 跳过版本相等判断，强制换装（改了源码忘了 bump 版本时用）
 //   node scripts/panel_install.js --url <base> --token <token>   # 不自动找地址
 //   node scripts/panel_install.js --log <harness.log 路径>
 //   node scripts/panel_install.js --selftest       # 自带假服务器自测本脚本（不需要 DSH）
@@ -40,11 +41,11 @@ const DEFAULT_SPEC = path.resolve(__dirname, '..', 'dsh-plugins', 'dsh-sleuth-pa
 const KB_SPEC = path.resolve(__dirname, '..', 'dsh-plugins', 'dsh-sleuth-vllm-kb')
 
 function parseArgs(argv) {
-  const args = { spec: DEFAULT_SPEC, check: false, remove: false, url: null, token: null, log: null, quiet: false, all: false }
+  const args = { spec: DEFAULT_SPEC, check: false, remove: false, url: null, token: null, log: null, quiet: false, all: false, force: false }
   for (let i = 0; i < argv.length; i += 1) {
     const flag = argv[i]
     const value = argv[i + 1]
-    if (flag === '--spec') { args.spec = value; i += 1 } else if (flag === '--url') { args.url = value; i += 1 } else if (flag === '--token') { args.token = value; i += 1 } else if (flag === '--log') { args.log = value; i += 1 } else if (flag === '--check') { args.check = true } else if (flag === '--remove') { args.remove = true } else if (flag === '--sync') { args.sync = true } else if (flag === '--quiet') { args.quiet = true } else if (flag === '--all') { args.all = true } else if (flag === '--help' || flag === '-h') { args.help = true }
+    if (flag === '--spec') { args.spec = value; i += 1 } else if (flag === '--url') { args.url = value; i += 1 } else if (flag === '--token') { args.token = value; i += 1 } else if (flag === '--log') { args.log = value; i += 1 } else if (flag === '--check') { args.check = true } else if (flag === '--remove') { args.remove = true } else if (flag === '--sync') { args.sync = true } else if (flag === '--quiet') { args.quiet = true } else if (flag === '--all') { args.all = true } else if (flag === '--force') { args.force = true } else if (flag === '--help' || flag === '-h') { args.help = true }
   }
   return args
 }
@@ -196,8 +197,8 @@ async function runInstall(args, io) {
   if (args.sync === true || inspection.status === 'refused') {
     const st = await versionState(target, io, inspection, args.spec)
     if (st.code !== undefined) return st.code
-    if (st.installed !== null && st.local !== null && st.installed === st.local) {
-      say('  已是最新（' + st.name + ' ' + st.local + '）：不用重装，也不用重启。\n')
+    if (args.force !== true && st.installed !== null && st.local !== null && st.installed === st.local) {
+      say('  已是最新（' + st.name + ' ' + st.local + '）：不用重装，也不用重启。要强制换装加 --force。\n')
       if (st.rows.length && st.rows[0].enabled !== true) return ensureEnabled(st.name, target, io)
       return 0
     }
