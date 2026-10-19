@@ -1217,6 +1217,13 @@ return {
           outcome: eventStr(t && t.outcome, 20),
           // 外部查证的三个字（action/capability/outcome）——capability 不进这一层，客户端就看不到。
           capability: eventStr(t && t.capability, 40),
+          // 判据面：quickly_check / run_check 的结构化字段原先没透传，人读视图里"逐条验证"只剩空白。
+          primary: eventStr(t && t.primary, 200),
+          fallback: eventStr(t && t.fallback, 200),
+          marked: eventStr(t && t.marked, 200),
+          result: eventStr(t && t.result, 40),
+          verdict: eventStr(t && t.verdict, 40),
+          check: eventStr(t && t.check, 80),
           note: eventStr(t && t.note, 500),
           toolCalls: eventList(t && t.tool_calls).map(x => x.slice(0, 400)),
           // 外部资料链接：**两种位置都要吃**——user 事件写在 evidence.sources 里，

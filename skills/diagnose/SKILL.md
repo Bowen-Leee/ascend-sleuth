@@ -183,6 +183,9 @@ reference 由流程里的**缺口**触发（**不是第四检索层**：不参�
 
 - **先解析 trace 目录（一次，之后全程用它）**：`python3 scripts/shared_dir.py traces` 打印的绝对路径就是本次要读写的 `traces/`——它锚在**主检出**（同一克隆的所有 worktree 共读共写），所以从 worktree 干活也不会把记录写进一个主检出看不到、清理 worktree 就消失的地方。**本 skill 里所有 `traces/…` 的读写（含最前面的 trace 相似检测）都以这个路径为准**，别写相对 `traces/`。
 
+- **随手写三样，否则读数恒空**：每条 agent 事件带 `ts`（epoch 毫秒，`python3 -c 'import time;print(round(time.time()*1000))'`；**每一步至少第一条**），步骤 6 写顶层 `ended_at`（ISO 8601），建 session 时写顶层 `harness_session`（DSH 里是 `$DSH_SESSION_ID`）。没有 `ts` 就切不出每步窗口，面板的耗时与 token 一栏只能是"本次没记"。
+- **每条 agent 事件必带 `output`**（哪怕一句）：核验了谁 / 用什么判据 / 结果 pass|fail|conflict。只写 `reason` 的人读视图是空白（`reason` 只在完整轨迹里显示）。
+- **`hit` 的 `case` 只写真 case id**：未命中、上游定案、跨队案例这类说明写进 `output`，不要写成 `case: "上游案在：#19191（…）"`——面板与条目使用记录都会把它当成 case id。
 - **agent 事件**：`{role: agent, step, action: triage|load_index|quickly_check|load_full|run_check|hit|miss|tier3|feedback|reference_lookup|triage_semantic|source_analysis|attribution|resume|procedure_follow|report, output, reason, ...}`。`output` 给用户（可精简）、`reason` 记决策依据（**关键决策必写**）；`triage` 必带 `routed`（未命中写 `[]`）；`source_analysis` 必记 `tool_calls`；`attribution` 执行错可加 `component`；`report` 记 `report_file`（人读报告产出，**全路**步骤 6 必写一条；快路不产报告、也不写这条，但证据落盘与 `reason` 照旧必写）；`reference_lookup` 记 `purpose`（collect / signature / fix / background / procedure）与 **`outcome`（hit / miss / skipped，`skipped` 必写理由）**：三态缺一，"没查"就与"查了没命中"同形；`parallel_group` 记同批并发标记（同一次并行展开的几个动作共用一个值，串行不写）；`load_full` / `load_index` 记 `considered_candidates`（候选全集：筛选时看过的候选 id，含没取全文的）。
 - **user 事件**：`{role: user, step, content, evidence}`——`content` 摘要（短）+ `evidence` 完整证据（`inline` 原文 / `files` 相对路径 / `sources` URL / `missing` 缺口）。
 - **证据落盘铁律（必走，无例外）**：短原文 → `inline` 存完整原文；长命令/配置/日志块/附件 → **先写 `traces/evidence/<session_id>/<名>.txt`** 完整原文、`evidence.files` 用相对路径引用、`inline` 只留一行"完整原文见 evidence.files" + 关键指纹。**禁止**只写摘要、或把原文压成指纹塞 `inline`。

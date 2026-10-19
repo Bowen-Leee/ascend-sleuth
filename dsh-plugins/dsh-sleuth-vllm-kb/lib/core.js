@@ -36,6 +36,14 @@ export function configPath() {
   return join(homedir(), '.dsh', 'vllm-kb.json')
 }
 
+// 首尾保留、中间省略：用于枚举型 detail（版本清单之类），尾部信息不能丢。
+export function clipMiddle(text, head, tail) {
+  const value = typeof text === 'string' ? text : ''
+  if (value.length <= head + tail) return { text: value, truncated: false }
+  const omitted = value.length - head - tail
+  return { text: `${value.slice(0, head)}\n……（省略 ${omitted} 字符）……\n${value.slice(value.length - tail)}`, truncated: true }
+}
+
 export function clip(text, limit) {
   const value = typeof text === 'string' ? text : ''
   if (value.length <= limit) return { text: value, truncated: false }
@@ -186,14 +194,39 @@ function present(result, label) {
     const clipped = clip(result.text, CONTENT_LIMIT)
     return { ok: true, content: clipped.text, truncated: clipped.truncated, endpoint: label, elapsed_ms: result.elapsed_ms }
   }
-  const detail = result.detail || clip(String(result.text || '').replace(/\s+/g, ' ').trim(), 400).text || `HTTP ${result.status}`
+  const raw = result.detail || String(result.text || '')
+  const detail = (result.detail && result.detail.length > 0)
+    ? result.detail
+    : clipMiddle(raw.trim(), 900, 500).text || `HTTP ${result.status}`
   return { ok: false, reason: result.status === 0 ? 'unreachable' : `http-${result.status}`, detail, endpoint: label, elapsed_ms: result.elapsed_ms }
 }
 
-async function call(config, path, options) {
+async function call(config, path, options, post) {
   const endpoint = activeEndpoint(config)
   const base = endpoint.base_url.replace(/\/+$/, '')
-  return present(await httpJson(`${base}${path}`, Object.assign({ timeoutMs: config.request_timeout_ms }, options)), endpoint.label)
+  const result = await httpJson(`${base}${path}`, Object.assign({ timeoutMs: config.request_timeout_ms }, options))
+  const presented = present(result, endpoint.label)
+  if (post && presented.ok && result.data && typeof result.data === 'object') {
+    const note = post(result.data)
+    if (note) presented.content = `${presented.content}\n\n${note}`
+  }
+  return presented
+}
+
+// 0 命中时补一句“可能是索引没覆盖”，并带上服务端预存的版本范围（拿不到就只给前半句）。
+async function codeZeroHitNote(config, data) {
+  const lines = ['0 命中不等于「这版本没有这段代码」：较新的文件可能还没进索引，或查询串与源码不逐字一致。']
+  try {
+    const endpoint = activeEndpoint(config)
+    const result = await httpJson(`${endpoint.base_url.replace(/\/+$/, '')}/code/versions`, { timeoutMs: config.request_timeout_ms })
+    const versions = result && result.data && Array.isArray(result.data.versions) ? result.data.versions : null
+    if (versions && versions.length) {
+      const head = versions.slice(0, 4).join(' / ')
+      const tail = versions.length > 8 ? ` … ${versions.slice(-3).join(' / ')}` : ''
+      lines.push(`服务端已预存 ${versions.length} 个版本（${head}${tail}）；超出这个范围就是没索引。版本号要带 v 前缀。`)
+    }
+  } catch (error) { /* 版本清单拿不到就不补这一句 */ }
+  return lines.join('\n')
 }
 
 
@@ -208,20 +241,43 @@ export async function lookupCode(config, args) {
   if (args.in_file) payload.path = String(args.in_file)
   if (args.per_version) payload.per_version = true
   if (args.kind) payload.kind = String(args.kind)
-  return call(config, '/code/search', { method: 'POST', body: payload })
+  return call(config, '/code/search', { method: 'POST', body: payload }, (data) => {
+    const hits = Array.isArray(data.hits) ? data.hits : null
+    if (hits !== null && hits.length === 0) return codeZeroHitNote(config, data)
+    return ''
+  })
 }
 
 export async function lookupFix(config, args) {
   const doc = resolveSourceId(args.target, 'issue')
-  return call(config, `/graph/chain?doc=${encodeURIComponent(doc)}`)
+  return call(config, `/graph/chain?doc=${encodeURIComponent(doc)}`, undefined, (data) => (
+    data.found === false
+      ? '图里没有这条 issue：可能是图数据还没构建，也可能是确无修复。用 gh search 核对上游，别据此判「未修复」。'
+      : ''
+  ))
 }
 
 export async function lookupDoc(config, args) {
-  if (args.doc_id) return call(config, `/doc/${encodeURIComponent(String(args.doc_id))}`)
-  if (!args.query || String(args.query).trim() === '') {
-    return { ok: false, reason: 'bad-argument', detail: '给 query（问题描述）或 doc_id（文档编号）之一' }
+  if (args.catalog) return call(config, '/tags', undefined, (data) => (
+    data && data.groups ? '' : ''
+  ))
+  if (args.doc_id) {
+    return call(config, `/doc/${encodeURIComponent(String(args.doc_id))}`, undefined, (data) => (
+      !data.body || String(data.body).trim() === ''
+        ? '这篇没有返回正文（body 为空）：结论写「无原文 / 未核对」，不要当成「手册里没有这项内容」。'
+        : ''
+    ))
   }
-  return call(config, '/tags/match', { method: 'POST', body: { text: String(args.query) } })
+  if (!args.query || String(args.query).trim() === '') {
+    return { ok: false, reason: 'bad-argument', detail: '给 query（问题描述）、doc_id（文档编号）或 catalog: true（列出知识库有哪些文档类别）之一' }
+  }
+  return call(config, '/tags/match', { method: 'POST', body: { text: String(args.query) } }, (data) => {
+    const matched = Array.isArray(data.matched) ? data.matched : null
+    if (matched !== null && matched.length === 0) {
+      return '没有命中任何文档标签：这个主题可能没收录（不是「肯定没有」）。可以换词再 match 一次，或用 vllm_kb_code 从源码侧查。'
+    }
+    return ''
+  })
 }
 
 export async function lookupOcr(config, args) {
