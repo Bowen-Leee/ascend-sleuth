@@ -62,6 +62,17 @@ tab（list 插槽，按 order 排列，可共存）。
 | 诊断面板 | `dsh-plugins/ascend-panel/` | `ascend-diagnose`(20) / `ascend-metrics`(21) | 会话列表/轨迹/证据 + 指标闭环判决（判据→结论/证据/下一步）/容量逐格/趋势 |
 | 自演进看板 | `dsh-plugins/ev-panel/` | `ascend-evolve`(22) | 首屏是体检判决（要处理的判据 + 下一步动作）与触及面；卡收在默认收起的抽屉里作为 diff 日志 |
 
+## 顺带装一个非面板包：vllm-kb 接入插件（可选）
+
+`dsh-plugins/dsh-sleuth-vllm-kb` 不是面板，它给设置页加左侧栏一项「vllm-kb」（配端点、启停、测连通），并注册四个 `vllm_kb_*` 工具。装法与面板包相同，走同一个插件管理器：
+
+```bash
+node scripts/panel_install.js --all        # 面板包 + vllm-kb 接入插件一起装/更新
+node scripts/panel_install.js --spec "$PWD/dsh-plugins/dsh-sleuth-vllm-kb"   # 只装它
+```
+
+`--all` 对两个包分别做「版本一致就跳过、不一致就换装」。换装要重启 DSH Desktop 才加载新版本。装完在设置页左侧栏看到「vllm-kb」；工具行 `vllm-kb-tools` 默认关，在插件页单独打开。
+
 ## 第 0 步：判本机 DSH 走哪条路
 
 查工具目录里有没有 `cordis_define`、`cordis_run`、`plugin_manager`：

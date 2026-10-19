@@ -1,0 +1,44 @@
+id: vllm-kb-versioned-code
+type: tool
+title: vllm_kb_code 按版本或镜像定位源码（vllm-kb 接入插件；各版本命中对照、报错字面量索引、镜像与 fork 命名空间）
+summary: vllm_kb_code 用外部只读知识库按版本查源码：一次列出某段特征在各版本的命中、按文件限定、按报错字面量定位定义处；部署是 0day 镜像或 fork 时用它取那份代码，本仓 src_fetch.py 按官方 tag 取不到。
+
+sources:
+  - type: engineer-input
+    engineer: "外部同类知识库项目的维护者（提供者匿名）"
+    document: "上游 vllm-kb 仓库的只读接口 POST /code/search 与其 skills/vllm-kb/SKILL.md（内网部署）"
+    input_session: "本地会话：vllm-kb 接入 ascend-sleuth 的方案（research/vllm-kb-integration.md）"
+    confirmed_at: 2026-10-19
+    verification: auto-extracted
+
+applies_to:
+  platforms: [cross]
+  frameworks: [vllm-ascend, vllm]
+  categories: [interrupt, precision, performance]
+
+related_references: [vllm-kb-upstream-fix]
+
+status: active
+last_verified: 2026-10-19
+
+content:
+  tool_name: vllm_kb_code（vllm-kb 接入插件的源码定位工具；打 vllm-kb 的 POST /code/search）
+  invocation: >-
+    工具参数：query（必填，代码特征/符号名/报错字面量）、version（部署版本，如 0.23.0）、
+    repo（命名空间前缀，img:<镜像 tag> 或 fork:<模型>@<sha>）、in_file（限定文件）、
+    per_version（一次列各版本命中）、kind（填 msg 时按报错字面量索引查定义处）。
+    典型用法：判断某个修复进没进版本用 per_version；镜像现场用 repo=img:<tag>；只记得报错原文用 kind=msg。
+  output_meaning: >-
+    返回命中文件与行号，per_version 时按版本分组列出；kind=msg 时给出报错字面量所在的文件与行。
+    输出是接口返回的 JSON（命中按版本列出），带端点名称与耗时；超过 8000 字符会截断并标记。命中是代码事实，但前提是端点对应的那一套代码
+    就是现场部署的代码——镜像与 fork 必须显式带 repo。
+  pitfalls:
+    - 端点绑定的是某个部署版本。报告里要写明这条证据来自哪个端点（工具返回里有名称），否则读者会把它当成自己那套部署的结论。
+    - 命中不等于修复生效：同文件同名主题的相邻命中不构成证据，必须落在修复特征行上（见 skills/diagnose/references/diagnosis-procedure.md 的「上游修复的落地实证」）。
+    - 服务不可达时工具返回 ok:false、reason 写 unreachable 或 http-5xx；这时记 outcome: skipped 并回原路径（gh search 与 src_fetch.py），本单不再重试。
+    - 输出截断到 8000 字符。看不到目标片段就缩小范围（加 in_file 或换成更短的特征串），不要重复整查。
+    - repo 前缀写错会退化成查官方版本，结果看着很像但不适用于镜像现场；拿不准就先查它列出的镜像清单。
+  commands:
+    per_version: "query=<修复特征行>，per_version=true——判断该特征出现在哪个版本"
+    image: "query=<符号名>，repo=img:<镜像 tag>，in_file=<文件>——查镜像里实际生效的插件代码"
+    message_literal: "query=<报错原文片段>，kind=msg，version=<部署版本>——报错文本到定义处 file:line"

@@ -53,6 +53,7 @@ KNOWN_ACTIONS = {
     "triage_semantic", "source_analysis", "attribution", "resume",
     "procedure_follow",   # 按流程执行（方法缺口消费点，EV-2026-038）：记 ref_id/steps_executed/branch_taken
     "report",             # 人读定位报告产出（diagnose 步骤 6）：记 report_file/sediment_candidates
+    "external_lookup",    # 外部查证（可选插件能力）：记 capability/outcome；不带服务名与端点地址
 }
 
 # reference_lookup 的 purpose 固定词表（与 skills/diagnose/references/diagnosis-trace.md 一致）：
@@ -73,6 +74,25 @@ KNOWN_PURPOSES = {"collect", "signature", "fix", "background", "procedure"}
 # 消费率无法归因（分不清该改知识库还是改流程）。skipped 不计入引用次数（那是"查过"的口径）。
 # 旧 trace 无 outcome 字段 → 照旧计入引用次数（不追溯改写历史记录）。
 KNOWN_OUTCOMES = {"hit", "miss", "skipped"}
+
+# external_lookup 的 capability 固定词表（与 skills/diagnose/references/diagnosis-trace.md 一致）：
+#   versioned-code  按版本或镜像定位源码（vllm_kb_code）
+#   upstream-fix    修复链、要给「已修复 / 升级即可」的依据（vllm_kb_fix）
+#   manual-doc      手册原文（vllm_kb_doc）
+#   image-to-text   截图转文字（vllm_kb_ocr）
+# 词表外取值 → 分布统计会漏掉这一类，此处确定性检出。
+KNOWN_CAPABILITIES = {"versioned-code", "upstream-fix", "manual-doc", "image-to-text"}
+
+# 顶层 external_evidence（会话级，一次写定）：工具在不在。
+# on = 有工具；off = 没装或工具行关着。开了但服务挂了仍写 on，那是事件级 skipped。
+KNOWN_EXTERNAL = {"on", "off"}
+
+# external_lookup 的 skipped 必须写 reason，取值固定（与 diagnosis-trace.md 一致）：
+#   probe-failed     探测不通或查询超时
+#   not-configured   还没配端点
+#   not-applicable   本单框架不是 vllm-ascend / vllm
+#   not-needed       本步用不上
+KNOWN_EXTERNAL_REASONS = {"probe-failed", "not-configured", "not-applicable", "not-needed"}
 
 # 停止原因（顶层 `stop_reason`，会话收尾时一次写定；EV-2026-168）：
 # 用历史记录离线比较探索策略时，要知道当时的策略在哪停、为什么停——没有这个字段，
@@ -193,6 +213,13 @@ def main():
     ref_outcomes = {}
     outcome_bad = []
 
+    # 外部查证（可选插件能力）：事件按 capability 计数；顶层 external_evidence 记工具在不在。
+    # 没有这一层时，"没有 external_lookup 事件"分不清是没开还是没用到。
+    external_calls = []
+    capability_bad = []
+    external_outcome_bad = []
+    external_evidence = {}
+
     # 按类命中（metrics.md 定义）：每个 category 的 Tier2 命中 session / 该 category session
     # category 从 trace 的 triage/triage_semantic 事件取（agent 语义路由兜底也带 category）。
     cat_total = {}
@@ -220,6 +247,16 @@ def main():
                 record_bad.append(f"{sid}: stop_reason 应为字符串（{sr!r}）")
         else:
             stop_reason_unrecorded += 1
+        external_flag = st.get("external_evidence")
+        if external_flag is not None:
+            # 裸写 on/off 会被 YAML 解析成布尔（True/False），这是最容易踩的一处；
+            # 两种都认，按 on/off 归一。文档另写明「建议加引号」，但不靠文档纪律兜底。
+            if isinstance(external_flag, bool):
+                external_flag = "on" if external_flag else "off"
+            if isinstance(external_flag, str) and external_flag in KNOWN_EXTERNAL:
+                external_evidence[external_flag] = external_evidence.get(external_flag, 0) + 1
+            else:
+                record_bad.append(f"{sid}: external_evidence={external_flag!r}")
         # trajectory 统一 {role, ...}：agent 事件带 action，user 事件只带 content（无 action）
         # 词表只约束 agent 决策事件；user 输入事件是回放/fixture 的输入源，不参与词表检查
         actions = [t.get("action") for t in trace if t.get("action")]
@@ -260,6 +297,18 @@ def main():
                     ref_purposes[pur] = ref_purposes.get(pur, 0) + 1
                     if pur not in KNOWN_PURPOSES:
                         purpose_bad.append(f"{st.get('session_id', '?')}: {pur!r}")
+            elif a == "external_lookup":
+                cap = t.get("capability")
+                if cap and cap not in KNOWN_CAPABILITIES:
+                    capability_bad.append(f"{st.get('session_id', '?')}: {cap!r}")
+                out = t.get("outcome")
+                if out and out not in KNOWN_OUTCOMES:
+                    external_outcome_bad.append(f"{st.get('session_id', '?')}: {out!r}")
+                if out == "skipped":
+                    reason = t.get("reason")
+                    if reason not in KNOWN_EXTERNAL_REASONS:
+                        external_outcome_bad.append(f"{st.get('session_id', '?')}: skipped reason={reason!r}")
+                external_calls.append(str(cap) if cap else "?")
             elif a == "attribution":
                 # 两种键都认：规范写 `verdict`，而生产端实际写的是 `attribution_kind`——
                 # 只读 `verdict` 时这条腿恒为 0（实测 7 条归因事件里 4 条写 attribution_kind、
@@ -401,6 +450,11 @@ def main():
         "trace_record_violations": record_bad[:5] or None,
         # 违规条数单列：上面那条只列前 5 处，没有总数就看不出是 5 处还是 50 处。
         "trace_record_violations_total": len(record_bad),
+        # 外部查证：工具在不在（顶层）与按 capability 的调用次数；取值越界单列。
+        "external_evidence": external_evidence or None,
+        "external_lookups": {c: external_calls.count(c) for c in sorted(set(external_calls))} or None,
+        "external_record_violations": (capability_bad + external_outcome_bad)[:5] or None,
+        "external_record_violations_total": len(capability_bad) + len(external_outcome_bad),
     }
 
     rows = [

@@ -251,3 +251,33 @@ gates:
           - operator-debug-entrypoints
     caveat_refs:
       - cann-source-location   # 各仓共用 CANN 发布号：tag 能解析不构成定位证据
+
+  # 外部查证（可选能力）：工具由 DSH 插件提供，端点在 ~/.dsh/sleuth-kb.json。
+  # 三个点共用一个闸门：它只回答「这个缺口能不能交给外部查证」「工具不在怎么办」，
+  # 具体调哪个工具、参数怎么填在词条里。工具不在或返回不可用时一律回原路径，不重试。
+  - id: external-evidence
+    categories: [interrupt, precision, performance]
+    kind: conditional
+    trigger: >-
+      **只在本单框架是 vllm-ascend 或 vllm 时适用**（含部署成 0day 镜像、fork、定制构建的 vllm-ascend）；
+      mindspeed、verl、torch-npu、sglang 等其他框架不展开，记 skipped 加 reason: not-applicable，
+      不要拿别家的框架去查，命中了也不是这次部署的代码。适用且工具可用时，两个缺口才展开：
+      步骤 5 需要按版本或镜像定位源码（本地 src_fetch.py 只按官方 tag 取，镜像与 fork 取不到），
+      或要给「已修复 / 升级即可」结论的修复依据；以及步骤 1 工程师给的是截图、模型自己不能读图、且需要转成文字或签名时（能读图就直接读，这条是兜底）。
+      工具不在或不可用就记 skipped 并走原路径。
+    question: null
+    branches:
+      - when: gap
+        action: >-
+          先判两件事：框架是不是 vllm-ascend 或 vllm，工具在不在（主组：vllm_kb_code / vllm_kb_fix / vllm_kb_doc；截图那条还要 vllm_kb_ocr 那一行开着）。
+          框架不是这两家 → 记 skipped、`reason: not-applicable`，本节到此为止，不要调；
+          工具不在 → 记 skipped、reason 写工具未装或工具行关着，回到原路径（gh search 加 src_fetch.py）。
+          两种都不要问用户"为什么没有这个工具"。
+          在就按缺口选一个：源码定位用 vllm_kb_code（镜像与 fork 必须带 repo），
+          修复链用 vllm_kb_fix（结果只当线索），手册原文用 vllm_kb_doc，截图转文字用 vllm_kb_ocr（兜底；模型能读图或能贴文字时不用它；它由 `vllm-kb-ocr` 那行单独控制，没开就当没有）。
+          工具返回 ok:false 时不再重试，本单按原路径走完，并在依据链里标"离线/未验证"。
+        refs:
+          - vllm-kb-versioned-code
+          - vllm-kb-upstream-fix
+          - vllm-kb-manual-doc
+          - vllm-kb-screenshot-ocr

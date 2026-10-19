@@ -9,7 +9,7 @@ trace 的 agent 事件 `action` 必须落在词表内（词表外 action 会被 
 ```
 triage | load_index | quickly_check | load_full | run_check | hit | miss | tier3
 | feedback | reference_lookup | triage_semantic | source_analysis | attribution | resume
-| procedure_follow | report
+| procedure_follow | report | external_lookup
 ```
 
 user 事件无 `action`，不参与词表检查。**新增 action 时同步改 `trace_metrics.py` 的 `KNOWN_ACTIONS` 与本文**（单一数据源纪律）。
@@ -67,6 +67,33 @@ user 事件无 `action`，不参与词表检查。**新增 action 时同步改 `
 - `skipped`：**没有查**（`reason` 必写为什么）。两种常见情形：本触发点不在本轮路径上（如候选全未命中时的 2.5 修复依据那一半）、证据里没有可检索键（框架自定义断言文本、Python traceback、业务日志）。**背景层几乎总能查到词**（平台 / 组件名在证据里），所以它的正常负结果是 `miss` 而不是 `skipped`；只有连平台都判不出时才写 `skipped`。
 
 **为什么要有 `skipped`**：不查不留痕时，"查了没命中"与"根本没查"在数据上完全同形——消费率无法归因，也就分不清该改知识库（覆盖缺口）还是改流程（执行错）。`skipped` 不计入 reference 引用次数（那是"查过"的口径）。
+
+### `external_lookup` 事件（外部查证；三态）
+
+外部查证（工具由 DSH 插件提供，端点在 `~/.dsh/sleuth-kb.json`）每调一次记一条，字段 `{action, capability, outcome, reason, endpoint?}`：
+
+| `capability` | 何时用 |
+|---|---|
+| `versioned-code` | 步骤 5 按版本或镜像定位源码（`vllm_kb_code`） |
+| `upstream-fix` | 步骤 5 查修复链、要给「已修复 / 升级即可」的依据（`vllm_kb_fix`） |
+| `manual-doc` | 需要手册原文而不是一句话结论（`vllm_kb_doc`） |
+| `image-to-text` | 步骤 1 工程师给的是截图（`vllm_kb_ocr`） |
+
+`outcome` 三态与 `reference_lookup` 同一套词表：
+
+- `hit`：拿到结果并用于本次推理（`output` 记"用了哪条证据"，不是"读了整页"）；
+- `miss`：查了，但没有相关内容（`reason` 写清按什么查的）；
+- `skipped`：**没有查**（与 `reference_lookup` 的 `skipped` 同义，不是"查了没命中"），`reason` 必写，取值：
+  - `probe-failed`：探测不通或查询超时（服务不可达、连接失败）；
+  - `not-configured`：还没配端点；
+  - `not-applicable`：本单框架不是 vllm-ascend / vllm，这条路不适用；
+  - `not-needed`：本步用不上。
+
+  服务不可达后本单不再重试。**`external_evidence` 的取值写引号**（`'on'` / `'off'`）：裸写 `on` 会被 YAML 解析成布尔 `true`。
+
+**不写服务名、不写端点地址**：`capability` 与 `outcome` 就是全部机器面。端点由配置文件决定，报告里可以写端点名称（工程师自己起的标签），trace 里不写。
+
+**不复用 `reference_lookup`**：它按 `ref_id` 计先验消费次数，外部调用没有 `ref_id`，混进去会把消费率算脏。
 
 ### `report` 事件（人读定位报告产出，全路步骤 6 必写一条）
 
@@ -217,6 +244,15 @@ trace 不止当过程记录读，还有第二个用途：换一个探索策略�
 harness 侧的会话号（DSH 里是 `$DSH_SESSION_ID`）。**用途只有一个**：收尾汇总时把这一次诊断与 harness 会话日志关联起来，读出逐次工具调用与 token 账单（会话日志里有这两样，轨迹里没有；轨迹里自己写一份是复制而不是关联，两边不一致时没有判据说该信哪一份）。
 
 拿得到就写；拿不到留空——留空只让那次会话的成本与工具分布缺席（汇总脚本会如实说明），写一个猜的值会让账单对到另一个会话上。**诊断会话的名字（`session_id`）与 harness 会话号是两套**：前者是这次诊断自己起的（形如 `<日期>-<issue 号>-<短名>`），后者是 harness 分配的。汇总脚本不写这个字段时按 `session_id` 试一次。
+
+## 顶层 `external_evidence`（会话级，一次写定）
+
+建 session 时按主组工具（`vllm_kb_code` / `vllm_kb_fix` / `vllm_kb_doc`，DSH 里由 `vllm-kb-tools` 行控制）在不在写一次，之后不改；`vllm_kb_ocr` 有独立一行，只影响截图转文字，不改变这个字段：
+
+- `on`：工具在（外部查证可用）；
+- `off`：工具不在（没装、或工具行关着）。
+
+没有它，"没有 `external_lookup` 事件"分不清是没开还是没用到——这正是 `reference_lookup` 要分 `skipped` 的理由。**开了但服务挂了仍写 `on`**：那是事件级 `skipped` 加 `reason: probe-failed` 的事，两者不要混。
 
 ## 顶层 `kb_rev`（会话级，一次写定）
 

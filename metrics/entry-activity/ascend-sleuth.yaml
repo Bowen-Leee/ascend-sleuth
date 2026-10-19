@@ -286,4 +286,8 @@ cold_never_looked_up:
 - vllm-ascend-torch-npu
 - vllm-eager-cudagraph-conflict
 - vllm-infer-precision-triage
+- vllm-kb-manual-doc
+- vllm-kb-screenshot-ocr
+- vllm-kb-upstream-fix
+- vllm-kb-versioned-code
 - weight-nz-inference-only

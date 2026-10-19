@@ -1,0 +1,304 @@
+#!/usr/bin/env node
+// vllm-kb 接入插件的离线自测：打桩，不需要 DSH，也不需要内网实例。
+//
+// 覆盖：配置归一化与读写、repo#编号 → source_id、四个能力的请求形状（打一台进程内假服务）、
+// 输出截断、错误映射（HTTP 4xx/5xx）、可用性三态与缓存、无端点时的降级。
+//
+// 跑法：node scripts/check_vllm_kb.js（CI 的 panel-checks 里跑这一条）
+
+import { mkdtemp, writeFile, rm } from 'node:fs/promises'
+import { createServer } from 'node:http'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+
+const core = await import(new URL('../dsh-plugins/dsh-sleuth-vllm-kb/lib/core.js', import.meta.url).href)
+
+let failures = 0
+const queue = []
+function check(name, fn) {
+  queue.push([name, fn])
+}
+async function runChecks() {
+  for (const [name, fn] of queue) {
+    try {
+      const result = await fn()
+      if (result === false) throw new Error('返回 false')
+      console.log(`  ✓ ${name}`)
+    } catch (error) {
+      failures += 1
+      console.log(`  ✗ ${name}\n      ${String((error && error.message) || error)}`)
+    }
+  }
+}
+function eq(actual, expected, label) {
+  const a = JSON.stringify(actual)
+  const b = JSON.stringify(expected)
+  if (a !== b) throw new Error(`${label || '不相等'}：期望 ${b}，实际 ${a}`)
+}
+function ok(value, label) {
+  if (!value) throw new Error(label || '断言失败')
+}
+
+console.log('[1] 配置归一化')
+check('缺字段走默认值', () => {
+  const config = core.normalizeConfig(null)
+  eq(config.endpoints, [])
+  eq(config.active, '')
+  eq(config.probe_timeout_ms, 1000)
+  eq(config.probe_ttl_ms, 30000)
+  eq(config.request_timeout_ms, 15000)
+})
+check('丢掉没有地址的端点，label 回落为地址，地址去尾斜杠', () => {
+  const config = core.normalizeConfig({
+    endpoints: [
+      { id: 'a', label: '内网', base_url: 'http://h:8000/' },
+      { id: 'b', base_url: '   ' },
+      { base_url: 'http://x:1' },
+    ],
+    active: 'b',
+  })
+  eq(config.endpoints.length, 2)
+  eq(config.endpoints[0].base_url, 'http://h:8000')
+  eq(config.endpoints[1].label, 'http://x:1')
+  eq(config.active, config.endpoints[0].id)
+})
+check('非法超时走默认', () => {
+  const config = core.normalizeConfig({ probe_timeout_ms: -1, request_timeout_ms: 'x' })
+  eq(config.probe_timeout_ms, 1000)
+  eq(config.request_timeout_ms, 15000)
+})
+
+console.log('[2] repo#编号 → source_id')
+check('vllm-ascend 走官方仓名', () => eq(core.resolveSourceId('vllm-ascend#8938'), 'github:vllm-project-vllm-ascend:issue:8938'))
+check('vllm 走官方仓名', () => eq(core.resolveSourceId('vllm#50241'), 'github:vllm-project-vllm:issue:50241'))
+check('完整 source_id 原样透传', () => eq(core.resolveSourceId('github:a-b:issue:1'), 'github:a-b:issue:1'))
+check('没有 # 时原样返回', () => eq(core.resolveSourceId('pdf:manual'), 'pdf:manual'))
+
+const workdir = await mkdtemp(join(tmpdir(), 'vllm-kb-'))
+process.env.KB_EVIDENCE_CONFIG = join(workdir, 'sleuth-kb.json')
+
+console.log('[3] 配置读写')
+check('文件不存在时给默认值且不报错', async () => {
+  const saved = process.env.KB_EVIDENCE_CONFIG
+  process.env.KB_EVIDENCE_CONFIG = join(workdir, 'fresh', 'vllm-kb.json')
+  try {
+    const { config, error } = await core.readConfig()
+    ok(error === null, `不该有错误：${error}`)
+    eq(config.endpoints, [])
+  } finally {
+    process.env.KB_EVIDENCE_CONFIG = saved
+  }
+  return true
+})
+await core.writeConfig(core.normalizeConfig({
+  endpoints: [{ id: 'ep-1', label: '假服务', base_url: 'http://127.0.0.1:1' }],
+}))
+check('写回后读到的就是写下的', async () => {
+  const { config } = await core.readConfig()
+  eq(config.endpoints.length, 1)
+  eq(config.active, 'ep-1')
+  return true
+})
+
+// ---- 进程内假服务：按 vllm-kb 的只读接口回放 ---------------------------
+const seen = []
+const server = createServer((req, res) => {
+  let body = ''
+  req.on('data', (chunk) => { body += chunk })
+  req.on('end', () => {
+    const url = new URL(req.url, 'http://localhost')
+    seen.push({ method: req.method, path: url.pathname, query: Object.fromEntries(url.searchParams), body: body ? JSON.parse(body) : null })
+    const json = (status, payload) => {
+      res.writeHead(status, { 'content-type': 'application/json' })
+      res.end(JSON.stringify(payload))
+    }
+    if (url.pathname === '/health') return json(200, { status: 'ok', embedding: 'ok', ocr: { status: 'configured' } })
+    if (url.pathname === '/code/search') {
+      if (JSON.parse(body || '{}').keyword === 'boom') return json(503, { error: 'down' })
+      return json(200, { hits: [{ version: '0.23.0', path: 'vllm_ascend/x.py', line: 12 }] })
+    }
+    if (url.pathname === '/graph/chain') return json(200, { found: true, issue_id: url.searchParams.get('doc') })
+    if (url.pathname.startsWith('/doc/')) return json(200, { title: 'HCCL 命令参考', content: 'x'.repeat(9000) })
+    if (url.pathname === '/tags/match') return json(200, { docs: [{ id: 'D-1', title: '超时排查' }] })
+    if (url.pathname === '/ocr') return json(200, { text: 'error: timeout', signatures: ['timeout'] })
+    return json(404, { error: 'not found' })
+  })
+})
+await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
+const base = `http://127.0.0.1:${server.address().port}`
+
+async function withConfig(extra = {}) {
+  await core.writeConfig(core.normalizeConfig(Object.assign({
+    endpoints: [{ id: 'ep-1', label: '假服务', base_url: base }],
+    active: 'ep-1',
+    probe_timeout_ms: 500,
+    request_timeout_ms: 3000,
+  }, extra)))
+}
+
+console.log('[4] 可用性')
+check('没有端点 → not-configured', async () => {
+  await core.writeConfig(core.normalizeConfig({}))
+  const result = await core.availability(core.normalizeConfig({}), core.createProbeCache())
+  eq(result.reason, 'not-configured')
+  return true
+})
+check('探不通 → unreachable', async () => {
+  const config = core.normalizeConfig({ endpoints: [{ id: 'e', base_url: 'http://127.0.0.1:1' }], probe_timeout_ms: 100 })
+  const result = await core.availability(config, core.createProbeCache())
+  eq(result.reason, 'unreachable')
+  return true
+})
+check('探得通 → ok，且 TTL 内不再探第二次', async () => {
+  const config = core.normalizeConfig({
+    endpoints: [{ id: 'e', label: 'L', base_url: base }],
+    probe_timeout_ms: 500,
+    probe_ttl_ms: 5000,
+  })
+  let calls = 0
+  const probeImpl = async (url, timeout) => { calls += 1; return core.probe(url, timeout) }
+  const cache = core.createProbeCache()
+  eq((await core.availability(config, cache, probeImpl)).ok, true)
+  eq((await core.availability(config, cache, probeImpl)).ok, true)
+  eq(calls, 1, '第二次应命中缓存')
+  return true
+})
+
+console.log('[5] 四个能力的请求形状')
+check('code：参数映射到 /code/search 的 body', async () => {
+  await withConfig()
+  seen.length = 0
+  const result = await core.lookup('code', { query: 'fill_(-1)', version: '0.23.0', in_file: 'x.py', per_version: true, repo: 'img:glm5.2', kind: 'msg' }, { cache: core.createProbeCache() })
+  eq(result.ok, true)
+  const hit = seen.find((one) => one.path === '/code/search')
+  eq(hit.method, 'POST')
+  eq(hit.body.keyword, 'fill_(-1)')
+  eq(hit.body.limit, 10)
+  eq(hit.body.version, '0.23.0')
+  eq(hit.body.path, 'x.py')
+  eq(hit.body.per_version, true)
+  eq(hit.body.repo, 'img:glm5.2')
+  eq(hit.body.kind, 'msg')
+  return true
+})
+check('fix：repo#编号 变成 source_id 并进 query', async () => {
+  await withConfig()
+  const result = await core.lookup('fix', { target: 'vllm-ascend#8938' }, { cache: core.createProbeCache() })
+  eq(result.ok, true)
+  const hit = seen.filter((one) => one.path === '/graph/chain').pop()
+  eq(hit.query.doc, 'github:vllm-project-vllm-ascend:issue:8938')
+  return true
+})
+check('doc：query 走 /tags/match，doc_id 走 /doc/{id}', async () => {
+  await withConfig()
+  await core.lookup('doc', { query: 'HCCL 超时' }, { cache: core.createProbeCache() })
+  eq(seen.filter((one) => one.path === '/tags/match').pop().body, { text: 'HCCL 超时' })
+  const long = await core.lookup('doc', { doc_id: 'D-1' }, { cache: core.createProbeCache() })
+  eq(long.truncated, true, '整篇应被截断')
+  eq(long.content.length, core.CONTENT_LIMIT)
+  return true
+})
+check('doc：两个参数都没给 → bad-argument，不发请求', async () => {
+  await withConfig()
+  const business = () => seen.filter((one) => one.path !== '/health').length
+  const before = business()
+  const result = await core.lookup('doc', {}, { cache: core.createProbeCache() })
+  eq(result.reason, 'bad-argument')
+  eq(business(), before, '不该发业务请求')
+  return true
+})
+check('ocr：本地图片 base64 进 body', async () => {
+  await withConfig()
+  const image = join(workdir, 'shot.png')
+  await writeFile(image, Buffer.from('fake-image-bytes'))
+  const result = await core.lookup('ocr', { path: image }, { cache: core.createProbeCache() })
+  eq(result.ok, true)
+  const hit = seen.filter((one) => one.path === '/ocr').pop()
+  eq(hit.body.image, Buffer.from('fake-image-bytes').toString('base64'))
+  return true
+})
+check('ocr：读不到图片 → file-missing，不发业务请求', async () => {
+  await withConfig()
+  const business = () => seen.filter((one) => one.path !== '/health').length
+  const before = business()
+  const result = await core.lookup('ocr', { path: join(workdir, 'absent.png') }, { cache: core.createProbeCache() })
+  eq(result.reason, 'file-missing')
+  eq(business(), before)
+  return true
+})
+
+console.log('[6] 错误与降级')
+check('HTTP 5xx 映射成 http-503（不抛异常）', async () => {
+  await withConfig()
+  const result = await core.lookup('code', { query: 'boom' }, { cache: core.createProbeCache() })
+  eq(result.ok, false)
+  eq(result.reason, 'http-503')
+  return true
+})
+check('端点不可达时 lookup 直接给 unreachable，不进业务请求', async () => {
+  await withConfig({ endpoints: [{ id: 'e', label: '不可达', base_url: 'http://127.0.0.1:1' }], probe_timeout_ms: 100 })
+  const before = seen.length
+  const result = await core.lookup('code', { query: 'x' }, { cache: core.createProbeCache() })
+  eq(result.reason, 'unreachable')
+  eq(seen.length, before, '不该发出业务请求')
+  return true
+})
+
+console.log('[7] 配置路由（鉴权 / 解析 / 探测 / 404）')
+check('没有自定义头 → 403（GET 与 POST 都拒）', async () => {
+  const get = await core.handleApiRequest({ method: 'GET', pathname: '/config', headers: {} })
+  eq(get.status, 403)
+  const post = await core.handleApiRequest({ method: 'POST', pathname: '/config', headers: {}, body: '{}' })
+  eq(post.status, 403)
+  return true
+})
+check('带头 GET /config → 200 且返回当前配置', async () => {
+  const out = await core.handleApiRequest({ method: 'GET', pathname: '/config', headers: { 'x-vllm-kb': '1' } })
+  eq(out.status, 200)
+  ok(out.payload.config && Array.isArray(out.payload.config.endpoints), '应返回 config')
+  return true
+})
+check('带头 POST /config → 写回并清缓存', async () => {
+  let saved = null
+  let cleared = false
+  const out = await core.handleApiRequest(
+    { method: 'POST', pathname: '/config', headers: { 'x-vllm-kb': '1' }, body: JSON.stringify({ endpoints: [{ label: 'A', base_url: 'http://a:1' }] }) },
+    { writeConfig: async (next) => { saved = next }, readConfig: async () => ({ config: core.normalizeConfig(null), error: null }), cache: { clear: () => { cleared = true } } },
+  )
+  eq(out.status, 200)
+  eq(saved.endpoints.length, 1)
+  eq(cleared, true, '写配置应清探测缓存')
+  return true
+})
+check('非法 JSON → 400，不是 500', async () => {
+  const out = await core.handleApiRequest({ method: 'POST', pathname: '/config', headers: { 'x-vllm-kb': '1' }, body: '{bad' })
+  eq(out.status, 400)
+  return true
+})
+check('没有端点时 POST /probe → 200 且 ok:false', async () => {
+  const out = await core.handleApiRequest(
+    { method: 'POST', pathname: '/probe', headers: { 'x-vllm-kb': '1' }, body: '{}' },
+    { readConfig: async () => ({ config: core.normalizeConfig(null), error: null }) },
+  )
+  eq(out.status, 200)
+  eq(out.payload.ok, false)
+  return true
+})
+check('未知路径 → 404', async () => {
+  const out = await core.handleApiRequest({ method: 'GET', pathname: '/nope', headers: { 'x-vllm-kb': '1' } })
+  eq(out.status, 404)
+  return true
+})
+
+await runChecks()
+
+server.close()
+await rm(workdir, { recursive: true, force: true })
+delete process.env.KB_EVIDENCE_CONFIG
+
+console.log('')
+if (failures > 0) {
+  console.log(`vllm-kb 接入自测失败：${failures}/${queue.length} 项`)
+  process.exit(1)
+}
+console.log(`vllm-kb 接入自测通过：${queue.length} 项（全部打桩，不需要 DSH 与内网实例）`)

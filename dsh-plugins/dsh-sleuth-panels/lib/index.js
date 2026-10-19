@@ -1,6 +1,6 @@
 /* eslint-disable */
 // 生成物 —— 勿手改。由 `node scripts/build_panel_bundle.js` 从下列源文件拼出：
-//   dsh-plugins/ascend-panel/panel-host.js  (sha256:9f3b1494a5a3)
+//   dsh-plugins/ascend-panel/panel-host.js  (sha256:0e3ff754387b)
 //   dsh-plugins/ev-panel/panel-host.js  (sha256:e45522d60c58)
 // 校验：`node scripts/build_panel_bundle.js --check`（源文件改了没重跑生成器即红）。
 //
@@ -81,7 +81,7 @@ const PANELS = [
     id: 'ascend-panel',
     build(harness) {
       return (function () {
-// ---- dsh-plugins/ascend-panel/panel-host.js (sha256:9f3b1494a5a3) 原文开始 ----
+// ---- dsh-plugins/ascend-panel/panel-host.js (sha256:0e3ff754387b) 原文开始 ----
 return {
   apply(ctx) {
     const fs = ctx.get('fs')
@@ -1299,6 +1299,8 @@ return {
           refs: eventList(t && (t.ref_ids !== undefined ? t.ref_ids : t.ref_id)),
           purpose: eventStr(t && t.purpose, 40),
           outcome: eventStr(t && t.outcome, 20),
+          // 外部查证的三个字（action/capability/outcome）——capability 不进这一层，客户端就看不到。
+          capability: eventStr(t && t.capability, 40),
           note: eventStr(t && t.note, 500),
           toolCalls: eventList(t && t.tool_calls).map(x => x.slice(0, 400)),
           // 外部资料链接：**两种位置都要吃**——user 事件写在 evidence.sources 里，

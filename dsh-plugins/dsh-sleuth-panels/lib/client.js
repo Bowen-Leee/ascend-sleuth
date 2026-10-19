@@ -1,6 +1,6 @@
 /* eslint-disable */
 // 生成物 —— 勿手改。由 `node scripts/build_panel_bundle.js` 从下列源文件拼出：
-//   dsh-plugins/ascend-panel/panel-client.js  (sha256:6cc4d44786c5)
+//   dsh-plugins/ascend-panel/panel-client.js  (sha256:6e4eeb65f3d6)
 //   dsh-plugins/ev-panel/panel-client.js  (sha256:9e836d4c1993)
 // 校验：`node scripts/build_panel_bundle.js --check`。
 //
@@ -63,7 +63,7 @@ window.__ModuleLoader__.load({
       id: 'ascend-panel',
       build(host, styles) {
         return (function () {
-// ---- dsh-plugins/ascend-panel/panel-client.js (sha256:6cc4d44786c5) 原文开始 ----
+// ---- dsh-plugins/ascend-panel/panel-client.js (sha256:6e4eeb65f3d6) 原文开始 ----
 return {
   apply(ctx) {
     const slots = ctx.get('slots')
@@ -198,6 +198,13 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
       load_full: '读候选正文', run_check: '逐条验证', hit: '命中', miss: '候选全未命中', tier3: '历史案例检索',
       reference_lookup: '取先验知识', procedure_follow: '按流程排查', source_analysis: '源码分析',
       attribution: '误诊归因', resume: '续接', report: '产出/修订报告', feedback: '回报结果',
+      external_lookup: '外部查证',
+    }
+    // 外部查证的**能力面**（trace 的 `external_lookup.capability`）：说清这一次查的是什么证据。
+    // 与 reference 的 purpose 是两回事，不要合成一张表。
+    const CAPABILITY_LABELS = {
+      'versioned-code': '按版本查源码', 'upstream-fix': '查修复链',
+      'manual-doc': '读手册原文', 'image-to-text': '截图转文字',
     }
     // **记录维护类**动作（产出报告 / 续接 / 回报 / 归因）回答的是"记录被改了什么"，不是"问题查到哪了"。
     // 实测反馈：展开后"带了很多和问题无关的记录"——人读视图默认收起它们，完整轨迹里仍可见。
@@ -1453,6 +1460,14 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
                     assocRows.push(assocRow('cand', '候选',
                       c.head.map(x => assocChip(x, T.text2, '本轮载入的候选 case'))
                         .concat(c.rest > 0 ? [React.createElement('span', { key: 'more', style: { color: T.text2, fontSize: 11.5 } }, '等 ' + c.rest + ' 条')] : [])))
+                  }
+                  if (st.action === 'external_lookup') {
+                    const capLabel = CAPABILITY_LABELS[st.capability] || st.capability || '外部查证'
+                    const outLabel = st.outcome ? ((REF_OUTCOME[st.outcome] || {}).label || st.outcome) : '未记结果'
+                    assocRows.push(assocRow('ext', '外部', [
+                      assocChip(capLabel, 'var(--acc-purple)', '外部查证的能力面（trace 的 capability）'),
+                      assocChip('结果：' + outLabel, 'var(--d-gray, var(--c-gray))', 'trace 的 external_lookup.outcome：命中 / 查了没命中 / 没查（并写了理由）'),
+                    ]))
                   }
                   if (st.refs && st.refs.length) {
                     assocRows.push(assocRow('refs', '先验',

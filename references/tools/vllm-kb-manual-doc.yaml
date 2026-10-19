@@ -1,0 +1,39 @@
+id: vllm-kb-manual-doc
+type: tool
+title: vllm_kb_doc 读官方手册原文（vllm-kb 接入插件；命令参考、字段含义、排查指南整篇）
+summary: vllm_kb_doc 用外部只读知识库按问题找手册篇目，再整篇读原文；先验层存的是一句话结论，需要「这个命令怎么用、字段怎么读」的整段原文时用它。
+
+sources:
+  - type: engineer-input
+    engineer: "外部同类知识库项目的维护者（提供者匿名）"
+    document: "上游 vllm-kb 仓库的文档接口 POST /tags/match 与 GET /doc/{id}（手册类文档已入库，内网部署）"
+    input_session: "本地会话：vllm-kb 接入 ascend-sleuth 的方案（research/vllm-kb-integration.md）"
+    confirmed_at: 2026-10-19
+    verification: auto-extracted
+
+applies_to:
+  platforms: [cross]
+  frameworks: [vllm-ascend, vllm]
+  categories: [interrupt, precision, performance]
+
+related_references: [hccn-tool-network-diagnosis, ascend-log-troubleshooting]
+
+status: active
+last_verified: 2026-10-19
+
+content:
+  tool_name: vllm_kb_doc（vllm-kb 接入插件的手册工具；打 POST /tags/match 与 GET /doc/{id}）
+  invocation: >-
+    工具参数 query（问题描述，返回可能相关的手册篇目）或 doc_id（手册编号，整篇读取）。
+    两步用法：先 query 拿篇目与编号，再 doc_id 读整篇。
+  output_meaning: >-
+    query 返回篇目标题、编号与一句摘要；doc_id 返回整篇正文（超过 8000 字符截断并标记）。
+    手册原文用来核命令参数与字段含义，不直接当根因结论。
+  pitfalls:
+    - 手册有版本。读到的写法要以客户环境的工具版本为准，版本差异以实际输出为准，不照搬示例。
+    - 整篇可能很长，会被截断；先读目录与关键小节，不要一次拉全篇。
+    - 手册是文档事实，不覆盖现场行为；现场日志与实际输出优先。
+    - 服务不可达时返回 ok:false；记 skipped 并诚实说明手册查不到，不要让工程师自己去翻当成已查。
+  commands:
+    find: "query=HCCL 超时排查——拿篇目与编号"
+    read: "doc_id=<编号>——读整篇"

@@ -14,6 +14,7 @@
 //                                                  # 不一致就换装，并明确告诉你"要不要重启"（换装必须重启）
 //   node scripts/panel_install.js --remove         # 卸载
 //   node scripts/panel_install.js --spec <spec>    # 换包：绝对路径 / 包名 / git 地址 / tarball
+//   node scripts/panel_install.js --all            # 一次装两个包：面板包 + vllm-kb 接入插件
 //   node scripts/panel_install.js --url <base> --token <token>   # 不自动找地址
 //   node scripts/panel_install.js --log <harness.log 路径>
 //   node scripts/panel_install.js --selftest       # 自带假服务器自测本脚本（不需要 DSH）
@@ -36,13 +37,14 @@ const { resolveTarget, sessionCookie, rpcCall } = require('./lib/panel_endpoint'
 
 const API_CHANNEL = '/api'
 const DEFAULT_SPEC = path.resolve(__dirname, '..', 'dsh-plugins', 'dsh-sleuth-panels')
+const KB_SPEC = path.resolve(__dirname, '..', 'dsh-plugins', 'dsh-sleuth-vllm-kb')
 
 function parseArgs(argv) {
-  const args = { spec: DEFAULT_SPEC, check: false, remove: false, url: null, token: null, log: null, quiet: false }
+  const args = { spec: DEFAULT_SPEC, check: false, remove: false, url: null, token: null, log: null, quiet: false, all: false }
   for (let i = 0; i < argv.length; i += 1) {
     const flag = argv[i]
     const value = argv[i + 1]
-    if (flag === '--spec') { args.spec = value; i += 1 } else if (flag === '--url') { args.url = value; i += 1 } else if (flag === '--token') { args.token = value; i += 1 } else if (flag === '--log') { args.log = value; i += 1 } else if (flag === '--check') { args.check = true } else if (flag === '--remove') { args.remove = true } else if (flag === '--sync') { args.sync = true } else if (flag === '--quiet') { args.quiet = true } else if (flag === '--help' || flag === '-h') { args.help = true }
+    if (flag === '--spec') { args.spec = value; i += 1 } else if (flag === '--url') { args.url = value; i += 1 } else if (flag === '--token') { args.token = value; i += 1 } else if (flag === '--log') { args.log = value; i += 1 } else if (flag === '--check') { args.check = true } else if (flag === '--remove') { args.remove = true } else if (flag === '--sync') { args.sync = true } else if (flag === '--quiet') { args.quiet = true } else if (flag === '--all') { args.all = true } else if (flag === '--help' || flag === '-h') { args.help = true }
   }
   return args
 }
@@ -132,6 +134,15 @@ async function ensureEnabled(name, target, io) {
 }
 
 async function runInstall(args, io) {
+  if (args.all === true) {
+    let code = 0
+    for (const spec of [DEFAULT_SPEC, KB_SPEC]) {
+      io.say(`\n== ${path.basename(spec)}\n`)
+      const one = await runInstall(Object.assign({}, args, { spec, all: false }), io)
+      if (one !== 0) code = one
+    }
+    return code
+  }
   const say = io.quiet ? () => {} : io.say
   const warn = io.quiet ? () => {} : io.warn
   if (args.help === true) {
