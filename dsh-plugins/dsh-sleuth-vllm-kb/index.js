@@ -94,10 +94,11 @@ function registerTools(ctx) {
 
   ctx.tools.register(tool(
     'vllm_kb_doc',
-    '查 vllm-kb 里的官方手册：给问题描述时返回可能相关的手册篇目，给文档编号时返回整篇原文。用于需要「这个命令怎么用、字段怎么读」的原文而不是一句话结论时。**返回的 body 为空 = 没拿到原文**，结论写「无原文 / 未核对」，不要当成「手册里没有这项内容」。',
+    '查 vllm-kb 里的官方手册：给问题描述时返回可能相关的手册篇目，给文档编号时返回整篇原文，catalog: true 列出文档标签目录（服务端提示「可尝试 tags」时用这个参数，别去跑不存在的命令）。用于需要「这个命令怎么用、字段怎么读」的原文而不是一句话结论时。**返回的 body 为空 = 没拿到原文**，结论写「无原文 / 未核对」，不要当成「手册里没有这项内容」。',
     {
       query: { type: 'string', description: '问题描述，如 HCCL 超时排查' },
       doc_id: { type: 'string', description: '文档编号；给了它就整篇读，忽略 query' },
+      catalog: { type: 'boolean', description: '填 true 时列出知识库的文档标签目录（知道有哪些主题可查），不读具体文档' },
     },
     'doc',
   ))

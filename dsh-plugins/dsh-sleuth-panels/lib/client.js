@@ -1,6 +1,6 @@
 /* eslint-disable */
 // 生成物 —— 勿手改。由 `node scripts/build_panel_bundle.js` 从下列源文件拼出：
-//   dsh-plugins/ascend-panel/panel-client.js  (sha256:91a2da95bbf7)
+//   dsh-plugins/ascend-panel/panel-client.js  (sha256:dc9d127f026a)
 //   dsh-plugins/ev-panel/panel-client.js  (sha256:9e836d4c1993)
 // 校验：`node scripts/build_panel_bundle.js --check`。
 //
@@ -63,7 +63,7 @@ window.__ModuleLoader__.load({
       id: 'ascend-panel',
       build(host, styles) {
         return (function () {
-// ---- dsh-plugins/ascend-panel/panel-client.js (sha256:91a2da95bbf7) 原文开始 ----
+// ---- dsh-plugins/ascend-panel/panel-client.js (sha256:dc9d127f026a) 原文开始 ----
 return {
   apply(ctx) {
     const slots = ctx.get('slots')
@@ -973,7 +973,8 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
       const anomaly = (steps && steps.parseAnomaly) ? steps.parseAnomaly : null
       // 没有结论时给一行说明，而不是让卡片默默以某个过程步骤收尾：读者要能分辨
       // "诊断还没收尾"与"这单本身没有结论"。resolved 的单不提示（已闭环，结论在 out 口述里）。
-      const noConclusionHint = (steps && steps.list && steps.list.length && s.status !== 'resolved')
+      // 有结论步时不再提示：原先只看 status，结论步存在也照喊"还没有定位结论"。
+      const noConclusionHint = (steps && steps.list && steps.list.length && shownIdx.at < 0 && s.status !== 'resolved')
         ? React.createElement('div', { style: { marginTop: 12, padding: 8, border: '1px solid ' + T.border, borderRadius: 9, fontSize: 12.5, color: T.text2 } },
             '本单还没有定位结论（轨迹末条是过程记录）。点「看完整轨迹」看全部事件，或等诊断收尾时补一条结论。')
         : null
@@ -1544,6 +1545,16 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
                       hasMissing ? React.createElement('span', { style: tinyBadge('var(--d-amber)') }, '缺 ' + ev.missing) : null,
                     ) : null,
                   ),
+                  // 判据结果徽标：quickly_check / run_check 的 pass|fail|conflict（或 verdict/check）
+                  (function () {
+                    const raw = st.result || st.verdict || st.check
+                    if (!raw) return null
+                    const v = String(raw).toLowerCase()
+                    const color = v.indexOf('pass') === 0 || v === 'hit' || v === 'present' ? 'var(--d-green)'
+                      : v.indexOf('conflict') === 0 || v === 'unknown' ? 'var(--d-amber)'
+                        : v.indexOf('fail') === 0 || v === 'absent' ? 'var(--d-red, var(--d-amber))' : 'var(--c-gray)'
+                    return React.createElement('span', { key: 'res', style: { display: 'inline-block', marginTop: 6, marginRight: 6, background: 'color-mix(in srgb, ' + color + ' 12%, transparent)', color: color, borderRadius: 5, padding: '1px 8px', fontSize: 11.5, fontWeight: 600 } }, String(raw))
+                  })(),
                   st.output ? React.createElement('div', { style: { marginTop: 4, color: T.text, fontSize: 14.5, whiteSpace: 'pre-wrap', wordBreak: 'break-word', lineHeight: 1.75 } }, st.output) : null,
                   // 推理（决策依据）只在完整轨迹里铺开：它写给回放与误诊归因，不是给人读的叙述
                   // （实测：18 步的 trace 里 reason 占 2800 字，是展开后"很多无关记录"的主体）。

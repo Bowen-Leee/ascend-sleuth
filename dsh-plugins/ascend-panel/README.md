@@ -24,6 +24,21 @@
 判据写在界面上，读者不必回查代码：返工 = 同一动作在本单出现多次；同批并行 = 事件的
 `parallel_group` 取同一个值。
 
+**本机明细缺件时先补，不要当成面板坏了。** 五块里的 `strength` / `route.hit_case` / `feedback` /
+`cost.*` 都读 `metrics/entry-activity.local/<会话>.yaml`；这个目录为空时整块显示「本次没记」。
+补法：先 dry-run 看会写什么，再落盘——
+
+```bash
+python3 scripts/trace_entry_activity.py                    # dry-run
+python3 scripts/trace_entry_activity.py --apply            # 写本机明细 + 增量行 + 游标
+python3 scripts/trace_entry_activity.py --apply --session <session_id>
+```
+
+**每步耗时与 token 还要求轨迹里有 `ts`**：没有 `ts` 切不出步窗口，明细里 `cost.step_cost` 就只能是空。
+所以看到「每步耗时」一栏恒空时，先查 trace 有没有 `ts`（`skills/diagnose/SKILL.md` 的「每步必写 trace」节），
+再查明细文件在不在——两者是两回事。
+
+
 每步的耗时占比这一格固定写「本次没记」，因为现在没有产出方：会话日志里的工具耗时按 harness 的
 `step`（每轮助手消息一个）计数，轨迹的 `step` 是诊断流程自己的编号，两套编号不同源。按 `step`
 直接关联会把耗时挂到别的动作上，比留空更坏。指标清单里「分步成本」也还是蓝图项。

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 # trace_metrics.py —— 从 traces/*.yaml 的 trace 计算指标（metrics/timeline.yaml 数据 + docs/guide/metrics.md 机制）
 #
 # 目的（ADR-0002）：过滤率/退休率/命中率/路由准确率从"假设"变"实测"。
