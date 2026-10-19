@@ -33,38 +33,29 @@ tab（list 插槽，按 order 排列，可共存）。
 
 用户需要面板但当前视图没有对应 tab 时，用本 skill 加载。
 
-## 拉完代码怎么更新（每台机器同一条命令）
+## 更新已装的面板（**用户不需要记任何命令**）
 
-面板装在 profile 里的是**一份拷贝**，不是仓库的软链——所以 `git pull` 不会自动改到它。
-在拉了最新代码的机器上跑：
+面板装进 profile 的是一份拷贝，`git pull` 改不到它；而插件管理器按 `name+version` 判「已装」，
+同版本重装返回 `changed=false`、产物根本不换。所以"拉了代码但面板没变"每次都会踩，且症状静默。
 
-```bash
-node scripts/panel_install.js --sync
-```
+**这件事由本 skill 承担，不要让用户去跑命令。** 触发条件是「用户要面板」或「面板看起来是旧版
+（诊断 tab 右上角的版本串不是仓库里的版本）」——两种都按下面的步骤走一遍：
 
-它按**版本号**判断，与插件管理器自己的去重口径一致：
+1. 跑 `node scripts/panel_install.js`（不带参数）。它自己判版本，三条路各给一句话：
+   - 已是最新 → 「不用重装，也不用重启」，到此为止；
+   - 已装但是旧版 → 卸了换装，并**明确说要重启**；
+   - 没装 → 装（首次安装）。
+   `--sync` 是同一个判定的显式别名（想让输出更明确时用），**不是**用户必须记住的一步。
+2. 只有换装/首装才需要**重启 DSH Desktop**：host 半（RPC 路由）在进程启动时装载，刷新页面只换
+   浏览器那一半。实测装完新版本不重启时，面板 RPC 仍返回旧字段——看起来像"装了没生效"。
+   `application` 字段在换版本时不可靠（实测报 `applied` 却仍加载旧包），所以结论按"文件换没换"给。
+3. 重启后核对两处：`node scripts/panel_install.js --check`（版本号等于仓库里的）、以及诊断 tab
+   右上角的版本串。版本串看不到最新值，就是浏览器缓存了旧 bundle（DevTools 勾 Disable cache 再刷）。
 
-- **版本一致** → 什么都不做，提示「不用重装，也不用重启」。这也解释了为什么改了源码却不涨版本时
-  重装没有效果：管理器按 `name+version` 判「已装」，同版本直接 `changed=false`。
-- **版本不一致 / 没装** → 卸了换装，并明确告诉你**要重启 DSH Desktop**。
+改面板源码的人另有一步：`node scripts/build_panel_bundle.js` 重建产物，并把
+`dsh-plugins/dsh-sleuth-panels/package.json` 的 version +1——不涨版本，管理器就不会替换。
 
-### 为什么必须重启，刷新页面不够
-
-host 半（`lib/index.js` 的 RPC 路由）在**进程启动时**装载；刷新页面只换浏览器那一半
-（`lib/client.js`）。实测：装完新版本不重启时，面板 RPC 仍返回旧字段——看起来像"装了没生效"。
-`application` 字段在换版本时不可靠（实测报 `applied` 却仍加载旧包），所以 `--sync` 的结论按
-"文件到底换没换"给，不按这个字段给。
-
-### 重启后怎么确认
-
-```bash
-node scripts/panel_install.js --check     # installed=true enabled=true，版本号等于仓库里的
-```
-
-再看**「诊断」tab 右上角的版本串**——它由构建时注入（`build_panel_bundle.js` 把 package.json 的
-version 写进产物）。看不到最新版本，就是浏览器缓存了旧 bundle：DevTools 勾 Disable cache 再刷。
-
-## 面板清单
+## 面板清单## 面板清单
 
 | 面板 | 目录 | tab id / label | 视图 |
 |---|---|---|---|
