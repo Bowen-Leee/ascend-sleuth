@@ -1,0 +1,36 @@
+id: vllm-kb-upstream-fix
+type: tool
+title: vllm_kb_fix 查一条 issue 的修复链路（vllm-kb 接入插件；issue→修复 PR→落地 release）
+summary: vllm_kb_fix 用外部只读知识库追溯修复链路：一条 issue 对应哪个修复 PR、进了哪个 release、改了哪些符号；用来回答「升级到哪个版本能解」，结果只当线索，给「已修复」结论前仍要按行核对部署代码。
+
+sources:
+  - type: engineer-input
+    engineer: "外部同类知识库项目的维护者（提供者匿名）"
+    document: "上游 vllm-kb 仓库的只读接口 GET /graph/chain 与其 skills/vllm-kb/SKILL.md（内网部署）"
+    input_session: "本地会话：vllm-kb 接入 ascend-sleuth 的方案（research/vllm-kb-integration.md）"
+    confirmed_at: 2026-10-19
+    verification: auto-extracted
+
+applies_to:
+  platforms: [cross]
+  frameworks: [vllm-ascend, vllm]
+  categories: [interrupt, precision, performance]
+
+related_references: [vllm-kb-versioned-code]
+
+status: active
+last_verified: 2026-10-19
+
+content:
+  tool_name: vllm_kb_fix（vllm-kb 接入插件的修复链工具；打 GET /graph/chain，target 里的 repo#编号 会转成 source_id）
+  invocation: "工具参数 target（必填），格式 <仓库>#<编号>，如 vllm-ascend#8938。"
+  output_meaning: >-
+    返回该 issue 的修复 PR、这些 PR 落到哪些 release、以及涉及的主要符号。
+    它回答的是「社区在哪个版本修了」，不回答「你的部署里有没有这个修复」。
+  pitfalls:
+    - 这是社区声称的链路，属线索级。上游有 PR、issue 已 closed，都不等于你的部署里有这个修复——PR 可能只进主干未 backport，镜像与 fork 不能按版本号推断。
+    - 给「已修复 / 升级即可」结论前必须做落地实证：从 PR 取修复特征行，再用 vllm_kb_code（或本地源码）在部署那份代码里确认它在。核不到就写未修复或无法判定。
+    - 服务不可达时返回 ok:false；记 skipped、回原路径，本单不再重试。
+    - release tag 推断只对官方 tag 快照成立；镜像与 fork 必须换成在镜像代码里查。
+  commands:
+    chain: "target=vllm-ascend#8938——拿修复 PR 与落地版本"

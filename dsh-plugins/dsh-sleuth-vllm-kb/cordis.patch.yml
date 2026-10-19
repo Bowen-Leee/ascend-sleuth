@@ -1,0 +1,25 @@
+# 外部查证插件（实验性）：一行工具、一行设置。
+#
+# 装法：plugin_manager install_bundle(target: <本目录绝对路径>)；界面装法是侧栏「插件」页粘贴本目录。
+# 装好之后进本包的详情页：
+#   - vllm-kb-tools     默认关。打开它才注册三个工具（vllm_kb_code / vllm_kb_fix / vllm_kb_doc）。
+#   - vllm-kb-ocr       默认关。单独开关截图转文字（vllm_kb_ocr）——模型能读图时不必开。
+#   - vllm-kb-settings  默认开。只提供配置区与探测路由，不注册工具。
+#
+# 配置落在 ~/.dsh/vllm-kb.json（机器级，不进仓库）；工具每次调用重读，
+# 所以改端点或切换启用端点都不用重启。
+- insert:
+    - id: vllm-kb-tools
+      name: 'dsh-sleuth-vllm-kb'
+      disabled: true
+      config:
+        mode: tools
+    - id: vllm-kb-ocr
+      name: 'dsh-sleuth-vllm-kb'
+      disabled: true
+      config:
+        mode: ocr
+    - id: vllm-kb-settings
+      name: 'dsh-sleuth-vllm-kb'
+      config:
+        mode: settings
