@@ -75,11 +75,11 @@ function registerTools(ctx) {
     '在 vllm-kb 里按版本或镜像定位源码：某段代码/符号在各版本是否命中、在哪个文件。用于步骤 5 的源码分析，尤其是部署是 0day 镜像或 fork、本地 src_fetch.py 拿不到那份代码时。不可用时返回 ok:false，按词条要求降级。',
     {
       query: { type: 'string', required: true, description: '要找的代码特征、符号名或报错字面量' },
-      version: { type: 'string', description: '部署版本，如 0.23.0；镜像用 repo 而不是它' },
+      version: { type: 'string', description: '部署版本，**带 v 前缀**，如 v0.23.0（不带 v 会 404「版本未预存」，返回里附可用版本列表，可核对格式）；镜像用 repo 而不是它' },
       repo: { type: 'string', description: '命名空间前缀，如 img:<镜像 tag> 或 fork:<模型>@<sha>；不填查官方版本' },
       in_file: { type: 'string', description: '限定文件，如 vllm_ascend/worker/model_runner_v1.py' },
       per_version: { type: 'boolean', description: '一次列出各版本的命中，用来判断修复进了哪个版本' },
-      kind: { type: 'string', description: '填 msg 时按报错字面量索引查（报错文本到定义处 file:line）' },
+      kind: { type: 'string', description: '填 msg 时按报错字面量索引查（报错文本到定义处 file:line）。须与源码 raise 语句里的完整字面量**逐字一致**（含大小写与标点），宽松子串不命中；工程师贴的报错先裁出字面量本身（去掉前缀词、上下文与换行）再查' },
       limit: { type: 'integer', description: '最多返回多少条，默认 10' },
     },
     'code',
@@ -87,14 +87,14 @@ function registerTools(ctx) {
 
   ctx.tools.register(tool(
     'vllm_kb_fix',
-    '查一条 issue 的修复链路：issue 到修复 PR 到落地 release，以及该 PR 改了哪些符号。用于步骤 5 回答「这个修复进了哪个版本」，结果只是线索，给「已修复」结论前仍要用 vllm_kb_code 在部署的那份代码里核对特征行。',
+    '查一条 issue 的修复链路：issue 到修复 PR 到落地 release，以及该 PR 改了哪些符号。用于步骤 5 回答「这个修复进了哪个版本」。结果只是线索；**返回里 fixes 为空、released 为 false 不代表未修复**（图数据可能没构建），仍按「上游修复的落地实证」用 gh search 与 src_fetch.py 核对特征行。',
     { target: { type: 'string', required: true, description: '仓库与编号，如 vllm-ascend#8938' } },
     'fix',
   ))
 
   ctx.tools.register(tool(
     'vllm_kb_doc',
-    '查 vllm-kb 里的官方手册：给问题描述时返回可能相关的手册篇目，给文档编号时返回整篇原文。用于需要「这个命令怎么用、字段怎么读」的原文而不是一句话结论时。',
+    '查 vllm-kb 里的官方手册：给问题描述时返回可能相关的手册篇目，给文档编号时返回整篇原文。用于需要「这个命令怎么用、字段怎么读」的原文而不是一句话结论时。**返回的 body 为空 = 没拿到原文**，结论写「无原文 / 未核对」，不要当成「手册里没有这项内容」。',
     {
       query: { type: 'string', description: '问题描述，如 HCCL 超时排查' },
       doc_id: { type: 'string', description: '文档编号；给了它就整篇读，忽略 query' },
