@@ -4,7 +4,28 @@
 
 读者是跑知识整理收尾、校准闸门、或要引用指标口径的人。只看面板趋势的人不必读。
 
-### 知识库健康的三个阈值（`metrics/gates.yaml` 的 `health:` 段）
+### 装完面板之后：指标为什么还是空的
+
+新克隆或刚拉完代码的机器上，「指标」tab 会显示缺件或几乎空白。这不是坏了：仓库里只带
+**搬运行**（三个案例的历史计数迁移），不带任何机器上的诊断数据。记录要自己长出来，而它不会
+在诊断时自动写——诊断只写轨迹。
+
+链路是两跳显式的：
+
+```bash
+python3 scripts/trace_entry_activity.py            # 先 dry-run：读 traces/ 与会话日志，看要写什么
+python3 scripts/trace_entry_activity.py --apply    # 追加源行 metrics/entry-activity.d/<周>.yaml
+python3 scripts/build_entry_activity.py            # 重建生成物 metrics/entry-activity/<部署>.yaml（面板读它）
+```
+
+这三条是周度知识整理的第 3.6 步（见 `skills/knowledge-groom/SKILL.md`），日常不跑也不影响诊断。
+
+两个前提，缺了那一格会写「本次没记」而不是数字：
+
+- 轨迹顶层写了 `harness_session` —— 否则 token 与工具耗时关联不上会话账单；
+- 每个诊断步至少一个事件带 `ts` —— 否则「每步成本」切不出窗口（见 `diagnosis-trace.md`）。
+
+## 知识库健康的三个阈值（`metrics/gates.yaml` 的 `health:` 段）
 
 「低置信评分线」「低置信告警占比」「先验过期天数」原先写死在面板代码与文案里，改一处漏一处，而且体检器不知道面板在用它们。现在它们与容量线同住 `metrics/gates.yaml`：面板读它、标签文字用它的值；读不到时退回内置兜底，并在面板上标「阈值来自内置兜底」。
 

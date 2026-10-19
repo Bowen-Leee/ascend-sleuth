@@ -10,6 +10,8 @@
 // 用法：
 //   node scripts/panel_install.js                  # 装面板包并使能（先 inspect，已装则补使能）
 //   node scripts/panel_install.js --check          # 只读：报本包的安装与使能状态（要能定到包名）
+//   node scripts/panel_install.js --sync           # 拉完代码跑这一条：版本一致就什么都不做，
+//                                                  # 不一致就换装，并明确告诉你"要不要重启"（换装必须重启）
 //   node scripts/panel_install.js --remove         # 卸载
 //   node scripts/panel_install.js --spec <spec>    # 换包：绝对路径 / 包名 / git 地址 / tarball
 //   node scripts/panel_install.js --url <base> --token <token>   # 不自动找地址
@@ -40,12 +42,22 @@ function parseArgs(argv) {
   for (let i = 0; i < argv.length; i += 1) {
     const flag = argv[i]
     const value = argv[i + 1]
-    if (flag === '--spec') { args.spec = value; i += 1 } else if (flag === '--url') { args.url = value; i += 1 } else if (flag === '--token') { args.token = value; i += 1 } else if (flag === '--log') { args.log = value; i += 1 } else if (flag === '--check') { args.check = true } else if (flag === '--remove') { args.remove = true } else if (flag === '--quiet') { args.quiet = true } else if (flag === '--help' || flag === '-h') { args.help = true }
+    if (flag === '--spec') { args.spec = value; i += 1 } else if (flag === '--url') { args.url = value; i += 1 } else if (flag === '--token') { args.token = value; i += 1 } else if (flag === '--log') { args.log = value; i += 1 } else if (flag === '--check') { args.check = true } else if (flag === '--remove') { args.remove = true } else if (flag === '--sync') { args.sync = true } else if (flag === '--quiet') { args.quiet = true } else if (flag === '--help' || flag === '-h') { args.help = true }
   }
   return args
 }
 
 // 路径形式的 spec 能本地读包名；包名/git/tarball 形式交给 inspect 回答
+function localPackageVersion(spec) {
+  if (!path.isAbsolute(spec)) return null
+  try {
+    const manifest = JSON.parse(fs.readFileSync(path.join(spec, 'package.json'), 'utf8'))
+    return typeof manifest.version === 'string' && manifest.version !== '' ? manifest.version : null
+  } catch (e) {
+    return null
+  }
+}
+
 function localPackageName(spec) {
   if (!path.isAbsolute(spec)) return null
   try {
@@ -152,6 +164,43 @@ async function runInstall(args, io) {
     for (const row of rows) {
       say('  ' + row.name + ' ' + String(row.version) + '：installed=' + row.installed + ' enabled=' + row.enabled + ' removable=' + row.removable + '\n')
     }
+    return 0
+  }
+
+  // --sync：给"拉完代码，让这台机器用上最新面板"这一件事一条命令。
+  // 判据是**版本号相等**，与插件管理器自己的去重口径一致（它按 name+version 判"已装"，
+  // 同版本重装报 changed=false、产物不换）。所以版本没变就不该假装装过。
+  // 换版本必须重启 DSH：host 半在进程启动时装载，刷新页面只换浏览器那一半。
+  if (args.sync === true) {
+    const listedSync = classify(await apiCall('pluginManager/listBundles', {}, target, target.cookie))
+    if (listedSync.value === undefined) return describeGuard(listedSync, io, 'pluginManager/listBundles')
+    const name = inspection.status === 'accepted' && inspection.name !== undefined ? inspection.name : localPackageName(args.spec)
+    if (name === null) return 1
+    const localVersion = localPackageVersion(args.spec)
+    const rows = (Array.isArray(listedSync.value) ? listedSync.value : []).filter((one) => one.name === name)
+    const installedVersion = rows.length ? String(rows[0].version) : null
+    if (installedVersion !== null && localVersion !== null && installedVersion === localVersion) {
+      say('  已是最新（' + name + ' ' + localVersion + '）：不用重装，也不用重启。\n')
+      say('  改了面板源码才有下一步：node scripts/build_panel_bundle.js 后把版本号 +1（管理器按 name+version 判重）。\n')
+      return 0
+    }
+    say('  版本不一致：已装 ' + String(installedVersion) + ' → 仓库里 ' + String(localVersion) + '，换装。\n')
+    if (rows.length) {
+      const removedSync = classify(await apiCall('pluginManager/removeBundle', { name: name }, target, target.cookie))
+      if (removedSync.value === undefined) return describeGuard(removedSync, io, 'pluginManager/removeBundle')
+    }
+    const installedSync = classify(await apiCall('pluginManager/installBundle', { spec: args.spec, options: { enabled: true } }, target, target.cookie))
+    if (installedSync.value === undefined) return describeGuard(installedSync, io, 'pluginManager/installBundle')
+    const ch = installedSync.value
+    say('  装好了：changed=' + ch.changed + ' application=' + ch.application + '\n')
+    if (ch.application === 'failed' || ch.application === 'cancelled') {
+      warn('  安装没成功：' + JSON.stringify(ch.error) + '\n')
+      return 1
+    }
+    // application 字段在"换版本"时不可靠（实测报 applied 但仍加载旧包），所以结论按动作给，
+    // 不按这个字段给：文件被换过 → 必须重启。
+    if (ch.changed) say('  **要重启 DSH Desktop 才生效**（host 半在启动时装载；刷新页面只换浏览器那一半）。\n')
+    say('  重启后核对：node scripts/panel_install.js --check，以及诊断 tab 右上角的版本串。\n')
     return 0
   }
 
