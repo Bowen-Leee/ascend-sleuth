@@ -68,5 +68,9 @@ node scripts/check_vllm_kb.js
 2. 设置页「vllm-kb」→ 添加端点 → 点「测试」看到 `HTTP 200` 与毫秒数。
 3. 打开 `vllm-kb-tools` 行，新会话看工具目录里有没有 `vllm_kb_*`。
 4. 真实问题跑一次 `vllm_kb_code`（镜像现场最好）：看返回是否被截断、耗时。
+   再补三条字段级验证，用来区分「插件/流程没接好」与「服务端数据没构建」：
+   - `vllm_kb_code` 三种模式各真命中一次：`version='v0.23.0'`（带 v）、`kind=msg` 用源码里的完整字面量、`in_file` 给精确路径；
+   - `vllm_kb_doc` 查 `body` 是否非空（空 = 服务端没返回原文，不是手册没有）；
+   - `vllm_kb_fix` 拿一个已关闭 issue 看 `fixes` 是否非空（空 = 图数据没构建，不代表未修复）。
 5. 关掉 `vllm-kb-tools` 再跑一次诊断：工具不在、流程走原路径、trace 顶层是 `external_evidence: off`。
 6. 把端点改成不可达地址再跑：工具返回 `unreachable`，trace 记 `skipped` 加 `probe-failed`。

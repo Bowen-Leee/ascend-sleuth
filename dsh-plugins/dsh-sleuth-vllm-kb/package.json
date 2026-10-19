@@ -1,6 +1,6 @@
 {
   "name": "dsh-sleuth-vllm-kb",
-  "version": "0.3.5",
+  "version": "0.3.6",
   "private": true,
   "description": "vllm-kb（实验性）：按版本查源码、修复链、手册原文、截图转文字。只要配一个端点。",
   "type": "module",
