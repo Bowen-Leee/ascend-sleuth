@@ -115,10 +115,10 @@ knowledge/
 ## skill 清单
 
 <!-- BEGIN generated: skill-roster (scripts/build_docs_index.py；由 docs/_manifest.yaml 生成，勿手改) -->
-本仓共 **11 个面向使用者的 skill**，按使用场景分 3 组：
+本仓共 **12 个面向使用者的 skill**，按使用场景分 3 组：
 - **日常诊断**（2）：`diagnose` · `resume-diagnosis`
 - **知识沉淀**（4）：`to-postmortem` · `to-reference` · `issue-ingest` · `reference-ingest`
-- **维护与演进**（5）：`knowledge-groom` · `self-evolve` · `evolve-check`（内部协议，由内容流程收尾自动转接，不单独调用） · `skill-review`（内部协议，由用户显式触发做 skill 质量审视） · `preload-panel`（仅 DSH：按本机给模型的工具定装载路，有 cordis_define / cordis_run 热加载，有 plugin_manager 装常驻插件包，两样都没有时跑 scripts/panel_install.js 经 /api 通路装）
+- **维护与演进**（6）：`knowledge-groom` · `self-evolve` · `evolve-check`（内部协议，由内容流程收尾自动转接，不单独调用） · `skill-review`（内部协议，由用户显式触发做 skill 质量审视） · `preload-panel`（仅 DSH：按本机给模型的工具定装载路，有 cordis_define / cordis_run 热加载，有 plugin_manager 装常驻插件包，两样都没有时跑 scripts/panel_install.js 经 /api 通路装） · `doctor`（本机环境体检：一条命令报「哪些流程能跑、哪些会降级」并给修法；只读，不装包）
 <!-- END generated: skill-roster -->
 
 每个 skill 的触发条件与操作细节见各自的 `skills/<name>/SKILL.md`。

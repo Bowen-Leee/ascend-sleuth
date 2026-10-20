@@ -1,0 +1,93 @@
+# ============================================================
+# EV-2026-178 —— 环境依赖缺口的发现点前移：一条命令报「哪些流程能跑」
+# 来源：内网 Windows 机器上点「导出交接包」失败（面板只回一句「导出脚本没有给出 JSON 结果」，
+#       真因在 traceback 末四行：ModuleNotFoundError: No module named 'yaml'）
+# 触发：缺依赖不在开单时报，而在任务中途以一句 import 报错退出；读者要自己从 traceback 认病因，
+#       且不知道这台机器上还有哪些流程会同样断掉
+# 脱敏：只含脚本名、命令与流程名，不含客户数据
+# ============================================================
+
+id: EV-2026-178
+layer: L2
+target_component: scripts/doctor.py
+title: "环境依赖缺口的发现点前移：一条命令报「哪些流程能跑」而不是在任务中途撞 traceback"
+status: validated
+authorization: auto
+dimension: observability
+supersedes: []
+superseded_by: null
+created_at: 2026-10-20
+source_signals:
+  - signal: process_friction
+    evidence: >-
+      内网 Windows 机器的实际故障：点「导出交接包」，面板回「导出脚本没有给出 JSON 结果：
+      Traceback … ModuleNotFoundError: No module named 'yaml'」——面板把 stderr 末四行拼起来当错误，
+      读者要从最后一行认病因，且无从判断这台机器上还有哪几条流程同样会断。同族已知事故两处：
+      Windows 上 `python3` 常不存在，面板探测退到 `python` / `py -3`，挑中的解释器未必是装了包的那个；
+      面板的体检路径已单独识别这个错误并给 `pip install pyyaml`，导出路径没有。全仓 47 个脚本
+      import PyYAML，缺它同时断掉六条流程（导出/导入交接包、面板诊断 tab、指标 tab 体检、诊断与知识沉淀、
+      批量导 issue、索引与门禁脚本）。
+    trajectory:
+      - "scripts/doctor.py：新增体检器（ast 扫 scripts/**/*.py 的 import + find_spec 探测；能力表 → 哪些流程能跑）"
+      - "skills/doctor/SKILL.md：新增 skill，规定「跑一条命令 → 修一项 → 重跑」的循环与阻断/降级判据"
+      - "docs/_manifest.yaml：登记 skill（README 名单由 build_docs_index.py 重新生成）"
+hypothesis: >-
+  把「缺什么、缺了哪条流程不能用」从任务中途挪到开工前一条命令：①读者拿到的是结论与修法，不再从
+  traceback 认病因；②依赖清单由代码推导而非手写，新增第三方包会被自动发现，不会腐化；③解释器路径随
+  结论一起打印，「包装到了另一个解释器」这层误解有一处可核对的事实。
+predicted_effect:
+  metric: 环境缺口的可发现性（结论 + 修法 + 解释器路径是否一次给出）
+  from: "缺 PyYAML 时只有一条 traceback；哪些流程受影响、装到哪个解释器上，都要读者自己推"
+  to: "一条命令给三段：能跑/降级/不能跑的能力清单、每项的修法原值、体检用的解释器绝对路径；退出码三态可判"
+  measure:
+    command: >-
+      python3 -c "import subprocess,json,sys;a=subprocess.run([sys.executable,'scripts/doctor.py','--json'],capture_output=True,text=True);d=json.loads(a.stdout);b=subprocess.run([sys.executable,'scripts/doctor.py','--root','/tmp','--json'],capture_output=True,text=True);yes=[c for c in d['capabilities'] if c['state']=='yes'];ok=(a.returncode==0 and any(c['id']=='yaml' for c in d['checks']) and len(yes)>=6 and b.returncode==3 and len(d['next_actions'])==0);print('capabilities_yes',len(yes));print('non_checkout_exit',b.returncode);print('next_actions',len(d['next_actions']));print('rule_ok',ok);raise SystemExit(0 if ok else 1)"
+    expect_exit: 0
+    expect_stdout: "rule_ok True"
+validation:
+  method: metrics_compare
+  baseline: >-
+    改动前没有体检入口：内网机器上的唯一线索是导出失败时面板拼出的 stderr 末四行；「这台机器还能跑哪些流程」
+    与「面板用的哪个解释器」都无从查。
+  success_criteria: >-
+    ① measure：环境齐全时退出 0、能力清单里 ≥6 条「能跑」、`next_actions` 为空，非检出目录退出 3；
+    ② 负向对照：在没有 PyYAML 的解释器上跑同一条命令（`python3 -m venv --without-pip` 造一个），
+    必须退出 2、`checks` 里 yaml 为 `blocked`、且结论段把依赖它的流程列为「不能跑」；
+    ③ 依赖清单不硬编码：新增一个第三方 import 的脚本后重跑，体检器自己报出来（不需要改体检器）。
+  rollback: >-
+    删 `scripts/doctor.py`、`skills/doctor/` 与 `docs/_manifest.yaml` 的登记项，重跑
+    `python3 scripts/build_docs_index.py` 即回原状；本改动不写任何运行时状态，无数据需清理。
+gate:
+  condition: "再出现「依赖缺失在任务中途才暴露」或「体检器漏报某条流程」时，重跑 measure 并复核能力表与扫描面"
+risk: low
+principle_refs: [2, 8, 10]
+decisions:
+  - who: agent
+    when: 2026-10-20
+    type: decision
+    conclusion: >-
+      依赖清单用 ast 扫 import + 解释器探测现算，不写清单：写死清单会有第二份真相（与 `_yaml.py` 那个
+      「解析入口单一」同一条理由），且新增第三方包时必然漏登记。能力表（导出 → 交接包、批量导 issue → gh）
+      是本文件里唯一写死的东西，因为它是接线事实，从 import 图推不出来。
+  - who: agent
+    when: 2026-10-20
+    type: decision
+    conclusion: >-
+      体检器只报不修，也不抄 CI 的命令清单。装包是人的决定（内网机器上通常是离线 wheel，联网安装会失败得
+      更难读）；一次跑完所有门禁是 `scripts/rehearse_evolve_loop.py` 的职责，抄一份命令清单会随 CI 腐烂。
+  - who: agent
+    when: 2026-10-20
+    type: eval
+    conclusion: >-
+      measure 实跑 PASS（capabilities_yes 7 / non_checkout_exit 3 / next_actions 0 / rule_ok True）。
+      负向对照在无 PyYAML 的隔离解释器上实跑：退出 2，`[阻断] PyYAML`，结论段把 5 条流程列为「不能跑」。
+  - who: agent
+    when: 2026-10-20
+    type: action
+    conclusion: "边界如实标注：①面板的错误文案未改（导出失败仍不翻译「缺依赖」，本卡只补了发现入口）；
+      ②体检器不判内容，索引新鲜度等门禁仍由各自脚本判；③未加单元测试——它不做口径计算，判据是退出码三态与能力表"
+actual_cost:
+  tokens: 26000
+  source: estimate
+  note: >-
+    含体检器三轮迭代（假阳性：平台条件导入与标准库判定）、skill 正文、登记与文档索引重建、CI 对等门禁往返。
