@@ -1,6 +1,6 @@
 /* eslint-disable */
 // 生成物 —— 勿手改。由 `node scripts/build_panel_bundle.js` 从下列源文件拼出：
-//   dsh-plugins/ascend-panel/panel-client.js  (sha256:7e32555dd76d)
+//   dsh-plugins/ascend-panel/panel-client.js  (sha256:fa59b5eea553)
 //   dsh-plugins/ev-panel/panel-client.js  (sha256:9e836d4c1993)
 // 校验：`node scripts/build_panel_bundle.js --check`。
 //
@@ -63,7 +63,7 @@ window.__ModuleLoader__.load({
       id: 'ascend-panel',
       build(host, styles) {
         return (function () {
-// ---- dsh-plugins/ascend-panel/panel-client.js (sha256:7e32555dd76d) 原文开始 ----
+// ---- dsh-plugins/ascend-panel/panel-client.js (sha256:fa59b5eea553) 原文开始 ----
 return {
   apply(ctx) {
     const slots = ctx.get('slots')
@@ -1881,8 +1881,8 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
         }, it.label)),
         React.createElement('button', {
           type: 'button', onClick: doExportHandoff, disabled: !!(handoff && handoff.busy),
-          title: '导出交接包（zip + 单文件 md）到 traces/exports/——拷到另一台机器后用 '
-            + 'python3 scripts/import_trace.py <包> 接手',
+          title: '导出交接包（zip + 单文件 md）到 traces/exports/；该目录写不进去时改道到检出内的 '
+            + '.handoff/，结果行会写明落在哪。拷到另一台机器后用 python3 scripts/import_trace.py <包> 接手',
           style: (handoff && handoff.busy)
             ? { ...btnOutline(T.brand), opacity: 0.6, cursor: 'default' }
             : btnOutline(T.brand),
@@ -1897,6 +1897,15 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
           + '｜' + handoff.files + ' 个文件'
           + ((handoff.omitted && handoff.omitted.length) ? '｜未纳入 ' + handoff.omitted.length + ' 个（体积上限）' : '')
           + ((handoff.needs && handoff.needs.length) ? '｜带 ' + handoff.needs.length + ' 条待补材料' : '')) : null,
+        // 导出目录改道：写权限不覆盖 traces/exports 时脚本改道到检出内的 .handoff/。
+        // 必须说清"本想去哪、实际落在哪"——不说的话读者会去 traces/exports 找，找不到就当成导出失败。
+        handoff && handoff.ok && handoff.fallback ? React.createElement('span', {
+          style: { color: 'var(--c-amber)', fontSize: 'var(--t-tiny)' },
+          title: '脚本先试 ' + String(handoff.fallback.requested || 'traces/exports') + '，被拒后改道到 '
+            + String(handoff.fallback.dir || '.handoff') + '（同一检出内）。包内容完整：'
+            + '接收侧只认包内容与交接单，不认目录名。',
+        }, '导出目录改道：' + String(handoff.fallback.reason || '写权限被拒')
+          + '；本次落在 ' + String(handoff.dirRel || handoff.fallback.dir || '.handoff')) : null,
         // 包内含原始现场证据：**标出来，不代替脱敏**——真正的闸门在数据通道上，不在面板上
         handoff && handoff.ok && handoff.redaction && handoff.redaction.state === 'raw-evidence'
           ? React.createElement('span', {

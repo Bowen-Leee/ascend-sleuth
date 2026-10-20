@@ -1868,6 +1868,49 @@ _MS._run_no_pipe = no_fallback`)
             String(rDeny && rDeny.error))
         }
 
+        // 导出目录改道：traces/exports 写不进去时脚本改道到检出内的 .handoff/。
+        // 面板只负责把事实带到屏幕上——"本想去哪、实际落在哪、为什么"三样都得有，
+        // 否则读者去 traces/exports 找不着，会读成"导出失败"。
+        {
+          // 复用同一次 drive 的那个 fakeShell：它的 run 读的是自身 reply，另造一个对象副本会让
+          // run 仍去读旧 reply（实测：副本上设 reply 不生效，断言拿到上一单的结果）
+          fakeShell.reply = JSON.stringify({
+            ok: true, session_id: 'sess-3', intent: 'continue', dir: '/repo/.handoff',
+            zip: '/repo/.handoff/handoff-sess-3.zip', zip_bytes: 1024,
+            md: '/repo/.handoff/handoff-sess-3.md', md_bytes: 2048, files: 4,
+            total_bytes: 3072, omitted: [], needs: [],
+            fallback: {
+              requested: '/repo/traces/exports/sess-3', dir: '/repo/.handoff',
+              reason: '[WinError 5] 拒绝访问。',
+            },
+          })
+          const r3 = await dh.regs['ascend-export-trace']({ sessionId: 's', traceFile: 'sess-3.yaml' })
+          expect('交接包 host：改道事实原样带出（required/dir/reason 一个不丢）',
+            r3 && r3.ok && r3.fallback && r3.fallback.dir === '/repo/.handoff'
+            && r3.fallback.requested === '/repo/traces/exports/sess-3'
+            && r3.fallback.reason === '[WinError 5] 拒绝访问。',
+            JSON.stringify(r3 && r3.fallback))
+          expect('交接包 host：改道后「打开目录」指向实际落点（不是 traces/exports）',
+            r3 && r3.dirRel === '.handoff', JSON.stringify(r3 && { dirRel: r3.dirRel }))
+        }
+        // 拒绝访问的失败：把面板给子进程的写权限根一起给出，别让读者从一句 EPERM 里猜
+        {
+          const denyWrite = {
+            resolve: (spec) => spec,
+            run: async (spec) => (/--version$/.test(String(spec && spec.command || ''))
+              ? { exitCode: 0, timedOut: false, aborted: false, stdout: { text: 'Python 3.11.9\n' }, stderr: { text: '' } }
+              : { exitCode: 3, timedOut: false, aborted: false, stdout: { text: JSON.stringify({
+                  ok: false, error: "无法创建产出目录 D:/p/traces/exports/s： [WinError 5] 拒绝访问。",
+                }) + '\n' }, stderr: { text: '' } }),
+          }
+          const d4 = drive({ shell: denyWrite, fs: undefined, sessions: svc.sessions })
+          const r4 = await d4.regs['ascend-export-trace']({ sessionId: 's', traceFile: 'sess-4.yaml' })
+          expect('交接包 host：写权限被拒时给出面板用的写权限根（与脚本的修法并列，不互相替代）',
+            r4 && r4.ok === false && /写权限根：\/repo/.test(String(r4.error))
+            && r4.workspaceRoot === '/repo' && /WinError 5/.test(String(r4.error)),
+            String(r4 && r4.error))
+        }
+
         // 非法文件名不拼进命令行（面板自己的列表里拿到的值也要卡一道）
         seen.length = 0
         const rBad = await dh.regs['ascend-export-trace']({ sessionId: 's', traceFile: '../evil.yaml; rm -rf /' })
@@ -1894,6 +1937,11 @@ _MS._run_no_pipe = no_fallback`)
           String(rNoShell && rNoShell.error))
       }
       // 结构断言：运行时读不回来的那部分（措辞与形态）钉在源文件上
+      expect('交接包：改道在界面上有一行明确文案（含落点），不静默改目录',
+        /导出目录改道/.test(ascSrc) && /handoff\.fallback/.test(ascSrc)
+        && /本次落在/.test(ascSrc))
+      expect('交接包：导出按钮的说明提到改道落点（点之前就知道不会卡在写权限上）',
+        /该目录写不进去时改道到检出内的/.test(ascSrc) && /'\.handoff\//.test(ascSrc))
       expect('交接包：意图词表与脚本一致（continue/verify/escalate 三值）',
         /const HANDOFF_INTENTS = \[/.test(ascSrc) && /id: 'continue', label: '继续定位'/.test(ascSrc)
         && /id: 'verify', label: '复核结论'/.test(ascSrc) && /id: 'escalate', label: '转上游'/.test(ascSrc))

@@ -28,6 +28,13 @@
   两者都由同一份源生成，不漂移；`.md` 里**显式列出没带进来的东西**（体积超限的、未内联的），
   否则接手方会以为证据全在——那是假装，不是交接。
 
+## 产出目录写不进去时改道
+
+`traces/exports` 不可写（面板子进程的写权限根未必覆盖主检出的 `traces/`，实测报 `[WinError 5] 拒绝访问`）
+时改道到同一检出内的 `.handoff/`，并把"本想去哪、实际落在哪、为什么"写进人读输出与 JSON 的 `fallback`。
+交接包是发出去的文件：接收侧只认包内容与交接单，不认目录名，所以改道不破坏接收约定。
+指定了 `--out` 时不改道——显式选择不替调用方做主，写不进去就如实失败。
+
 用法：
   python3 scripts/export_trace.py <session_id> [--intent continue|verify|escalate] [--note "…"]
   python3 scripts/export_trace.py <session_id> --json          # 面板用（只吐 JSON）
@@ -55,6 +62,8 @@ from kb_rev import kb_rev
 
 SCHEMA = "ascend-sleuth-handoff/1"
 INTENTS = ("continue", "verify", "escalate")
+# 默认产出目录写不进去时的改道落点（检出根下的隐藏目录，不进 git）。见 prepare_tree 的说明。
+FALLBACK_DIR = ".handoff"
 INTENT_LABEL = {"continue": "继续定位", "verify": "复核结论", "escalate": "转上游"}
 
 # `.md` 投影的定界标记：用 HTML 注释而不是围栏，因为报告与 trace 正文里本来就有 ``` 围栏。
@@ -366,6 +375,44 @@ def list_sessions(traces_root: Path):
     return out
 
 
+def err_brief(e: OSError) -> str:
+    """写盘错误的一行摘要：错误码 + 系统文案，不带路径（路径由调用方单独打印，重复只会拉长那一行）。"""
+    code = getattr(e, "winerror", None) or getattr(e, "errno", None)
+    kind = "WinError" if getattr(e, "winerror", None) else "Errno"
+    label = (getattr(e, "strerror", None) or "").strip() or str(e)
+    return f"[{kind} {code}] {label}" if code else label
+
+
+def prepare_tree(base: Path, sid: str):
+    """在 base 下备好本次的产出树 → (tree, err_msg, code, err)。成功时后三项为 None。
+
+    为什么单列成函数：产出目录有多个候选（见 main 里的改道顺序），每个候选都要走同一套
+    "清上一次产出 → 建目录"的规则，抄两份必然漂移。
+
+    **重复导出要先把上一次的树清掉**。不清的后果实测过：上家撤掉的文件（比如发现贴错了、要撤的证据）
+    会留在树里继续被 zip 收走，而交接单清单里没有它——包自相矛盾，而且等于**把已经决定不发的内容
+    又发了一遍**（这一条比"清单对不上"严重）。
+    只清**认得出来的**上一次产出（含 `<sid>.yaml` 或 `handoff/<sid>.yaml`）；认不出来就拒绝——
+    `--out` 可以指到任何地方，不能对来路不明的目录 rmtree。
+    """
+    tree = base / sid
+    if tree.exists():
+        ours = (tree / f"{sid}.yaml").is_file() or (tree / "handoff" / f"{sid}.yaml").is_file()
+        if not ours:
+            return None, (f"{tree} 已存在，但它不像本脚本上一次的产出（既没有 {sid}.yaml，"
+                          f"也没有 handoff/{sid}.yaml）——不删来路不明的目录；换 --out 或手工处理"), 3, None
+        try:
+            shutil.rmtree(tree)
+        except OSError as e:
+            return None, f"清理上一次的产出目录失败（{tree}）：{e}{write_hint(e)}", 3, e
+    try:
+        tree.mkdir(parents=True, exist_ok=True)
+        (tree / "handoff").mkdir(exist_ok=True)
+    except OSError as e:
+        return None, f"无法创建产出目录 {tree}：{e}{write_hint(e)}", 3, e
+    return tree, None, None, None
+
+
 def write_hint(e):
     """写盘失败时补一句方向。
 
@@ -395,7 +442,9 @@ def main() -> int:
     ap.add_argument("--intent", choices=INTENTS, default=None,
                     help="交接意图（默认按 status 推导：进行中→继续定位、已转上游→转上游、已结→复核结论）")
     ap.add_argument("--note", default="", help="写进交接单的一句话（为什么要带出去、接手方优先看什么）")
-    ap.add_argument("--out", default=None, help="产出目录（默认 <traces>/exports/）")
+    ap.add_argument("--out", default=None,
+                    help="产出目录（默认 <traces>/exports/；未指定时若该目录不可写，改道到检出内的 "
+                         ".handoff/，指定的目录写不进去则直接失败）")
     ap.add_argument("--traces-root", default=None, help="traces 目录（默认：主检出那一份，见 shared_dir.py）")
     ap.add_argument("--root", default=None, help="仓库根目录（默认：本脚本上两级）")
     ap.add_argument("--max-file-mb", type=float, default=20.0, help="单个证据文件上限（超过则不纳入并如实列出）")
@@ -573,28 +622,45 @@ def main() -> int:
                         "接收侧比对仅供参考")
 
     # ---- 产出目录 + 交接单 ----
-    out_dir = Path(args.out).resolve() if args.out else (traces_root / "exports")
-    tree = out_dir / sid
-    # **重复导出要先把上一次的树清掉**。不清的后果实测过：上家撤掉的文件（比如发现贴错了、要撤的证据）
-    # 会留在树里继续被 zip 收走，而交接单清单里没有它——包自相矛盾，而且等于**把已经决定不发的内容
-    # 又发了一遍**（这一条比"清单对不上"严重）。
-    # 只清**认得出来的**上一次产出（含 `<sid>.yaml` 或 `handoff/<sid>.yaml`）；认不出来就拒绝——
-    # `--out` 可以指到任何地方，不能对来路不明的目录 rmtree。
-    if tree.exists():
-        ours = (tree / f"{sid}.yaml").is_file() or (tree / "handoff" / f"{sid}.yaml").is_file()
-        if not ours:
-            return fail(f"{tree} 已存在，但它不像本脚本上一次的产出（既没有 {sid}.yaml，"
-                        f"也没有 handoff/{sid}.yaml）——不删来路不明的目录；换 --out 或手工处理",
-                        3, args.json)
-        try:
-            shutil.rmtree(tree)
-        except OSError as e:
-            return fail(f"清理上一次的产出目录失败（{tree}）：{e}{write_hint(e)}", 3, args.json)
-    try:
-        tree.mkdir(parents=True, exist_ok=True)
-        (tree / "handoff").mkdir(exist_ok=True)
-    except OSError as e:
-        return fail(f"无法创建产出目录 {tree}：{e}{write_hint(e)}", 3, args.json)
+    #
+    # **写不进 `traces/exports` 不是致命的**：改道到同一检出内的 `.handoff/`。
+    # 为什么判它不破坏契约：交接包是**发出去的文件**——接收侧的 `import_trace.py` 只认包内容与交接单，
+    # 不认它躺在哪个目录。而面板子进程的写权限根与会话工作区同源，未必覆盖主检出的 `traces/`：
+    # 实测面板点导出报 `[WinError 5] 拒绝访问`，同一条命令在终端里能成功——差的是"谁给的写权限"，
+    # 不是包本身。没有改道时读者只能换机器、换终端。
+    # 顺序：给了 `--out` 就只认它（显式选择，不替他做主）→ `traces/exports` → 进程工作目录下的
+    # `.handoff/` → 主检出下的 `.handoff/`。只试能长期留存的位置：面板子进程的临时目录在进程退出时
+    # 被清掉，写进去等于假装成功。
+    preferred = Path(args.out).resolve() if args.out else (traces_root / "exports")
+    candidates = [preferred]
+    if args.out is None:
+        for base in (Path.cwd() / FALLBACK_DIR, traces_root.parent / FALLBACK_DIR):
+            try:
+                resolved = base.resolve()
+            except OSError:
+                continue
+            if resolved not in candidates:
+                candidates.append(resolved)
+    out_dir, tree, fallback, denied = None, None, None, []
+    for base in candidates:
+        tree, msg, code, err = prepare_tree(base, sid)
+        if tree is not None:
+            out_dir = base
+            if base != preferred:
+                fallback = {"requested": str(preferred / sid), "dir": str(base),
+                            "reason": denied[0] if denied else ""}
+            break
+        if err is not None and getattr(err, "errno", None) in (errno.EPERM, errno.EACCES):
+            denied.append(err_brief(err))
+            continue
+        return fail(msg, code, args.json)
+    if tree is None:
+        detail = "；".join(denied)
+        if args.out:
+            return fail(f"产出目录 {preferred} 写不进去（{detail}）——给了 --out 时不改道，"
+                        f"去掉 --out 会自动改道到检出内的 {FALLBACK_DIR}/", 3, args.json)
+        return fail(f"候选目录都写不进去（{'、'.join(str(c) for c in candidates)}）：{detail}",
+                    3, args.json)
 
     manifest = build_manifest(doc, sid, traces_root, args, included, omitted, report_rel,
                               current_rev, src_refs)
@@ -700,6 +766,7 @@ def main() -> int:
         "intent_source": manifest["intent_source"],
         "traces_root": str(traces_root),
         "dir": str(out_dir),
+        "fallback": fallback,
         "tree": str(tree),
         "manifest": str(manifest_path),
         "zip": str(zip_path) if zip_path else None,
@@ -723,6 +790,9 @@ def main() -> int:
     print(f"交接包已产出：{sid}（意图：{INTENT_LABEL.get(manifest['intent'])}"
           f"，{'命令行指定' if manifest['intent_source'] == 'cli' else '按 status 推导'}）")
     print(f"  包内树  {tree}")
+    if fallback:
+        print(f"  ⚠ 导出目录改道：{fallback['requested']} 不可写（{fallback['reason']}）"
+              f"，本次落在 {out_dir}（同一检出内，包内容完整）")
     if zip_path:
         print(f"  zip     {zip_path}（{human_bytes(result['zip_bytes'])}）")
     if md_path:
