@@ -97,7 +97,7 @@ python -c "import anydoc,sys; print(anydoc.to_markdown(sys.argv[1]))" <file>
      - `investigation`：本地深度排查/源码分析定位（`source_ref` 佐证），无上游确认；
      - `engineer-report`：工程师现场回报验证过（最强现场证据，rare）。
      `detail` 记 issue/PR 号、文档路径或来源路径。无明确外部验证 → 不填 verification（如实：仅调查级）
-   - **产出报告里写一行闸门预判**（别让草稿静默积压）：来源 session 未闭环且 `verification: investigation` → 明说「本单过不了 groom 的升格闸门；出路三条：等现场闭环 / 补强外部证据 / owner 双签」；已闭环或强证据档 → 写「可过闸」。groom 的闸门口径见 `/skill:knowledge-groom`（自诊断来源默认须闭环）。
+   - **产出报告里写一行闸门预判**（别让草稿静默积压）：来源 session 未闭环且 `verification: investigation` → 明说「本单过不了 groom 的升格闸门；出路三条：等现场闭环 / 补强外部证据 / owner 双签」；已闭环 → 写「可过闸」；强证据档但未闭环 → 写「可过闸，但需 owner 双签」。groom 的闸门口径见 `/skill:knowledge-groom`（自诊断来源默认须闭环）。
    - **来源是上游 issue / PR 时，标 `upstream: [{repo, issue|pr, url}]`**（case 内字段，非注释）——它是外部对照自动查证（`python3 scripts/verify_upstream_outcomes.py`）的唯一分母：有锚点的 case 才靠上游状态自动确认「内容对不对」，没有锚点的客户侧现网问题只能等现场回报。`issue` 与 `pr` 二选一，`url` 写原址让人点开；**只写这条 case 的来源那个**，正文里顺带提到的同族 issue 不算锚点（写多个会让查证对上错的那一个）。它判断不了「现场是否解决」，那只有现场能给。
    - 标 `novelty: new_pattern | variant | covered`（**pre-triage，对比现有 case 判定**）：用**命中 (namespace × category) 的读侧视图** `knowledge/_index/<ns>__<category>.list`（一行一条 case；category 未定回退 `<ns>.list`；已知 namespace 时不读全库总表）按 symptoms/tags 定位候选，再全量读候选 case 本体比对 root_cause/fix——无重叠 → `new_pattern`；同主题不同形态 → `variant`（注明 `variant_of:<case-id>`）；已有 case 覆盖 → `covered`（注明 `covered_by:<case-id>`）。**给出证据**（如"同算子×同网络，增量=升级修复"），groom 复核该标签而非重判
    - 标 `category: interrupt | precision | performance` **三选一，无 other**（按症状判断——interrupt 是 hang/crash/OOM/启动失败、precision 是 NaN/数值发散/输出错误/乱码、performance 是吞吐/延迟）。分不进去 → 由人确认归入最接近的分类，不设 other

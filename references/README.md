@@ -73,6 +73,7 @@ status: active | pending-review | deprecated | draft   # 新产出即 active（P
 - type 必须已登记（`_types.yaml`）；
 - 按 type 强校验 `schema_required` 字段；
 - 按来源类型强校验子字段；`sources[].verification`（可选）填了必须合法（`auto-extracted` / `cross-checked-source`，ADR-0008 §4.2）；
+- **case 来源必须已升格**：`sources[].cases` 与 `content.*.source_cases` 里的 id 必须存在于 `knowledge/`（含 `_archive/`）；引用 `postmortems/inbox/` 草稿 id 一律红（草稿可能被 groom 拒掉，发布出去的 reference 会指空）。`knowledge/` 不存在（只装 skill、无知识仓的部署）时跳过这一条；
 - 深审：case-derived + methodology 的提炼来源 case 数（`sources[].cases` 长度）<3 不允许 `status: active`；
 - **skill 侧绑定**：skill 支撑文件里引用的 ref-id（`skills/diagnose/references/collect-gates.yaml` 的采集闸门表）必须存在且 `status: active`——散文里硬编码 ref-id 会静默腐化（曾把不存在的 `profiling-performance-fault-patterns` 当已有落点写进 SKILL），绑定落成数据后由 CI 兜住。
 - **工具词条的覆盖环**（反方向的那一半）：每条声明了 category 的 active `tool` 词条**必须被某个闸门绑定**——tool 不进候选路由、背景层也不按工具名收窄到具体命令，**闸门是它进诊断上下文的唯一入口**，未绑定等于永不加载且无任何信号。实测 38 条 tool 里 24 条未绑定（含取调用栈、看日志配置、多机网络诊断）。

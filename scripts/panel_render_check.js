@@ -2573,20 +2573,21 @@ print(json.dumps([{'role': s(t.get('role')), 'step': s(t.get('step')), 'action':
         /«title:traces\/s-rep\.report\.md»/.test(ct) && !/traces\/traces\//.test(ct),
         (ct.match(/«title:[^»]*»/g) || []).join(' '))
     }
-    // —— 沉淀的两条债：状态徽标 + 批量入口（2026-10）——
+    // —— 待沉淀 / 待闭环：状态徽标 + 批量入口（2026-10）——
     // 判据与升格闸门同源：已闭环未沉淀、已沉淀未闭环。它们此前只有展开卡片才看得见。
     {
       const base = {
         status: 'in_progress', framework: 'vllm-ascend', platform: 'A2-910B', category: 'interrupt',
-        activeCase: null, activeCaseKind: 'none', activeCaseInKb: false, feedbackPending: null,
+        activeCase: null, activeCaseKind: null, activeCaseInKb: false, feedbackPending: null,
         summarySnippet: '问题背景：服务启动失败', userSteps: 2, agentSteps: 4, lastRole: 'agent',
         lastOutput: '结论', updatedAt: new Date().toISOString(),
       }
       const closedNew = Object.assign({}, base, { sessionId: 's-new', file: 's-new.yaml', status: 'resolved', sedimented: { state: 'none' } })
       const awaiting = Object.assign({}, base, { sessionId: 's-await', file: 's-await.yaml', feedback: 'pending', sedimented: { state: 'submitted' } })
       const inKb = Object.assign({}, base, { sessionId: 's-kb', file: 's-kb.yaml', status: 'resolved', activeCase: 'C-9', activeCaseKind: 'case', activeCaseInKb: true, sedimented: { state: 'none' } })
+      const sessionsFixture = [closedNew, awaiting, inKb]
       const host = (m) => m === 'ascend-traces-list'
-        ? { ok: true, sessions: [closedNew, awaiting, inKb] }
+        ? { ok: true, sessions: sessionsFixture }
         : { ok: true, steps: [], summary: null }
       const t = (await renderAsync(ascSrc, { sessionId: 'sess-1' }, host)).text
       expect('已闭环未沉淀的单带「已闭环 · 待沉淀」徽标', /已闭环 · 待沉淀/.test(t), t.slice(0, 300))
@@ -2594,6 +2595,61 @@ print(json.dumps([{'role': s(t.get('role')), 'step': s(t.get('step')), 'action':
       expect('命中 case 已在库的单不进待沉淀（再沉淀只会被判 covered_by）',
         (t.match(/已闭环 · 待沉淀/g) || []).length === 1, '徽标=' + (t.match(/已闭环 · 待沉淀/g) || []).length)
       expect('两个筛选入口各带数量', /待沉淀 1/.test(t) && /待闭环 1/.test(t), t.slice(0, 300))
+
+      // 两条批量分支**真的渲染并点得动**：源码字符串断言挡不住"分支写错/永不渲染"。
+      hookIdx = 0; hookState = []; depState = []; effectQueue = []
+      const registrations = []
+      const ctx2 = {
+        get: n => n === 'slots' ? { inject: (s, cb) => cb(), register: (o, c) => registrations.push({ opts: o, comp: c }) } : undefined,
+        effect(fn) { const d = fn(); return typeof d === 'function' ? d : () => {} },
+        on() { return () => {} },
+      }
+      const plugin2 = new Function('React', 'host', 'styles', 'return (function(){' + ascSrc + '})()')(
+        React, { call: (m, a) => Promise.resolve(host(m, a)) }, { insert: () => () => {} })
+      plugin2.apply(ctx2)
+      let tree = null
+      const renderDiagnose = () => {
+        effectQueue = []; hookIdx = 0
+        const o = []
+        registrations.filter(r => r.opts && r.opts.id === 'ascend-diagnose').forEach(r => o.push(r.comp({ sessionId: 'sess-1' })))
+        return o
+      }
+      const pumpTree = async (rounds) => {
+        for (let i = 0; i < rounds; i++) {
+          tree = renderDiagnose()
+          effectQueue.slice().forEach(f => f())
+          await new Promise(r => setImmediate(r))
+        }
+        return tree
+      }
+      const treeText = x => { const o = []; flatten(x, o); return o.join('\n') }
+      const findByText = (needle) => {
+        const hs2 = []
+        collectHandlers(tree, hs2)
+        return hs2.find(h => String(h.text).includes(needle))
+      }
+      await pumpTree(6)
+
+      const chipSed = findByText('待沉淀 1')
+      expect('「待沉淀」筛选入口可点', !!chipSed)
+      if (chipSed) { chipSed.fn({}); await pumpTree(3) }
+      const btnSed = findByText('批量沉淀这 1 单')
+      expect('待沉淀的批量入口真的渲染出来', !!btnSed, treeText(tree).slice(0, 300))
+      if (btnSed) { btnSed.fn({}); await pumpTree(3) }
+      expect('批量沉淀命令可复制出来且含 to-postmortem',
+        /to-postmortem 批量沉淀这些 session/.test(treeText(tree)))
+
+      const chipClose = findByText('待闭环 1')
+      expect('「待闭环」筛选入口可点', !!chipClose)
+      if (chipClose) { chipClose.fn({}); await pumpTree(3) }
+      const btnAll = findByText('全选这 1 单')
+      expect('待闭环的批量入口真的渲染出来', !!btnAll, treeText(tree).slice(0, 300))
+      if (btnAll) { btnAll.fn({}); await pumpTree(3) }
+      const btnClose = findByText('批量标已解决（已选 1 单）')
+      expect('勾选后出现批量闭环按钮', !!btnClose, treeText(tree).slice(0, 300))
+      if (btnClose) { btnClose.fn({}); await pumpTree(3) }
+      expect('批量闭环命令带出单一结局与两条轴的处理',
+        /结局都是「已解决 · fix 生效」/.test(treeText(tree)) && /未命中 case 的只标 status: resolved/.test(treeText(tree)))
     }
     {
       expect('host 的会话列表带沉淀状态（列表才能筛待沉淀 / 待闭环）',

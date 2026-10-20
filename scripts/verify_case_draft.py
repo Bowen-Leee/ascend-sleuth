@@ -61,6 +61,11 @@ STRONG_EVIDENCE = {"upstream-fix-merged", "upstream-maintainer-confirmed",
                    "upstream-official-doc", "engineer-report"}
 WEAK_EVIDENCE = {"investigation", None, ""}
 
+# 「无命中」的判定必须与诊断面板的 `activeCaseKindOf` 同源（见 is_no_hit_case）：
+# 占位串与字面量空值都不是 case id。两处判据分家会造出"面板说已闭环、闸门拦下"的反例。
+EMPTY_CASE = re.compile(r"^(null|none|nil|n/?a|unknown)$", re.I)
+PLACEHOLDER_CASE = re.compile(r"^pending[-_]investigation\b", re.I)
+
 
 def load_reference_index(root: Path):
     """references/ 下所有词条的 id → (status, path)。用于校验 ref_knowledge 悬挂/非 active。"""
@@ -167,10 +172,21 @@ def case_source_session_of(case):
     return v if isinstance(v, str) and v else None
 
 
+def is_no_hit_case(active_case):
+    """`active_case` 是不是「没有命中」——判据与诊断面板的 `activeCaseKindOf` 同源。
+
+    占位串（`pending-investigation` 系）与字面量空值（`null` / `none` / `N/A`）都不是 case id。
+    两处不同源会造出可跑通的反例：同一份 trace 面板判「已闭环」、闸门判「未闭环」并拦下，
+    而这类单正是面板「待沉淀」批量入口会选中的那些。
+    """
+    v = str(active_case or "").strip()
+    return (not v) or bool(EMPTY_CASE.match(v)) or bool(PLACEHOLDER_CASE.match(v))
+
+
 def trace_closure(root: Path, sid: str):
     """来源 trace 的闭环信号：`feedback.outcome` / `status` / `active_case`。
 
-    闭环有两条承载轴（词表见仓库根 `trace-status.yaml`）：
+    闭环有两条轴（词表见仓库根 `trace-status.yaml`）：
       - 命中 case：`feedback.outcome == resolved`（feedback 轴记"那个 case 的 fix 行不行"）；
       - 无命中 case：没有 case 可归属，结果只记 `status: resolved`（面板的闭环命令就是
         这么写的：不写 feedback）。此前闸门只读 feedback，导致"无命中但已解决"的新形态
@@ -191,12 +207,10 @@ def trace_closure(root: Path, sid: str):
     if not isinstance(fb, dict):
         fb = {}
     active = d.get("active_case")
-    if active in (None, "", "null"):
-        active = None
     return {
         "outcome": fb.get("outcome"),
         "status": d.get("status"),
-        "active_case": str(active) if active else None,
+        "active_case": str(active) if active is not None else None,
     }
 
 
@@ -212,8 +226,9 @@ def gate_case(case, path: Path, root: Path, fail, warn):
     tr = trace_closure(root, sid) or {}
     outcome = tr.get("outcome")
     status = tr.get("status")
-    # 无命中单的闭环由 status 承载（没有 case 可写 feedback）；命中单仍认 feedback 轴。
-    no_hit_closed = (not tr.get("active_case")) and status == "resolved"
+    # 无命中单的闭环由 status 承载；但**只在没有显式反馈结论时**——status 不能覆盖
+    # not_resolved / partial / pending（那些是"明确没闭环"或"还没回报"）。
+    no_hit_closed = is_no_hit_case(tr.get("active_case")) and status == "resolved" and not outcome
     ver = (case.get("verification") or {}).get("source")
 
     if outcome == "resolved" or no_hit_closed:

@@ -1,6 +1,6 @@
 /* eslint-disable */
 // 生成物 —— 勿手改。由 `node scripts/build_panel_bundle.js` 从下列源文件拼出：
-//   dsh-plugins/ascend-panel/panel-client.js  (sha256:fef0dfec6a28)
+//   dsh-plugins/ascend-panel/panel-client.js  (sha256:03e95cbf557b)
 //   dsh-plugins/ev-panel/panel-client.js  (sha256:9e836d4c1993)
 // 校验：`node scripts/build_panel_bundle.js --check`。
 //
@@ -63,7 +63,7 @@ window.__ModuleLoader__.load({
       id: 'ascend-panel',
       build(host, styles) {
         return (function () {
-// ---- dsh-plugins/ascend-panel/panel-client.js (sha256:fef0dfec6a28) 原文开始 ----
+// ---- dsh-plugins/ascend-panel/panel-client.js (sha256:03e95cbf557b) 原文开始 ----
 return {
   apply(ctx) {
     const slots = ctx.get('slots')
@@ -1834,7 +1834,7 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
           // 第二行：一句"这单在查什么" + 外来标记 + 更新时间。收起态只留这些，其余细节在展开态。
           React.createElement('div', { style: { display: 'flex', alignItems: 'baseline', gap: 8, marginTop: 3, flexWrap: 'nowrap', minWidth: 0 } },
             kbTag,
-            // 两条沉淀债的徽标（判据与升格闸门同源）：已闭环没沉淀、已沉淀没闭环。
+            // 「待沉淀」「待闭环」两条待办的徽标（判据与升格闸门同源）。
             // 它们此前只有展开卡片才看得见——会话一多就成了看不见的积压。
             needSedOf(s) ? React.createElement('span', { title: '已闭环、还没沉淀——在「待沉淀」筛选里可一次生成批量沉淀命令', style: tinyBadge('var(--d-purple)') }, '已闭环 · 待沉淀') : null,
             needCloseOf(s) ? React.createElement('span', { title: '草稿已进 inbox，但来源 trace 的闭环没确认——groom 升格闸门会拦；在「待闭环」筛选里可批量闭环', style: tinyBadge('var(--d-amber)') }, '已沉淀 · 待闭环') : null,

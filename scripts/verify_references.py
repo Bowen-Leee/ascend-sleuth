@@ -13,6 +13,9 @@
 #     （skills/diagnose/references/collect-gates.yaml）必须指向存在且 active 的词条——
 #     散文里硬编码 ref-id 会静默腐化（曾把不存在的 profiling-performance-fault-patterns
 #     当已有落点写进 SKILL），绑定落成数据后由 CI 兜住
+#   - reference 的 case 来源强校验：`sources[].cases` / `content.*.source_cases` 里的 id
+#     必须已升格（在 `knowledge/`，含 `_archive/`）——引用 inbox 草稿 id 一律红；旧校验
+#     只数条数、不查存在性，"出处指空"永远不会报错
 #   - reference 层入口门槛比 case 更严（ADR-0008：reference 比 case 更宝贵）
 #
 # 用法：
@@ -133,6 +136,9 @@ def check_reference_case_sources(root: Path, errors: list):
             if isinstance(case, dict) and case.get("id"):
                 known.add(str(case["id"]))
     if not known:
+        # `knowledge/` 存在但零 case：空仓起步的 fork 常保留上游 references，其 `sources[].cases`
+        # 指向上游 case id——本地没有不等于悬挂。这一条只能跳过，但它不是"校验通过"：
+        # 本仓有 case 时新门照常生效（上面的循环已收集 known）。
         return errors
 
     refs_dir = root / "references"

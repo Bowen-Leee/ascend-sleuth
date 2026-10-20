@@ -1,6 +1,6 @@
 """升格闸门（`verify_case_draft --gate`）的闭环判据回归测试。
 
-护的是 2026-10 的判据修正：闭环有两条承载轴——
+护的是 2026-10 的判据修正：闭环有两条轴——
   - 命中 case：`feedback.outcome: resolved`；
   - 无命中 case：没有 case 可归属，结果只记 `status: resolved`。
 此前只读 feedback，于是"无命中但已解决"的新形态 case 永远被拦，而这类恰是知识增长的
@@ -54,6 +54,21 @@ class GateTest(unittest.TestCase):
         # 面板的无命中闭环命令：只写 status（不写 feedback），闸门必须认这一条。
         self.trace("status: resolved\nactive_case: null\n")
         self.assertEqual(self.gate({})[0], "pass")
+
+    def test_no_hit_placeholder_and_literal_empty_pass(self):
+        # 与面板 activeCaseKindOf 同源：占位串、字面量空值都不是 case id。
+        for value in ("pending-investigation", "pending_investigation (upstream #1)", "none", "N/A"):
+            with self.subTest(active_case=value):
+                self.trace(f"status: resolved\nactive_case: '{value}'\n")
+                self.assertEqual(self.gate({})[0], "pass")
+
+    def test_no_hit_negative_outcome_blocks(self):
+        # status: resolved 不能覆盖显式反馈结论（明确没闭环 / 还没回报）。
+        for outcome in ("not_resolved", "partial", "pending"):
+            with self.subTest(outcome=outcome):
+                self.trace("status: resolved\nactive_case: null\n"
+                           f"feedback: {{case: C-9, outcome: {outcome}}}\n")
+                self.assertEqual(self.gate({})[0], "block")
 
     def test_no_hit_status_in_progress_blocks(self):
         self.trace("status: in_progress\n")
