@@ -109,6 +109,72 @@ def check_case_ref_links(root: Path, ref_ids: set):
     return counts, errors
 
 
+def check_reference_case_sources(root: Path, errors: list):
+    """reference 的 case 来源必须已升格：`sources[].cases` 与 `content.*.source_cases`
+    里的 id 必须存在于 `knowledge/`（含 `_archive/`——退休的 case 仍是合法来源）。
+
+    为什么：to-reference 在 case 还是 `postmortems/inbox/` 草稿时就归纳，会把一个尚未
+    入库（甚至可能被 groom 拒掉）的 id 写进 `sources[].cases`；而旧校验只数条数、不查
+    存在性，于是这条"出处指空"永远不会报错。升格后再提炼（groom 的 R8）才不会产生这种
+    来源——这也是 to-postmortem 收尾不再就地归纳 reference 的原因。
+    """
+    kdir = root / "knowledge"
+    if not kdir.exists():
+        return errors
+    known = set()
+    for path in sorted(kdir.rglob("*.yaml")):
+        # 只排生成物（`_index.yaml` 一类）；`_archive/` 里的案例仍算合法来源（退休 ≠ 没存在过）。
+        if path.name.startswith("_"):
+            continue
+        doc = load_yaml(path)
+        if not isinstance(doc, dict) or doc.get("__yaml_error__"):
+            continue
+        for case in doc.get("cases", []) or []:
+            if isinstance(case, dict) and case.get("id"):
+                known.add(str(case["id"]))
+    if not known:
+        return errors
+
+    refs_dir = root / "references"
+
+    def source_cases_of(content, at, out):
+        if isinstance(content, dict):
+            for k, v in content.items():
+                if k == "source_cases" and isinstance(v, list):
+                    for cid in v:
+                        out.append((f"{at}.source_cases", str(cid)))
+                elif isinstance(v, (dict, list)):
+                    source_cases_of(v, f"{at}.{k}", out)
+        elif isinstance(content, list):
+            for j, v in enumerate(content):
+                source_cases_of(v, f"{at}[{j}]", out)
+        return out
+
+    for path in sorted(refs_dir.rglob("*.yaml")):
+        if not is_entry_file(path):
+            continue
+        rel = str(path.relative_to(refs_dir))
+        doc = load_yaml(path)
+        if not isinstance(doc, dict) or doc.get("__yaml_error__"):
+            continue
+        cited = []
+        for i, src in enumerate(doc.get("sources") or []):
+            if isinstance(src, dict):
+                for cid in src.get("cases") or []:
+                    cited.append((f"sources[{i}].cases", str(cid)))
+        source_cases_of(doc.get("content") or {}, "content", cited)
+        seen = set()
+        for where, cid in cited:
+            if not cid or cid in known or (where, cid) in seen:
+                continue
+            seen.add((where, cid))
+            errors.append(
+                f"{rel}: {where} 引用的 case '{cid}' 不在 knowledge/ —— "
+                f"ref 只能引用已升格的 case（草稿还在 inbox 时别归纳，等 groom R8）"
+            )
+    return errors
+
+
 # skill 负载类型 ref-id 绑定（EV-2026-037）：`<skill>/references/*-gates.yaml` 把
 # 「category → 采集面词条」的绑定从 SKILL 散文搬成数据。校验：**至少一个绑定文件存在**
 # （约定后缀发现——删掉文件不等于检查静默消失）+ 结构合法 + 每个 id 存在且 active。
@@ -692,6 +758,9 @@ def main():
     # 3) skill 负载类型绑定：采集闸门表里的 ref-id 必须存在且 active；category 取值合法
     legal_cats = legal_categories(root)
     errors = list(case_errors) + check_skill_ref_bindings(root, ref_ids, active_ids, legal_cats)
+    # 3a) reference 的 case 来源必须已升格（id 在 knowledge/）：出处指空是静默失效，
+    #     旧校验只数条数不查存在性，挡不住"引用了 inbox 草稿"。
+    errors = check_reference_case_sources(root, errors)
     # 3b) 覆盖环（方向相反的那一半）：每条声明了 category 的 tool 词条都要有闸门入口——
     #     "引用了不存在的东西"（3 查）与"存在但没人引用"（3b 查）是两种不同的静默失效
     errors += check_tool_binding_coverage(root, [])

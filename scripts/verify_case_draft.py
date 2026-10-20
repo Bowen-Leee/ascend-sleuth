@@ -167,11 +167,17 @@ def case_source_session_of(case):
     return v if isinstance(v, str) and v else None
 
 
-def trace_feedback_outcome(root: Path, sid: str):
-    """来源 trace 的 feedback.outcome；取不到返回 None。
+def trace_closure(root: Path, sid: str):
+    """来源 trace 的闭环信号：`feedback.outcome` / `status` / `active_case`。
 
-    traces/ 是 gitignored 的共享运行时件、锚在主检出——worktree 里通常不存在，故必须走
-    `resolve_traces()` 解析，不能假定 `<root>/traces/`。
+    闭环有两条承载轴（词表见仓库根 `trace-status.yaml`）：
+      - 命中 case：`feedback.outcome == resolved`（feedback 轴记"那个 case 的 fix 行不行"）；
+      - 无命中 case：没有 case 可归属，结果只记 `status: resolved`（面板的闭环命令就是
+        这么写的：不写 feedback）。此前闸门只读 feedback，导致"无命中但已解决"的新形态
+        case 永远过不了闸——而这类恰是知识增长的主路径（无命中才会产出新 case）。
+
+    `traces/` 是 gitignored 的共享运行时件、锚在主检出——worktree 里通常不存在，故必须走
+    `resolve_traces()` 解析，不能假定 `<root>/traces/`。取不到返回 None（按未闭环处理）。
     """
     traces_dir = resolve_traces(root)
     p = Path(traces_dir) / (sid + ".yaml")
@@ -181,7 +187,17 @@ def trace_feedback_outcome(root: Path, sid: str):
         d = load_file(p) or {}
     except Exception:
         return None
-    return (d.get("feedback") or {}).get("outcome")
+    fb = d.get("feedback") or {}
+    if not isinstance(fb, dict):
+        fb = {}
+    active = d.get("active_case")
+    if active in (None, "", "null"):
+        active = None
+    return {
+        "outcome": fb.get("outcome"),
+        "status": d.get("status"),
+        "active_case": str(active) if active else None,
+    }
 
 
 def gate_case(case, path: Path, root: Path, fail, warn):
@@ -193,17 +209,23 @@ def gate_case(case, path: Path, root: Path, fail, warn):
         # 管道 case：外部验证已构成闭环证据，闸门不适用（保持既有行为）
         return "skip"
 
-    outcome = trace_feedback_outcome(root, sid)
+    tr = trace_closure(root, sid) or {}
+    outcome = tr.get("outcome")
+    status = tr.get("status")
+    # 无命中单的闭环由 status 承载（没有 case 可写 feedback）；命中单仍认 feedback 轴。
+    no_hit_closed = (not tr.get("active_case")) and status == "resolved"
     ver = (case.get("verification") or {}).get("source")
 
-    if outcome == "resolved":
+    if outcome == "resolved" or no_hit_closed:
         return "pass"
     if ver in STRONG_EVIDENCE:
-        warn(f"{where}: 自诊断且未闭环（来源 trace feedback.outcome={outcome}），"
+        warn(f"{where}: 自诊断且未闭环（来源 trace feedback.outcome={outcome}, "
+             f"status={status}, active_case={tr.get('active_case')}），"
              f"但 verification={ver} 属强外部证据档 → **需 owner 双签**方可升格（C 方案例外）")
         return "cosign"
-    fail(f"{where}: 自诊断且未闭环（来源 trace feedback.outcome={outcome}）、verification={ver} 为纯推断档 "
-         f"——升格被拦。三选一：① 等 fix 应用且问题消失后把来源 trace 的 feedback.outcome 置 resolved；"
+    fail(f"{where}: 自诊断且未闭环（来源 trace feedback.outcome={outcome}, status={status}）、"
+         f"verification={ver} 为纯推断档 —— 升格被拦。三选一：① 等 fix 应用且问题消失后闭环来源 trace"
+         f"（有命中 case 把 feedback.outcome 置 resolved；无命中 case 把 status 置 resolved）；"
          f"② 补强外部证据（上游 fix PR / 维护者确认 / 官方文档 / 工程师实测回报）；"
          f"③ 走 owner 双签例外。**别把未验证的推断当已验证知识入库。**")
     return "block"

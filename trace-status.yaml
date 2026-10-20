@@ -25,7 +25,11 @@ status:
     resumable: false
     terminal: true
     meaning: 诊断给出了 fix，且用户确认该 fix 在自己的环境里生效
-    when_to_set: 仅当「有命中 case + 用户确认 fix 生效」时。**没有命中 case 却因别的原因恢复，用 archived**
+    when_to_set: >-
+      仅当「诊断给出了 fix + 用户确认该 fix 生效」时（**有无命中 case 均可**）：
+      有命中 case 时同时写 `feedback.outcome: resolved`；无命中 case 时只写 status，
+      不写 feedback 事件（feedback 轴没有 case 可归属，结算侧不记计数）。
+      升格闸门对这一类读 status（见 `scripts/verify_case_draft.py`）。
     writes_feedback: true
   - value: escalated
     label: 已转上游
@@ -40,7 +44,7 @@ status:
     terminal: true
     meaning: 不再跟进这单，且**不对"fix 是否有效"下判断**
     when_to_set: >-
-      问题自行消失 / 环境变更后不复现 / 没有走诊断就结束。
+      问题自行消失 / 环境变更后不复现 / 没有走诊断就结束——**不是** agent 给出的 fix 生效。
       **缺这个值，这类情况只能被标成 resolved（虚高解决率）或 not_resolved（冤枉命中的 case）**
     writes_feedback: false
   - value: unknown

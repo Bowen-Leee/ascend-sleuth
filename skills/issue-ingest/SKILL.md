@@ -127,9 +127,11 @@ python3 scripts/issue_filter.py --state ingest-state.json \
 `python3 scripts/log_skill_exec.py --skill issue-ingest --products "<本轮产出 case id(submitted),...>" --reason "<一句话：拉取 N/评估 K/沉淀 M>" --source issue-ingest --tokens <估算>`
 
 沉淀完成、出最终报告前，执行一次伴随演进评估（`read skills/evolve-check/SKILL.md`
-遵循）：对照它的触发条件表看本轮现场——同族沉淀满三条（归纳 reference 候选）、新 issue
+遵循）：对照它的触发条件表看本轮现场——同族沉淀满三条（记信号，**不在这里归纳**）、新 issue
 类型/新错误码无覆盖、拉取/评估环节有重复手动动作或流程摩擦。**内容动作直接执行、不产卡**：
-归纳 reference 走 `/skill:to-reference --ingest-cases`，补 case 走 `/skill:to-postmortem`；
+补 case 走 `/skill:to-postmortem`。**归纳 reference 只在 case 已升格入库后做**——本管道直接
+升格的批次可当轮做；落在 inbox 等周批的只记信号，由 `knowledge-groom` 的 R8 执行
+（`sources[].cases` 不得引用未升格的草稿 id，CI 会红）；
 只有信号连带要求改**行为面**（triage 分支、skill 步骤、闸门绑定、索引形态）时，才
 `scripts/ev_proposal.py --new` 产卡并自行验证执行（产卡 → golden/S2 验证 → 进攒批）；
 无信号则报告加一行"evolve-check：无演进信号"。这是流程默认收尾，**不需要用户另说

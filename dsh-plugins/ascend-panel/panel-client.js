@@ -567,6 +567,28 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
       return s.activeCase ? 'case' : null
     }
 
+    // —— 沉淀状态与闭环（会话列表的筛选/徽标/批量入口共用一份判据）——
+    // 判据必须与 `scripts/verify_case_draft.py` 的升格闸门一致，否则面板说"已闭环"、
+    // groom 却拦，或者反过来：闸门看两条轴——命中单 `feedback.outcome: resolved`，
+    // 无命中单 `status: resolved`（没有 case 可写 feedback，词表见 `trace-status.yaml`）。
+    function sedStateOf(s) {
+      return (s && s.sedimented && s.sedimented.state) ? String(s.sedimented.state) : 'none'
+    }
+    function isClosedOf(s) {
+      if (!s) return false
+      if (String(s.feedback || '') === 'resolved') return true
+      return caseKindOf(s) !== 'case' && s.status === 'resolved'
+    }
+    // 已闭环、还没沉淀、且本次命中的 case 不是库里已有的 → 值得沉淀（新形态或未命中单）。
+    // 命中的 case 已在库里（库中已有）的不进批量：再沉淀只会被 groom 判 covered_by。
+    function needSedOf(s) {
+      return isClosedOf(s) && sedStateOf(s) === 'none' && !(s && s.activeCaseInKb)
+    }
+    // 已沉淀（草稿还在 inbox）但闭环没确认 → groom 升格闸门会拦的债。
+    function needCloseOf(s) {
+      return sedStateOf(s) === 'submitted' && !isClosedOf(s)
+    }
+
     // 解析异常的一句话（host 的 `parseAnomaly`）。卡面只给"结论 + 行号"，成因与怎么办放 README——
     // 面板读者只看界面，卡上多一句解释就把列表读成文档（实测反馈：这类说明性文字被点过两次）。
     function anomalyText(a) {
@@ -861,6 +883,10 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
     function SessionCard(props) {
       const s = props.session
       const ownerSessionId = props.sessionId
+      // 批量闭环多选：只在「待闭环」筛选下出现（勾选只在那一屏有意义）。
+      const selectable = !!props.selectable
+      const selected = !!props.selected
+      const onToggle = props.onToggle
       const [open, setOpen] = React.useState(false)
       const [steps, setSteps] = React.useState(null)
       const [showCmd, setShowCmd] = React.useState(false)
@@ -1703,6 +1729,11 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
       )
 
       return React.createElement('div', { className: 'sleu-card', style: { background: T.bg, backgroundImage: 'var(--surf)', border: '1px solid var(--hair)', borderLeft: '3px solid ' + statusAccent, borderRadius: 12, marginBottom: 10, boxShadow: 'var(--elev-1)' } },
+        // 勾选框在整行按钮**外面**：整行是一个 button，把 checkbox 嵌进去是嵌套交互元素，
+        // 键盘与事件都会打架。它只在「待闭环」筛选下渲染。
+        selectable ? React.createElement('label', { style: { display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px 0', fontSize: 'var(--t-sm)', color: T.text2, cursor: 'pointer' } },
+          React.createElement('input', { type: 'checkbox', checked: selected, onChange: onToggle }),
+          '选中用于批量闭环') : null,
         React.createElement('button', {
           type: 'button', 'aria-expanded': !!open, onClick: toggle, className: 'sleu-row',
           style: { width: '100%', padding: '12px 16px', cursor: 'pointer', background: 'transparent', border: 'none', textAlign: 'left', color: T.text, font: 'inherit' },
@@ -1737,6 +1768,10 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
           // 第二行：一句"这单在查什么" + 外来标记 + 更新时间。收起态只留这些，其余细节在展开态。
           React.createElement('div', { style: { display: 'flex', alignItems: 'baseline', gap: 8, marginTop: 3, flexWrap: 'nowrap', minWidth: 0 } },
             kbTag,
+            // 两条沉淀债的徽标（判据与升格闸门同源）：已闭环没沉淀、已沉淀没闭环。
+            // 它们此前只有展开卡片才看得见——会话一多就成了看不见的积压。
+            needSedOf(s) ? React.createElement('span', { title: '已闭环、还没沉淀——在「待沉淀」筛选里可一次生成批量沉淀命令', style: tinyBadge('var(--d-purple)') }, '已闭环 · 待沉淀') : null,
+            needCloseOf(s) ? React.createElement('span', { title: '草稿已进 inbox，但来源 trace 的闭环没确认——groom 升格闸门会拦；在「待闭环」筛选里可批量闭环', style: tinyBadge('var(--d-amber)') }, '已沉淀 · 待闭环') : null,
             // 外来单（从另一台机器接手来的）：标在收起来的卡片上，因为"这单不是本机开的"
             // 会影响怎么读它的状态——比如知识库版本不一致时，候选集可能与 trace 记的对不上。
             // 依据是 traces/handoff/<sid>.yaml（import_trace.py 落位时留档）；host 读不到就不给这个标记。
@@ -1843,6 +1878,14 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
       const [state, setState] = React.useState({ loading: true, data: null })
       const [query, setQuery] = React.useState('')
       const [kbFilter, setKbFilter] = React.useState('all')
+      // 待闭环筛选下的多选（file → true）；批量闭环只对勾中的单生成一条命令。
+      const [sel, setSel] = React.useState({})
+      // 批量指令的唯一展开位（'sed' / 'close'），与卡片内指令区同一条纪律：点谁显示谁。
+      const [batchCmd, setBatchCmd] = React.useState(null)
+      const [batchCopied, setBatchCopied] = React.useState(null)
+      // 切筛选就清空勾选与展开的批量指令：勾选只在「待闭环」这一屏里有意义，
+      // 带着上一屏的选择去点批量闭环，最容易把没看过的单一起标掉。
+      React.useEffect(() => { setSel({}); setBatchCmd(null); setBatchCopied(null) }, [kbFilter])
       React.useEffect(() => {
         let alive = true
         host.call('ascend-traces-list', { sessionId: sessionId || null })
@@ -1870,6 +1913,11 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
       // 计数按 caseKindOf 算：占位串那一类归「未定位」，不该被算成"新形态待沉淀"
       const nInKb = sessions.filter(s => caseKindOf(s) === 'case' && s.activeCaseInKb).length
       const nNew = sessions.filter(s => caseKindOf(s) === 'case' && !s.activeCaseInKb).length
+      // 两条与沉淀状态有关的债（判据与升格闸门同源，见 sedStateOf/isClosedOf）：
+      //   待沉淀 = 已闭环、还没沉淀、命中的 case 不在库里（库中已有的再沉淀只会被 groom 判 covered_by）；
+      //   待闭环 = 草稿已进 inbox、但来源 trace 的闭环没确认——这类 groom 会拦，越晚发现越亏。
+      const nNeedSed = sessions.filter(needSedOf).length
+      const nPendingClose = sessions.filter(needCloseOf).length
       const q = query.trim().toLowerCase()
       if (q) {
         sessions = sessions.filter(s =>
@@ -1883,12 +1931,18 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
           // 它在副行显示却搜不到时，人会读成"没有同类案例"。
           (s.summarySnippet || '').toLowerCase().includes(q) ||
           (s.waitingFor || '').toLowerCase().includes(q) ||
-          (s.lastOutput || '').toLowerCase().includes(q)
+          (s.lastOutput || '').toLowerCase().includes(q) ||
+          // 沉淀状态也要能搜：「待沉淀」「待闭环」是列表上的一等状态，不是只写在展开卡里的一句话。
+          ((needSedOf(s) ? '待沉淀 已闭环 ' : '') +
+           (needCloseOf(s) ? '待闭环 已沉淀 ' : '') +
+           (sedStateOf(s) === 'submitted' ? '已沉淀' : '')).includes(q)
         )
       }
       if (kbFilter === 'kb') sessions = sessions.filter(s => caseKindOf(s) === 'case' && s.activeCaseInKb)
       if (kbFilter === 'new') sessions = sessions.filter(s => caseKindOf(s) === 'case' && !s.activeCaseInKb)
       if (kbFilter === 'miss') sessions = sessions.filter(s => caseKindOf(s) !== 'case')
+      if (kbFilter === 'need-sed') sessions = sessions.filter(needSedOf)
+      if (kbFilter === 'need-close') sessions = sessions.filter(needCloseOf)
       // 待跟进三类见上方计数处注释（互斥）；徽章与横幅都用这三个数
       const badge = [
         (r.sessions || []).length + ' 会话',
@@ -1897,12 +1951,16 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
         nLooking ? nLooking + ' 在查' : null,
         nAwaiting ? nAwaiting + ' 等回报' : null,
         nClose ? nClose + ' 该闭环' : null,
+        nNeedSed ? nNeedSed + ' 待沉淀' : null,
+        nPendingClose ? nPendingClose + ' 待闭环' : null,
       ].filter(Boolean).join(' · ')
       const kbChips = [
         { id: 'all', label: '全部' },
         { id: 'kb', label: '库中已有' },
         { id: 'new', label: '新形态' },
         { id: 'miss', label: '未定位' },
+        { id: 'need-sed', label: '待沉淀' + (nNeedSed ? ' ' + nNeedSed : '') },
+        { id: 'need-close', label: '待闭环' + (nPendingClose ? ' ' + nPendingClose : '') },
       ]
 
       // 空态：先说"为什么空"+"下一步做什么"（两句展开成变量，避免嵌套三元写错括号）
@@ -1914,13 +1972,65 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
       // 首屏要先回答"有什么在等我"——所以计数里把**待跟进**的两项单独提出来（进行中、待回报），
       // 而不是混在一串 "N 会话 · N 库中已有 …" 里让读者自己找
       const nFollow = nLooking + nAwaiting + nClose
+      // 批量入口：面板只生成指令（与单卡一致），不直接写 trace。
+      //  - 待沉淀：按筛选结果一次生成 to-postmortem 批量命令（每单各成一条草稿）；
+      //  - 待闭环：勾选后生成一条批量闭环命令，且只允许"已解决 · fix 生效"这一种结局
+      //    （多结局混批会虚高解决率：置信度只认 resolved）。
+      const batchBar = (function () {
+        if (kbFilter === 'need-sed') {
+          const ids = sessions.map(s => s.sessionId).filter(Boolean)
+          if (!ids.length) return null
+          const text = '用 /skill:to-postmortem 批量沉淀这些 session：' + ids.join('、')
+            + '（trace 在 traces/<session>.yaml；每个 session 各成一条草稿，来源 trace 回写 sedimented.state: submitted）'
+          return React.createElement('div', { style: { marginBottom: 8, padding: '8px 10px', border: '1px solid var(--hair)', borderRadius: 9, background: T.bg2 } },
+            React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' } },
+              React.createElement('span', { style: { fontSize: 'var(--t-sm)', color: T.text2 } }, '已闭环未沉淀 ' + ids.length + ' 单'),
+              React.createElement('button', { type: 'button', style: batchCmd === 'sed' ? btnPurple : btnGhost, onClick: () => { setBatchCmd(batchCmd === 'sed' ? null : 'sed'); setBatchCopied(null) } },
+                batchCmd === 'sed' ? '隐藏指令' : '批量沉淀这 ' + ids.length + ' 单'),
+            ),
+            batchCmd === 'sed' ? React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 6, marginTop: 8 } },
+              React.createElement('code', { style: { flex: 1, userSelect: 'all', background: T.bg, border: '1px solid var(--hair)', borderRadius: 6, padding: '5px 8px', fontSize: 'var(--t-sm)', fontFamily: 'var(--font-mono)', color: T.text, wordBreak: 'break-word', lineHeight: '18px' } }, text),
+              React.createElement('button', { type: 'button', style: batchCopied === 'fail' ? btnRed : btnPurple, onClick: () => copyText(text).then(ok => setBatchCopied(ok ? 'sed' : 'fail')) },
+                batchCopied === 'sed' ? '已复制' : (batchCopied === 'fail' ? '失败' : '复制')),
+            ) : null,
+          )
+        }
+        if (kbFilter === 'need-close') {
+          const list = sessions
+          if (!list.length) return null
+          const chosen = list.filter(s => sel[s.file])
+          const ids = chosen.map(s => s.sessionId).filter(Boolean)
+          const text = '批量闭环以下 ' + ids.length + ' 单，结局都是「已解决 · fix 生效」：' + ids.join('、')
+            + '。逐单：有命中 case 的标 status: resolved + feedback{outcome: resolved} 并写一条 feedback 事件；'
+            + '未命中 case 的只标 status: resolved，不写 feedback。'
+          const allSelected = list.every(s => sel[s.file])
+          return React.createElement('div', { style: { marginBottom: 8, padding: '8px 10px', border: '1px solid var(--hair)', borderRadius: 9, background: T.bg2 } },
+            React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' } },
+              React.createElement('span', { style: { fontSize: 'var(--t-sm)', color: T.text2 } }, '已沉淀待闭环 ' + list.length + ' 单'),
+              React.createElement('button', { type: 'button', style: btnGhost, onClick: () => { const n = {}; if (!allSelected) list.forEach(s => { n[s.file] = true }); setSel(n) } },
+                allSelected ? '取消全选' : '全选这 ' + list.length + ' 单'),
+              React.createElement('button', { type: 'button', disabled: !ids.length, style: !ids.length ? { ...btnGhost, opacity: 0.5, cursor: 'default' } : btnGhost, onClick: () => { if (!ids.length) return; setBatchCmd(batchCmd === 'close' ? null : 'close'); setBatchCopied(null) } },
+                '批量标已解决' + (ids.length ? '（已选 ' + ids.length + ' 单）' : '')),
+            ),
+            React.createElement('div', { style: { marginTop: 4, fontSize: 'var(--t-tiny)', color: T.text2 } },
+              '只勾真的验证过 fix 生效的单——批量标 resolved 会写进置信度结算；没验证的留在待闭环。'),
+            batchCmd === 'close' && ids.length ? React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 6, marginTop: 8 } },
+              React.createElement('code', { style: { flex: 1, userSelect: 'all', background: T.bg, border: '1px solid var(--hair)', borderRadius: 6, padding: '5px 8px', fontSize: 'var(--t-sm)', fontFamily: 'var(--font-mono)', color: T.text, wordBreak: 'break-word', lineHeight: '18px' } }, text),
+              React.createElement('button', { type: 'button', style: batchCopied === 'fail' ? btnRed : btnPurple, onClick: () => copyText(text).then(ok => setBatchCopied(ok ? 'close' : 'fail')) },
+                batchCopied === 'close' ? '已复制' : (batchCopied === 'fail' ? '失败' : '复制')),
+            ) : null,
+          )
+        }
+        return null
+      })()
+
       return React.createElement('div', { className: 'sleu', style: { ...base, padding: 20 } },
         React.createElement('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12, gap: 10, flexWrap: 'wrap' } },
           React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8 } },
             React.createElement('span', { style: { width: 8, height: 16, borderRadius: 4, background: 'var(--acc-blue)', display: 'inline-block' } }),
             React.createElement('span', { className: 'sleu-title', style: { fontSize: 18, fontWeight: 700 } }, '诊断状态'),
           ),
-          React.createElement('span', { title: badge, style: { fontSize: 12.5, color: T.text2, background: T.bg2, border: '1px solid var(--hair)', borderRadius: 999, padding: '3px 11px' } },
+          React.createElement('span', { title: badge, style: { fontSize: 'var(--t-sm)', color: T.text2, background: T.bg2, border: '1px solid var(--hair)', borderRadius: 999, padding: '3px 11px' } },
             nFollow ? (nFollow + ' 项待跟进') : ((r.sessions || []).length + ' 个会话')),
         ),
         // 待跟进提示：只在真有的时候出现，且给"下一步做什么"。
@@ -1944,8 +2054,9 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
           ),
           React.createElement('div', { style: { position: 'relative' } },
             React.createElement('span', { style: { position: 'absolute', left: 11, top: '50%', transform: 'translateY(-50%)', width: 10, height: 10, borderRadius: 999, border: '1.5px solid ' + T.text2, display: 'block' } }),
-            React.createElement('input', { placeholder: '搜索：会话号 / 状态 / 框架 / 平台 / 定位到的 case…', value: query, onChange: e => setQuery(e.target.value), style: { width: '100%', boxSizing: 'border-box', padding: '8px 11px 8px 30px', fontSize: 13.5, borderRadius: 9, border: '1px solid var(--hair)', background: T.bg, color: T.text, outline: 'none', transition: 'border-color .15s' } }),
+            React.createElement('input', { placeholder: '搜索：会话号 / 状态 / 框架 / 平台 / 定位到的 case / 待沉淀 / 待闭环…', value: query, onChange: e => setQuery(e.target.value), style: { width: '100%', boxSizing: 'border-box', padding: '8px 11px 8px 30px', fontSize: 13.5, borderRadius: 9, border: '1px solid var(--hair)', background: T.bg, color: T.text, outline: 'none', transition: 'border-color .15s' } }),
           ),
+          batchBar,
         ),
         sessions.length > 20 ? React.createElement('button', {
           type: 'button', className: 'sleu-fab', title: '回到顶部（会话较多）',
@@ -1979,7 +2090,17 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
                     style: { fontSize: 'var(--t-md2)', letterSpacing: '.11em', textTransform: 'uppercase', color: T.text2,
                              textAlign: (i >= 5 && i <= 6) ? 'right' : 'left', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
                   }, h))),
-              sessions.map(s => React.createElement(SessionCard, { key: s.file, session: s, sessionId: sessionId })),
+              sessions.map(s => React.createElement(SessionCard, {
+                key: s.file, session: s, sessionId: sessionId,
+                selectable: kbFilter === 'need-close',
+                selected: !!sel[s.file],
+                onToggle: () => setSel(prev => {
+                  const n = Object.assign({}, prev)
+                  if (n[s.file]) delete n[s.file]
+                  else n[s.file] = true
+                  return n
+                }),
+              })),
             ),
       )
     }

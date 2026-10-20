@@ -280,6 +280,8 @@ harness 侧的会话号（DSH 里是 `$DSH_SESSION_ID`）。**用途只有一个
 
 反馈确认后，顶层 `feedback: {case, outcome, confirmed_at}` 要填——`status=resolved 且 feedback.outcome=resolved` 是该 trace 升格为 fixture（强断言基准）的资格条件（`scripts/replay_trace.py --emit-fixtures` 只看这种）。
 
+**无命中 case 的单没有 feedback 可写**：它的闭环只记 `status: resolved`（面板的「已解决」命令就是这么做的）。别为了"留一条"而补占位 `case` 的 feedback 事件——结算侧找不到 case 会把它挂成"待结算"、游标不再前进；升格闸门对这一类读 `status`（见 `scripts/verify_case_draft.py`）。
+
 ## 词表同步纪律
 
 `trace` 的 action 词表与 `scripts/trace_metrics.py` 的 `KNOWN_ACTIONS` 保持一致；`reference_lookup` 的 `purpose` 与 `outcome` 分别与 `KNOWN_PURPOSES` / `KNOWN_OUTCOMES` 保持一致；顶层 `stop_reason` 与 `KNOWN_STOP_REASONS` 保持一致；新增取值必须两处同步（本文 + 脚本）。user 事件无 action，不参与词表检查。

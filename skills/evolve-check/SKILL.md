@@ -65,7 +65,7 @@ description: >
 
 | # | 信号（本轮执行现场） | 含义 | 候选动作 |
 |---|---|---|---|
-| T1 | 沉淀 ≥3 条同根因/同族 case，或发现可跨 case 归纳的共性 | 有 methodology/reference 可提炼 | 归纳 reference（走 /skill:to-reference --ingest-cases），**不产卡**；归纳时发现要改路由或加载行为才产卡 |
+| T1 | 沉淀 ≥3 条同根因/同族 case，或发现可跨 case 归纳的共性 | 有 methodology/reference 可提炼 | 对**已升格入库**的同族 case 归纳 reference（走 /skill:to-reference --ingest-cases），**不产卡**；涉及的 case 还是 inbox 草稿时只记信号（等 groom R8），**别引用未升格的 id**；归纳时发现要改路由或加载行为才产卡 |
 | T2 | diagnose/replay miss 某 issue 族，或 Tier 3 兜底反复走同路径 | 覆盖缺口 | 补 case（S2 replay 佐证缺口），**不产卡**；缺口指向 triage 分支或检查判据才产卡 |
 | T3 | 同一手动动作重复 ≥2 次（如反复拼同一查询、反复等同一命令输出） | 可固化流程/脚本 | 产 L2 卡：沉淀脚本/skill 步骤或 reference |
 | T4 | 执行错反复出现且无归属组件 / 归因事件聚合浮出失败簇 | 流程缺陷 | 产 L2 卡：修订该组件所在 skill 步骤 / triage 分支 |
