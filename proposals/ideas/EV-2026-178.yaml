@@ -24,9 +24,9 @@ source_signals:
       Traceback … ModuleNotFoundError: No module named 'yaml'」——面板把 stderr 末四行拼起来当错误，
       读者要从最后一行认病因，且无从判断这台机器上还有哪几条流程同样会断。同族已知事故两处：
       Windows 上 `python3` 常不存在，面板探测退到 `python` / `py -3`，挑中的解释器未必是装了包的那个；
-      面板的体检路径已单独识别这个错误并给 `pip install pyyaml`，导出路径没有。全仓 47 个脚本
-      import PyYAML，缺它同时断掉六条流程（导出/导入交接包、面板诊断 tab、指标 tab 体检、诊断与知识沉淀、
-      批量导 issue、索引与门禁脚本）。
+      面板的体检路径已单独识别这个错误并给 `pip install pyyaml`，导出路径没有。体检器实测：47 个脚本
+      无条件 import PyYAML（另有 6 个在 try/except 里用，缺席时自己退化），缺它同时断掉六条流程
+      （导出/导入交接包、面板诊断 tab、指标 tab 体检、诊断与知识沉淀、批量导 issue、索引与门禁脚本）。
     trajectory:
       - "scripts/doctor.py：新增体检器（ast 扫 scripts/**/*.py 的 import + find_spec 探测；能力表 → 哪些流程能跑）"
       - "skills/doctor/SKILL.md：新增 skill，规定「跑一条命令 → 修一项 → 重跑」的循环与阻断/降级判据"
@@ -85,7 +85,8 @@ decisions:
     when: 2026-10-20
     type: action
     conclusion: "边界如实标注：①面板的错误文案未改（导出失败仍不翻译「缺依赖」，本卡只补了发现入口）；
-      ②体检器不判内容，索引新鲜度等门禁仍由各自脚本判；③未加单元测试——它不做口径计算，判据是退出码三态与能力表"
+      ②体检器不判内容，索引新鲜度等门禁仍由各自脚本判；③未加单元测试——它不做口径计算，判据是退出码三态与能力表；
+      ④只在 try/except ImportError 里用的包记为降级（缺席时脚本自己退化），不算阻断"
 actual_cost:
   tokens: 26000
   source: estimate

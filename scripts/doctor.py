@@ -150,7 +150,11 @@ def module_importers():
                 names.add(node.module.split(".")[0])
         for name in names:
             name = name.lstrip("_") if name.startswith("_") and name.lstrip("_") in local else name
-            if name in local or name in guarded:
+            if name in local:
+                continue
+            # 标准库名单只有 3.10+ 才有；更老的解释器上退回「在 try/except ImportError 里用」这条判据，
+            # 免得把 msvcrt 这类平台条件导入报成缺包
+            if _STDLIB_NAMES is None and name in guarded:
                 continue
             spec = resolve_spec(name)
             if is_stdlib(name, spec):
