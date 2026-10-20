@@ -1152,7 +1152,7 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
         React.createElement(LineRow, { label: '最终定位', title: 'trace 的 active_case：这一单最后定位到的案例，可能与阶段一命中的不是同一条' },
           d5FinalCaseId
             ? React.createElement('code', { className: 'sleu-mono', style: { color: T.text2 } }, d5FinalCaseId)
-            : React.createElement('span', { style: { color: T.text2 } }, '未定位到知识库 case')),
+            : React.createElement('span', { style: { color: T.text2 } }, '没有对应案例')),
         React.createElement(LineRow, { label: '沉淀到', title: steps && steps.sedimentMeta && steps.sedimentMeta.title },
           d5SedId
             ? React.createElement(React.Fragment, null,
@@ -1203,7 +1203,7 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
               React.createElement(Cell, { label: '载入正文', value: d5Retr.loaded.length ? d5Retr.loaded.length + ' 条' : '0 条' }),
               React.createElement(Cell, { label: '排除', value: d5Retr.excluded.length ? d5Retr.excluded.length + ' 条' : '0 条' }),
               React.createElement(Cell, { label: '命中（hit 事件）', value: d5HitCaseId, mono: true, missingText: '没有命中' }),
-              React.createElement(Cell, { label: '最终定位', value: d5FinalCaseId, mono: true, missingText: '未定位到 case' }),
+              React.createElement(Cell, { label: '最终定位', value: d5FinalCaseId, mono: true, missingText: '没有对应案例' }),
             )
           : React.createElement(LineRow, { label: '候选' }, React.createElement('span', { style: { color: T.text2 } }, '轨迹里没有候选清单（没有 candidates / considered_candidates / excluded_cases 记录）')),
         d5Retr.excluded.length ? React.createElement(LineRow, { label: '被排除的' },
@@ -1820,7 +1820,7 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
             React.createElement('span', { style: { color: T.text2 } }, '定位'),
             React.createElement('code', { style: { background: 'color-mix(in srgb, ' + T.success + ' 10%, transparent)', color: T.success, padding: '1px 7px', borderRadius: 5, fontSize: 12.5, fontFamily: 'var(--font-mono)' } }, s.activeCase),
           ) : React.createElement('div', { style: { marginTop: 5, fontSize: 12.5, display: 'flex', alignItems: 'baseline', gap: 6, flexWrap: 'wrap' } },
-            React.createElement('span', { style: { color: T.text2 } }, '未定位到知识库 case'),
+            React.createElement('span', { style: { color: T.text2 } }, '没有对应案例'),
             // trace 里写了占位串就把它原样摆出来（不摆，读者会以为面板漏读了字段），但**卡面不解释**：
             // 那句"这是什么、不是什么"是给改 trace 的人看的，放 tooltip 与 README。判据在
             // panel_render_check：占位串只出原值，不出内部说法（占位串 / case id / 字段名）。
@@ -1927,7 +1927,7 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
       const nLooking = sessions.filter(s => s.status === 'in_progress' && fbKindOf(s) !== 'case' && !isClosedButOpen(s)).length
       const nAwaiting = sessions.filter(s => fbKindOf(s) === 'case').length
       const nClose = sessions.filter(isClosedButOpen).length
-      // 计数按 caseKindOf 算：占位串那一类归「未定位」，不该被算成"新形态待沉淀"
+      // 计数按 caseKindOf 算：占位串那一类归「无对应案例」，不该被算成"新形态待沉淀"
       const nInKb = sessions.filter(s => caseKindOf(s) === 'case' && s.activeCaseInKb).length
       const nNew = sessions.filter(s => caseKindOf(s) === 'case' && !s.activeCaseInKb).length
       // 三条状态轴各自的待办（判据见 isOpenOf / isClosedOf / needSedOf / needPromoteOf）：
@@ -1980,7 +1980,7 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
         { id: 'all', label: '全部' },
         { id: 'kb', label: '库中已有', title: '命中的 case 已在 knowledge/ 里' },
         { id: 'new', label: '新形态', title: '命中了某个 case，但库里还没有它' },
-        { id: 'miss', label: '未定位', title: '还没定位到知识库 case' },
+        { id: 'miss', label: '无对应案例', title: '知识库里没有这单对应的案例（未命中）' },
         { id: 'open', label: '未闭环' + (nOpen ? ' ' + nOpen : ''), title: '诊断还没收尾（进行中，或状态未知）' },
         { id: 'need-sed', label: '待沉淀' + (nNeedSed ? ' ' + nNeedSed : ''), title: '已闭环、还没沉淀，且命中的 case 不在库里——这类值得入库' },
         { id: 'need-promote', label: '待升格' + (nNeedPromote ? ' ' + nNeedPromote : ''), title: '草稿已提交到 inbox，但来源诊断还没闭环；升格（把草稿转成正式 case 前的检查）会拦下' },
@@ -1989,11 +1989,11 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
       // 空态：先说"这一屏为什么空"，再说下一步。筛选为空与"还没有任何诊断"是两件事——
       // 前者通常是这一类已经处理完，统一写"去跑一次 diagnose"会被读成数据没生成。
       const totalSessions = (r.sessions || []).length
-      const FILTER_LABEL = { all: '全部', kb: '库中已有', new: '新形态', miss: '未定位', open: '未闭环', 'need-sed': '待沉淀', 'need-promote': '待升格' }
+      const FILTER_LABEL = { all: '全部', kb: '库中已有', new: '新形态', miss: '无对应案例', open: '未闭环', 'need-sed': '待沉淀', 'need-promote': '待升格' }
       const EMPTY_HINT = {
         kb: '没有命中过知识库 case 的诊断。',
         new: '没有"命中 case、但库里还没有"的诊断。',
-        miss: '没有"尚未定位到 case"的诊断。',
+        miss: '没有"知识库里找不到对应案例"的诊断。',
         open: '没有进行中或状态未知的诊断。已收尾的单不在其中。',
         'need-sed': '没有"已闭环、尚未沉淀"的单。值得入库的诊断在闭环后会出现在这里，可一次生成批量沉淀命令。',
         'need-promote': '没有"草稿已提交、来源诊断尚未闭环"的单。这类单升格时会被拦下；有强外部证据（上游修复已合入等）的可走 owner 双签。',

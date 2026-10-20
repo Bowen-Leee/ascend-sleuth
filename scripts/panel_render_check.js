@@ -2555,9 +2555,9 @@ print(json.dumps([{'role': s(t.get('role')), 'step': s(t.get('step')), 'action':
         : { ok: true, steps: [], summary: null }
       const ct = (await renderAsync(ascSrc, { sessionId: 'sess-1' }, host)).text
       const lines = ct.split('\n').map(x => x.trim())
-      expect('占位串不当 case 显示：两张无命中单都给「未定位到知识库 case」，不给「定位」',
-        lines.filter(x => x === '未定位到知识库 case').length === 2 && lines.filter(x => x === '定位').length === 1,
-        '未定位=' + lines.filter(x => x === '未定位到知识库 case').length + ' 定位=' + lines.filter(x => x === '定位').length)
+      expect('占位串不当 case 显示：两张无命中单都给「没有对应案例」，不给「定位」',
+        lines.filter(x => x === '没有对应案例').length === 2 && lines.filter(x => x === '定位').length === 1,
+        '无对应=' + lines.filter(x => x === '没有对应案例').length + ' 定位=' + lines.filter(x => x === '定位').length)
       expect('占位串把原值摆出来（不摆读者以为面板漏读了字段）',
         /pending-investigation \(upstream #14728\)/.test(ct), ct.slice(0, 240))
       // 卡面**不解释**：说明文字（占位串 / case id / 字段名）只进 tooltip 与 README。
