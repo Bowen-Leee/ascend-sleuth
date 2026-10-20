@@ -87,7 +87,9 @@ python3 scripts/export_trace.py --list          # 看哪些会话可以导出
 
 2. 产出落在 `<traces>/exports/`：`<session_id>/`（包内树）、`handoff-<session_id>.zip`、`handoff-<session_id>.md`。`traces/exports/` 也是非递归 glob 看不见的目录，不污染会话列表。
 
-   **写不进去时改道**。`<traces>/exports/` 不可写时，脚本改道到检出根下的 `.handoff/`，并在人读输出里给一行「导出目录改道：<本想去哪> 不可写（<错误码与系统文案>），本次落在 <实际目录>」；`--json` 的 `fallback` 字段给同一事实（`requested` / `dir` / `reason`）。最常见的触发条件是面板：面板给子进程的写权限根与会话工作区同源，不覆盖主检出下的 `traces/`，报 `[WinError 5] 拒绝访问`，而同一条命令在终端里能成功——差别在谁给的写权限上。
+   **写不进去时改道**。`<traces>/exports/` 不可写时，脚本按「主检出的 `.handoff/` → 会话工作区的 `.handoff/`」顺序找第一个能写的位置，并在人读输出里给一行「导出目录改道：<本想去哪> 写不进去（<错误码与系统文案>），本次落在 <实际目录>」；`--json` 的 `fallback` 字段给同一事实（`requested` / `dir` / `reason`）。主检出排在前，是因为 `traces/` 这类运行时件锚在主检出：worktree 被清理时它下面的 gitignore 件会一起消失。
+
+   最常见的触发条件是面板。面板让子进程可写的范围与会话工作区同源，不覆盖主检出下的 `traces/`，报 `[WinError 5] 拒绝访问`，而同一条命令在终端里能成功——差别在谁给的写权限。
 
    改道不改变包内容：接收侧读的是包与交接单，目录名不参与校验。指定 `--out` 时不改道——那是显式选择，写不进去就失败，失败文案里写明去掉 `--out` 会改道。
 

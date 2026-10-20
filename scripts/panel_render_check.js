@@ -1906,7 +1906,7 @@ _MS._run_no_pipe = no_fallback`)
           const d4 = drive({ shell: denyWrite, fs: undefined, sessions: svc.sessions })
           const r4 = await d4.regs['ascend-export-trace']({ sessionId: 's', traceFile: 'sess-4.yaml' })
           expect('交接包 host：写权限被拒时给出面板用的写权限根（与脚本的修法并列，不互相替代）',
-            r4 && r4.ok === false && /写权限根：\/repo/.test(String(r4.error))
+            r4 && r4.ok === false && /可写的范围只到：\/repo/.test(String(r4.error))
             && r4.workspaceRoot === '/repo' && /WinError 5/.test(String(r4.error)),
             String(r4 && r4.error))
         }

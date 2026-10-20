@@ -9,7 +9,7 @@
 id: EV-2026-179
 layer: L2
 target_component: scripts/export_trace.py
-title: "交接包导出在写权限受限时的改道：宁可落在同一检出的 .handoff/，也不让导出整体失败"
+title: "交接包导出在写权限受限时改写落点：落到同一检出内的 .handoff/ 并给出两处路径与原因"
 status: validated
 authorization: auto
 dimension: observability
@@ -32,7 +32,7 @@ source_signals:
       - "scripts/panel_render_check.js：改道事实、落点、写权限根与按钮说明四条断言"
       - "docs/guide/handoff.md 与面板 README：写清改道条件与「接收侧不认目录名」这条前提"
 hypothesis: >-
-  把"写权限受限"从整次失败降级为"换一个能写的位置并说明"：①面板在 worktree 会话、独立沙箱实现、
+  把"写权限受限"从整次失败改成"换一个能长期保存的位置并说明"：①面板在 worktree 会话、独立沙箱实现、
   ACL 异常这三类环境下都能产出可发送的包；②失败时读者拿到的是一行可核对的理由（本想去哪、实际落在哪、
   错误码），不再从一句 EPERM 里猜；③改道不触碰接收契约——import_trace.py 只读包与交接单。
 predicted_effect:
@@ -61,14 +61,16 @@ validation:
 gate:
   condition: "再出现「导出因写权限整体失败」或「改道后读者仍去 traces/exports 找不到包」时，重跑 measure 与面板断言"
 risk: low
-principle_refs: [7, 9, 10]
+principle_refs: [7, 8, 10]
 decisions:
   - who: agent
     when: 2026-10-20
     type: decision
     conclusion: >-
       改道落点选检出内的 `.handoff/`，不用系统临时目录：面板子进程的 TMP/TEMP 是沙箱私有目录，
-      进程退出即被清理，写进去等于假装成功。落点必须在 gitignore 内、且在"同一检出"这个可解释的范围内。
+      进程退出即被清理，写进去等于把一次没有产物的运行报成成功。落点必须在 gitignore 内。
+      候选顺序是「`traces/exports` → 主检出 `.handoff/` → 会话工作区 `.handoff/`」：主检出排前，
+      因为运行时件锚在主检出，worktree 被清理时它下面的 gitignore 件一起消失。
   - who: agent
     when: 2026-10-20
     type: decision
@@ -87,7 +89,7 @@ decisions:
     conclusion: >-
       面板侧只做"把事实带给读者"，不做判断：host 原样透传 `fallback`，并在写权限类失败时附上它交给
       子进程的写权限根（`workspaceRoot`）。边界照实标注：①改道后的包不在 `traces/exports`，
-      历史习惯要重新建立；②面板的错误文案仍是脚本原文加一句根路径，没有替读者判断根对不对；
+      历史习惯要重新建立；②面板的错误文案是脚本原文加一句它给子进程的可写范围，没有替读者判断范围对不对；
       ③未加 write 探针（本轮范围外，另行评估）。
 actual_cost:
   tokens: 32000

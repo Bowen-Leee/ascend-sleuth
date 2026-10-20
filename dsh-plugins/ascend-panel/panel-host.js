@@ -1835,7 +1835,7 @@ return {
         const permish = /WinError 5|拒绝访问|Errno 1[3]|EPERM|EACCES|Operation not permitted|permission/i.test(msg)
         return {
           ok: false, manual: manual,
-          error: permish ? msg + '\n［面板给子进程的写权限根：' + String(cwd) + '］' : msg,
+          error: permish ? msg + '\n［面板让子进程可写的范围只到：' + String(cwd) + '］' : msg,
           workspaceRoot: cwd || null,
         }
       }

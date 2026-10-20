@@ -1,6 +1,6 @@
 /* eslint-disable */
 // 生成物 —— 勿手改。由 `node scripts/build_panel_bundle.js` 从下列源文件拼出：
-//   dsh-plugins/ascend-panel/panel-host.js  (sha256:be658b01f21c)
+//   dsh-plugins/ascend-panel/panel-host.js  (sha256:e0627c5bbcb7)
 //   dsh-plugins/ev-panel/panel-host.js  (sha256:e45522d60c58)
 // 校验：`node scripts/build_panel_bundle.js --check`（源文件改了没重跑生成器即红）。
 //
@@ -81,7 +81,7 @@ const PANELS = [
     id: 'ascend-panel',
     build(harness) {
       return (function () {
-// ---- dsh-plugins/ascend-panel/panel-host.js (sha256:be658b01f21c) 原文开始 ----
+// ---- dsh-plugins/ascend-panel/panel-host.js (sha256:e0627c5bbcb7) 原文开始 ----
 return {
   apply(ctx) {
     const fs = ctx.get('fs')
@@ -1919,7 +1919,7 @@ return {
         const permish = /WinError 5|拒绝访问|Errno 1[3]|EPERM|EACCES|Operation not permitted|permission/i.test(msg)
         return {
           ok: false, manual: manual,
-          error: permish ? msg + '\n［面板给子进程的写权限根：' + String(cwd) + '］' : msg,
+          error: permish ? msg + '\n［面板让子进程可写的范围只到：' + String(cwd) + '］' : msg,
           workspaceRoot: cwd || null,
         }
       }

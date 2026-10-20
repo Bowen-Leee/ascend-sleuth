@@ -1821,8 +1821,10 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
             ? { ...btnOutline(T.brand), opacity: 0.6, cursor: 'default' }
             : btnOutline(T.brand),
         }, (handoff && handoff.busy) ? '导出中…' : '导出交接包'),
-        handoff && handoff.ok ? React.createElement('button', {
-          type: 'button', onClick: () => openFile(handoff.dirRel || 'traces/exports'), title: handoff.dir,
+        // 只有落点在会话工作区内时才有仓库内相对路径；没有就不给这个按钮——
+        // 退回 'traces/exports' 会在改道后指向一个没有包的目录
+        handoff && handoff.ok && handoff.dirRel ? React.createElement('button', {
+          type: 'button', onClick: () => openFile(handoff.dirRel), title: handoff.dir,
           style: { background: 'transparent', border: '1px solid ' + T.border, color: T.text2, borderRadius: 'var(--r-pill)', padding: '2px 9px', fontSize: 'var(--t-tiny)', cursor: 'pointer' },
         }, '打开目录') : null,
         handoff && handoff.ok ? React.createElement('span', { style: { color: 'var(--c-green)', fontSize: 'var(--t-tiny)' } },
@@ -1835,8 +1837,8 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
         // 必须说清"本想去哪、实际落在哪"——不说的话读者会去 traces/exports 找，找不到就当成导出失败。
         handoff && handoff.ok && handoff.fallback ? React.createElement('span', {
           style: { color: 'var(--c-amber)', fontSize: 'var(--t-tiny)' },
-          title: '脚本先试 ' + String(handoff.fallback.requested || 'traces/exports') + '，被拒后改道到 '
-            + String(handoff.fallback.dir || '.handoff') + '（同一检出内）。包内容完整：'
+          title: '脚本先试 ' + String(handoff.fallback.requested || 'traces/exports') + '，写不进去后改道到 '
+            + String(handoff.fallback.dir || '.handoff') + '（同一检出内）。'
             + '接收侧只认包内容与交接单，不认目录名。',
         }, '导出目录改道：' + String(handoff.fallback.reason || '写权限被拒')
           + '；本次落在 ' + String(handoff.dirRel || handoff.fallback.dir || '.handoff')) : null,
