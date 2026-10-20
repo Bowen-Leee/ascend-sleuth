@@ -1,8 +1,8 @@
 # ============================================================
 # EV-2026-178 —— 环境依赖缺口的发现点前移：一条命令报「哪些流程能跑」
 # 来源：内网 Windows 机器上点「导出交接包」失败（面板只回一句「导出脚本没有给出 JSON 结果」，
-#       真因在 traceback 末四行：ModuleNotFoundError: No module named 'yaml'）
-# 触发：缺依赖不在开单时报，而在任务中途以一句 import 报错退出；读者要自己从 traceback 认病因，
+#       根因在 traceback 末行：ModuleNotFoundError: No module named 'yaml'）
+# 触发：缺依赖不在开单时报，而在任务中途以一句 import 报错退出；读者要自己从 traceback 认根因，
 #       且不知道这台机器上还有哪些流程会同样断掉
 # 脱敏：只含脚本名、命令与流程名，不含客户数据
 # ============================================================
@@ -10,7 +10,7 @@
 id: EV-2026-178
 layer: L2
 target_component: scripts/doctor.py
-title: "环境依赖缺口的发现点前移：一条命令报「哪些流程能跑」而不是在任务中途撞 traceback"
+title: "环境依赖缺口的发现点前移：一条命令报「哪些流程能跑」而不是在任务中途遇到 traceback"
 status: validated
 authorization: auto
 dimension: observability
@@ -22,43 +22,48 @@ source_signals:
     evidence: >-
       内网 Windows 机器的实际故障：点「导出交接包」，面板回「导出脚本没有给出 JSON 结果：
       Traceback … ModuleNotFoundError: No module named 'yaml'」——面板把 stderr 末四行拼起来当错误，
-      读者要从最后一行认病因，且无从判断这台机器上还有哪几条流程同样会断。同族已知事故两处：
+      读者要从最后一行认根因，且无从判断这台机器上还有哪几条流程会同样断。同族已知事故两处：
       Windows 上 `python3` 常不存在，面板探测退到 `python` / `py -3`，挑中的解释器未必是装了包的那个；
-      面板的体检路径已单独识别这个错误并给 `pip install pyyaml`，导出路径没有。体检器实测：47 个脚本
-      无条件 import PyYAML（另有 6 个在 try/except 里用，缺席时自己退化），缺它同时断掉六条流程
-      （导出/导入交接包、面板诊断 tab、指标 tab 体检、诊断与知识沉淀、批量导 issue、索引与门禁脚本）。
+      面板的体检路径已单独识别这个错误并给 `pip install pyyaml`，导出路径没有。本轮实测：47 个脚本
+      无条件 import PyYAML（另有 6 个把它写在 try 里），缺它同时断掉六条流程（导出/导入交接包、
+      面板诊断 tab、指标 tab 体检、诊断与知识沉淀、批量导 issue、索引与门禁脚本）。
     trajectory:
       - "scripts/doctor.py：新增体检器（ast 扫 scripts/**/*.py 的 import + find_spec 探测；能力表 → 哪些流程能跑）"
       - "skills/doctor/SKILL.md：新增 skill，规定「跑一条命令 → 修一项 → 重跑」的循环与阻断/降级判据"
       - "docs/_manifest.yaml：登记 skill（README 名单由 build_docs_index.py 重新生成）"
 hypothesis: >-
   把「缺什么、缺了哪条流程不能用」从任务中途挪到开工前一条命令：①读者拿到的是结论与修法，不再从
-  traceback 认病因；②依赖清单由代码推导而非手写，新增第三方包会被自动发现，不会腐化；③解释器路径随
+  traceback 认根因；②依赖清单由代码推导而非手写，新增第三方包会被自动发现，不会腐化；③解释器路径随
   结论一起打印，「包装到了另一个解释器」这层误解有一处可核对的事实。
 predicted_effect:
-  metric: 环境缺口的可发现性（结论 + 修法 + 解释器路径是否一次给出）
+  metric: 环境缺口的可发现性（结论 + 修法 + 解释器路径是否一次给出，且结论与阻断项互不矛盾）
   from: "缺 PyYAML 时只有一条 traceback；哪些流程受影响、装到哪个解释器上，都要读者自己推"
-  to: "一条命令给三段：能跑/降级/不能跑的能力清单、每项的修法原值、体检用的解释器绝对路径；退出码三态可判"
+  to: "一条命令给三段：能跑/降级/不能跑的能力清单、每项的修法原值、体检用的解释器绝对路径；退出码三态可判；有阻断项时不会出现「能力全都能跑」"
   measure:
     command: >-
-      python3 -c "import subprocess,json,sys;a=subprocess.run([sys.executable,'scripts/doctor.py','--json'],capture_output=True,text=True);d=json.loads(a.stdout);b=subprocess.run([sys.executable,'scripts/doctor.py','--root','/tmp','--json'],capture_output=True,text=True);yes=[c for c in d['capabilities'] if c['state']=='yes'];ok=(a.returncode==0 and any(c['id']=='yaml' for c in d['checks']) and len(yes)>=6 and b.returncode==3 and len(d['next_actions'])==0);print('capabilities_yes',len(yes));print('non_checkout_exit',b.returncode);print('next_actions',len(d['next_actions']));print('rule_ok',ok);raise SystemExit(0 if ok else 1)"
+      python3 -c "import subprocess,json,sys,tempfile;r=lambda *a: subprocess.run([sys.executable,'scripts/doctor.py',*a],capture_output=True,text=True);a=r('--json');d=json.loads(a.stdout);by={c['id']:c['state'] for c in d['checks']};bl=[k for k,v in by.items() if v=='blocked'];cons=all(not(c['state']=='yes' and any(by.get(n)=='blocked' for n in c['needs'])) for c in d['capabilities']);b=r('--root',tempfile.mkdtemp(),'--json');ok=(a.returncode==(2 if bl else 0) and cons and 'yaml' in by and b.returncode==3);print('exit',a.returncode,'blocked',len(bl));print('capabilities_consistent',cons);print('non_checkout_exit',b.returncode);print('rule_ok',ok);raise SystemExit(0 if ok else 1)"
     expect_exit: 0
     expect_stdout: "rule_ok True"
 validation:
   method: metrics_compare
   baseline: >-
-    改动前没有体检入口：内网机器上的唯一线索是导出失败时面板拼出的 stderr 末四行；「这台机器还能跑哪些流程」
+    改动前没有体检入口：内网机器上的线索只有导出失败时面板拼出的 stderr 末四行；「这台机器还能跑哪些流程」
     与「面板用的哪个解释器」都无从查。
   success_criteria: >-
-    ① measure：环境齐全时退出 0、能力清单里 ≥6 条「能跑」、`next_actions` 为空，非检出目录退出 3；
-    ② 负向对照：在没有 PyYAML 的解释器上跑同一条命令（`python3 -m venv --without-pip` 造一个），
-    必须退出 2、`checks` 里 yaml 为 `blocked`、且结论段把依赖它的流程列为「不能跑」；
-    ③ 依赖清单不硬编码：新增一个第三方 import 的脚本后重跑，体检器自己报出来（不需要改体检器）。
+    ① measure：环境齐全时退出 0、能力清单里 ≥6 条「能跑」；有阻断项时退出 2，且不存在「state 为 yes
+    的能力里含 blocked 检查项」这种自相矛盾；非检出目录退出 3；
+    ② 负向对照 A（缺 PyYAML 的隔离解释器，含 3.10 以下）：退出 2、yaml 记 blocked、依赖它的流程记「不能跑」，
+    不再出现低版本上的「无阻断项」；
+    ③ 负向对照 B（放一份坏 YAML 进 traces/）：traces 记 blocked，且「导出 / 导入交接包」记「不能跑」，
+    不是七条流程全「能跑」；
+    ④ 负向对照 C（加一个无条件 import 未知包的脚本）：出现「其余脚本化流程」记「不能跑」，解决「N 项阻断
+    但能力全都能跑」；
+    ⑤ 负向对照 D（把能力表某个 id 写错）：能力表自检记 blocked。
   rollback: >-
     删 `scripts/doctor.py`、`skills/doctor/` 与 `docs/_manifest.yaml` 的登记项，重跑
     `python3 scripts/build_docs_index.py` 即回原状；本改动不写任何运行时状态，无数据需清理。
 gate:
-  condition: "再出现「依赖缺失在任务中途才暴露」或「体检器漏报某条流程」时，重跑 measure 并复核能力表与扫描面"
+  condition: "再出现「依赖缺失在任务中途才暴露」或「体检器结论与阻断项自相矛盾」时，重跑 measure 并复核能力表与扫描面"
 risk: low
 principle_refs: [2, 8, 10]
 decisions:
@@ -67,8 +72,8 @@ decisions:
     type: decision
     conclusion: >-
       依赖清单用 ast 扫 import + 解释器探测现算，不写清单：写死清单会有第二份真相（与 `_yaml.py` 那个
-      「解析入口单一」同一条理由），且新增第三方包时必然漏登记。能力表（导出 → 交接包、批量导 issue → gh）
-      是本文件里唯一写死的东西，因为它是接线事实，从 import 图推不出来。
+      「解析入口单一」同一条理由），新增第三方包时必然漏登记。能力表（导出 → 交接包、批量导 issue → gh）
+      是本文件里写死的那一部分，因为它是接线事实，从 import 图推不出来；它引用的 id 由 `能力表自检` 核对。
   - who: agent
     when: 2026-10-20
     type: decision
@@ -79,16 +84,30 @@ decisions:
     when: 2026-10-20
     type: eval
     conclusion: >-
-      measure 实跑 PASS（capabilities_yes 7 / non_checkout_exit 3 / next_actions 0 / rule_ok True）。
-      负向对照在无 PyYAML 的隔离解释器上实跑：退出 2，`[阻断] PyYAML`，结论段把 5 条流程列为「不能跑」。
+      独立预核（另起的 subagent 会话，核对首个提交）给出两项阻断级：①3.10 以下没有标准库名单，旧实现把
+      spec 为 None 判成标准库，缺 PyYAML 也报「无阻断项」——假绿；②能力表只按 id 取 state，没被引用的
+      阻断项（新第三方包、traces 解析不出）不影响任何能力，结论会出现「N 项阻断 + 七条流程都能跑」。
+      两条都复现了，已修：老解释器上 spec 为 None 判「不是标准库」并把 Python 3.10 以下记降级；
+      未被引用的阻断项单独列成「其余脚本化流程」；能力表 id 加自检；traces 未校验时记降级而非 ok。
   - who: agent
     when: 2026-10-20
-    type: action
-    conclusion: "边界如实标注：①面板的错误文案未改（导出失败仍不翻译「缺依赖」，本卡只补了发现入口）；
-      ②体检器不判内容，索引新鲜度等门禁仍由各自脚本判；③未加单元测试——它不做口径计算，判据是退出码三态与能力表；
-      ④只在 try/except ImportError 里用的包记为降级（缺席时脚本自己退化），不算阻断"
+    type: eval
+    conclusion: >-
+      预核的重要级也逐条处理：平台条件导入（`if sys.platform == ...` 里 import）改记降级不记阻断；
+      写在任何 `try` 里的 import 都算「有退路」（原先只认 `except ImportError`，`except Exception` 会误报）；
+      gh 从「诊断与知识沉淀」的接线里补上（上游修复核查确实用它）；命令行参数错误改为退出 4，与「有阻断项」
+      的 2 分开。未采纳的两条：`PIP_NAME`/`DISPLAY` 保留（只登记 import 名与发行包名的差异，装法文案已写明
+      「pip 名不同时按发行包名装」）；`--root` 不改变依赖扫描基准（依赖是解释器的属性，跟本脚本所在的
+      scripts/，已在帮助文本里写明）。
+  - who: agent
+    when: 2026-10-20
+    type: eval
+    conclusion: >-
+      边界照实写：①面板导出失败的错误文案未改（仍不翻译「缺依赖」），本卡只补了发现入口；②体检器不判内容；
+      ③未加单元测试——它不做口径计算，判据是退出码与能力表一致性；④3.8 未单独验证，与 3.9 同一条退化路径。
 actual_cost:
-  tokens: 26000
+  tokens: 48000
   source: estimate
   note: >-
-    含体检器三轮迭代（假阳性：平台条件导入与标准库判定）、skill 正文、登记与文档索引重建、CI 对等门禁往返。
+    含体检器四轮迭代（假阳性：平台条件导入与标准库判定；假绿：老解释器路径）、独立预核往返与五项修正、
+    skill 正文两稿、登记与文档索引重建、CI 对等门禁往返。

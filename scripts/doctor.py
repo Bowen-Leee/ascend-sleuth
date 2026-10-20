@@ -3,11 +3,10 @@
 
 ## 为什么需要
 
-依赖缺了不会在开单时报，而是在任务中途以一句 traceback 冒出来。实测：缺 PyYAML 的机器上
-点「导出交接包」，`scripts/export_trace.py` 死在模块级 `import yaml`，面板只回一句
-「导出脚本没有给出 JSON 结果」，病因在 traceback 末四行，读者要自己认。同类事故还有
-Windows 上没有 `python3`（面板探活退到 `python` / `py -3`，挑中的解释器未必是你装了包的那个）。
-体检器的职责就一条：**动工之前把"这台机器缺什么、缺了哪条流程不能用"说清**。
+依赖缺了不在开单时报，而在任务中途以一句 traceback 出现。实测：缺 PyYAML 的机器上点「导出交接包」，
+面板只回一句「导出脚本没有给出 JSON 结果」，根因在 traceback 的最后一行，读者要自己认。同类事故还有
+Windows 上没有 `python3`（面板探活退到 `python` / `py -3`，挑中的解释器未必是装了包的那个）。
+体检器的职责一条：**动工之前把"这台机器缺什么、缺了哪条流程不能用"说清**。
 
 ## 三条设计约束
 
@@ -15,8 +14,8 @@ Windows 上没有 `python3`（面板探活退到 `python` / `py -3`，挑中的�
    新增一个第三方包自动被发现。写死清单会有第二份真相，且必然腐烂。
 2. **只报不修**。体检器不做 `pip install`：装法是人的决定，内网机器上通常是离线 wheel，
    联网安装在这里失败会报得比原来更难读。
-3. **可重复**：只读、不写盘、不缓存。同一台机器两次跑结论必须一致——"反复发起检测"
-   的全部意义在这条。
+3. **可重复**：不写数据面、不缓存。同一台机器两次跑结论一致——"反复发起检测"的意义在这条。
+   运行时 Python 会生成 `scripts/__pycache__/`，那是解释器行为，不在数据面里。
 
 ## 与相邻脚本的分工（不要在这里重实现它们）
 
@@ -24,15 +23,14 @@ Windows 上没有 `python3`（面板探活退到 `python` / `py -3`，挑中的�
     verify_*.py                各类内容的结构校验
     rehearse_evolve_loop.py    端到端演练，把 CI 的命令清单逐条复跑
 
-体检器**不抄 CI 的命令清单**（抄一份会腐烂，权威处是 `.github/workflows/kb-checks.yml`），
-只在「下一步」里指出该跑哪一条。
+体检器**不抄 CI 的命令清单**（权威处是 `.github/workflows/kb-checks.yml`），只在「下一步」里指出该跑哪一条。
 
 用法：
   python3 scripts/doctor.py            # 人读三段：结论 / 证据 / 下一步
   python3 scripts/doctor.py --json     # 机器读（面板与脚本用）
   python3 scripts/doctor.py --root <检出>
 
-退出码：0 = 无阻断；2 = 有阻断项；3 = 不在检出里或自身跑不起来。
+退出码：0 = 无阻断；2 = 有阻断项；3 = 不在检出里；4 = 命令行参数不合法。
 """
 import argparse
 import ast
@@ -50,17 +48,18 @@ from _stdio import pin_utf8_stdio
 SCRIPTS_DIR = Path(__file__).resolve().parent
 
 # import 名与发行包名不同的几个。**只登记差异**，同名的不写——写全表就是第二份依赖清单。
+# 名称不在表里的包按 import 名作 pip 名尝试，装法文案里写明这一层假定。
 PIP_NAME = {"yaml": "pyyaml", "PIL": "pillow", "cv2": "opencv-python"}
-# 显示名（只登记大小写与缩写上的差异，不改原值：pip 名仍取 PIP_NAME）
+# 显示名（只登记大小写与缩写差异；pip 名仍取 PIP_NAME）
 DISPLAY = {"yaml": "PyYAML"}
 
 # 能力 → 它要求的检查项。「哪些流程能跑」这句结论不能从 import 图推出来：它是一条接线事实
-# （导出走 export_trace.py；批量导 issue 走 gh）。这一张表是本文件里唯一允许写死的东西。
+# （导出走 export_trace.py；批量导 issue 走 gh）。这一张表是本文件里唯一写死的东西。
 # 检查项 id：工具是命令名（python / git / node / gh），第三方包是**模块名**（yaml，不是 pip 名 pyyaml），
-# 数据面是 traces / index。
+# 数据面是 traces / index。表里写错 id 不会静默通过——`check_capability_table` 会报出来。
 CAPABILITIES = [
-    ("诊断与知识沉淀", ["python", "yaml", "git"]),
-    ("导出 / 导入交接包", ["python", "yaml"]),
+    ("诊断与知识沉淀", ["python", "yaml", "git", "gh"]),
+    ("导出 / 导入交接包", ["python", "yaml", "traces"]),
     ("面板 · 诊断 tab", ["python", "yaml"]),
     ("面板 · 指标 tab 的体检", ["python", "yaml"]),
     ("面板安装 / 构建 / CI 检查", ["node"]),
@@ -71,15 +70,24 @@ CAPABILITIES = [
 BLOCK, DEGRADE, OK = "blocked", "degraded", "ok"
 
 _STDLIB_NAMES = getattr(sys, "stdlib_module_names", None)
+_BUILTIN = set(sys.builtin_module_names)
 _STDLIB_DIRS = tuple(str(Path(p).resolve()) for p in
                      {sysconfig.get_paths().get("stdlib"), sysconfig.get_paths().get("platstdlib")} if p)
 
 
 def is_stdlib(name: str, spec) -> bool:
-    """标准库判定。3.10+ 直接用权威名单；更老的解释器退回路径推断。"""
+    """标准库判定。3.10+ 用权威名单；更老的解释器退回路径推断。
+
+    老解释器上 spec 拿不到时判「不是标准库」：把真缺的包判成标准库会导致「无阻断项」的假绿，
+    代价高于多报一个平台专属模块（那些模块在仓库里都以 try/except ImportError 导入）。
+    """
+    if name in _BUILTIN:
+        return True
     if _STDLIB_NAMES is not None:
         return name in _STDLIB_NAMES
-    if spec is None or spec.origin in (None, "built-in", "frozen"):
+    if spec is None:
+        return False
+    if spec.origin in (None, "built-in", "frozen"):
         return True
     origin = str(Path(spec.origin).resolve())
     if "site-packages" in origin or "dist-packages" in origin:
@@ -102,38 +110,57 @@ def resolve_spec(name: str):
         sys.path[:] = saved
 
 
-def guarded_imports(tree) -> set:
-    """`try: import msvcrt / except ImportError:` 这类平台条件导入 → 不算依赖。
-
-    它们本来就允许缺席（缺席时脚本走另一条分支），报成"阻断"会让体检器自己制造假红。
-    """
+def _imports_under(nodes) -> set:
     names = set()
-
-    def walk(node):
-        if isinstance(node, ast.Try):
-            catches_import_error = any(
-                (isinstance(h.type, ast.Name) and h.type.id in ("ImportError", "ModuleNotFoundError"))
-                or (isinstance(h.type, ast.Tuple) and any(
-                    isinstance(e, ast.Name) and e.id in ("ImportError", "ModuleNotFoundError")
-                    for e in h.type.elts))
-                for h in node.handlers)
-            if catches_import_error:
-                for sub in ast.walk(node):
-                    if isinstance(sub, ast.Import):
-                        names.update(a.name.split(".")[0] for a in sub.names)
-                    elif isinstance(sub, ast.ImportFrom) and sub.level == 0 and sub.module:
-                        names.add(sub.module.split(".")[0])
-        for child in ast.iter_child_nodes(node):
-            walk(child)
-
-    walk(tree)
+    for node in nodes:
+        for sub in ast.walk(node):
+            if isinstance(sub, ast.Import):
+                names.update(a.name.split(".")[0] for a in sub.names)
+            elif isinstance(sub, ast.ImportFrom) and sub.level == 0 and sub.module:
+                names.add(sub.module.split(".")[0])
     return names
 
 
+def _is_platform_test(node) -> bool:
+    """`if sys.platform == ...:` / `os.name` / `platform.system()` / `sys.version_info` —— 平台与版本条件。"""
+    for sub in ast.walk(node):
+        if isinstance(sub, ast.Attribute) and sub.attr in ("platform", "name", "system", "version_info"):
+            base = sub.value
+            if isinstance(base, ast.Name) and base.id in ("sys", "os", "platform"):
+                return True
+    return False
+
+
+def conditional_imports(tree) -> set:
+    """平台/版本条件里的 import → 本平台可能根本不需要它，缺席不算缺包。"""
+    out = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.If) and _is_platform_test(node.test):
+            out |= _imports_under(node.body)
+    return out
+
+
+def guarded_imports(tree) -> set:
+    """写在 `try` 里的 import → 作者留了另一条路（`except ImportError` 与 `except Exception` 都算）。
+
+    只在任何 try 之外 import 的才算「无条件依赖」。报成「阻断」会让体检器自己制造假红：
+    平台专属模块与「有就快一点、没有就走慢路」的可选包都写在 try 里。
+    """
+    out = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Try) and node.handlers:
+            out |= _imports_under(node.body)
+    return out
+
+
 def module_importers():
-    """扫本仓脚本的 import → {模块名: [引用它的文件名]}（只留非标准库、非本仓模块）。"""
+    """扫本仓脚本的 import → {模块名: {"files": [...], "hard": {文件名}}}。
+
+    hard = 无条件 import 它的文件；files 里其余的是在 try/except 或平台条件里用的（缺席时脚本自己退化）。
+    只收非标准库、非本仓模块。
+    """
     local = {p.stem for p in SCRIPTS_DIR.glob("*.py")}
-    out = {}          # 模块名 → {"files": [...], "hard": {文件名}}
+    out = {}
     for p in sorted(SCRIPTS_DIR.glob("**/*.py")):
         if "__pycache__" in p.parts or p.name == "doctor.py":
             continue
@@ -141,7 +168,7 @@ def module_importers():
             tree = ast.parse(p.read_text(encoding="utf-8"))
         except (OSError, SyntaxError):
             continue
-        guarded = guarded_imports(tree)
+        soft = guarded_imports(tree) | conditional_imports(tree)
         names = set()
         for node in ast.walk(tree):
             if isinstance(node, ast.Import):
@@ -149,20 +176,14 @@ def module_importers():
             elif isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
                 names.add(node.module.split(".")[0])
         for name in names:
-            name = name.lstrip("_") if name.startswith("_") and name.lstrip("_") in local else name
             if name in local:
                 continue
-            # 标准库名单只有 3.10+ 才有；更老的解释器上退回「在 try/except ImportError 里用」这条判据，
-            # 免得把 msvcrt 这类平台条件导入报成缺包
-            if _STDLIB_NAMES is None and name in guarded:
-                continue
-            spec = resolve_spec(name)
-            if is_stdlib(name, spec):
+            if is_stdlib(name, resolve_spec(name)):
                 continue
             row = out.setdefault(name, {"files": [], "hard": set()})
             if p.name not in row["files"]:
                 row["files"].append(p.name)
-            if name not in guarded:
+            if name not in soft:
                 row["hard"].add(p.name)
     return out
 
@@ -190,43 +211,44 @@ def tool_version(cmd, args=("--version",)):
 
 def check_python():
     v = ".".join(str(x) for x in sys.version_info[:3])
-    state = OK if sys.version_info >= (3, 9) else DEGRADE
+    state = OK if sys.version_info >= (3, 10) else DEGRADE
     note = f"体检用的解释器：{sys.executable}"
+    if state != OK:
+        note += "；3.10 以下没有标准库名单，依赖判定只能按路径推断，可能多报"
     if sys.platform.startswith("win"):
         note += "；面板按 python3 → python → py -3 的顺序挑，挑中的未必是这一个——点面板报缺依赖时先对一下"
     return {"id": "python", "label": "Python", "state": state, "detail": v, "note": note,
-            # CI 只跑 3.11，更低的版本没有验证过，所以低版本记降级而不是阻断
-            "fix": "" if state == OK else "装 Python 3.11 或更高（CI 在 3.11 上验证）"}
+            "fix": "" if state == OK else "装 Python 3.10 或更高（CI 在 3.11 上验证）"}
 
 
 def check_third_party():
-    rows = []
     rows = []
     found = module_importers()
     for name, info in sorted(found.items(), key=lambda kv: (-len(kv[1]["hard"] or kv[1]["files"]), kv[0])):
         label = DISPLAY.get(name, name)
         spec = resolve_spec(name)
         if spec is not None:
-            ver = package_version(name)
-            detail = f"{ver or '已装'}（{len(info['files'])} 个脚本引用"
+            detail = f"{package_version(name) or '已装'}（{len(info['files'])} 个脚本引用"
             if name == "yaml":
                 detail += "，C 加速" + ("可用）" if _has_csafe() else "不可用，只是慢）")
             else:
                 detail += "）"
-            rows.append({"id": name, "label": label, "kind": "package", "state": OK, "detail": detail, "fix": ""})
+            rows.append({"id": name, "label": label, "kind": "package", "state": OK,
+                         "detail": detail, "fix": ""})
             continue
         pip_name = PIP_NAME.get(name, name)
-        hard = sorted(info["hard"])
         fix = (f"{sys.executable} -m pip install {pip_name}"
+               f"；pip 名与 import 名不同时按发行包名装"
                f"；内网离线：{sys.executable} -m pip install --no-index --find-links <wheel 目录> {pip_name}")
+        hard = sorted(info["hard"])
         if hard:
             rows.append({"id": name, "label": label, "kind": "package", "state": BLOCK,
-                         "detail": f"未安装；{len(hard)} 个脚本 import 它（如 {'、'.join(hard[:3])}）",
+                         "detail": f"未安装；{len(hard)} 个脚本无条件 import 它（如 {'、'.join(hard[:3])}）",
                          "note": "缺它时那些脚本在 import 阶段就退出，不是跑到一半才失败",
                          "fix": fix})
         else:
             rows.append({"id": name, "label": label, "kind": "package", "state": DEGRADE,
-                         "detail": f"未安装；{len(info['files'])} 个脚本在 try/except ImportError 里用它",
+                         "detail": f"未安装；{len(info['files'])} 个脚本在 try/except 或平台条件里用它",
                          "note": "缺席时那些脚本自己退化，不会崩",
                          "fix": fix})
     return rows
@@ -292,8 +314,9 @@ def check_traces(root: Path):
     try:
         from _yaml import load_text
     except Exception:
-        return {"id": "traces", "label": "traces/", "kind": "data", "state": OK,
-                "detail": f"{len(files)} 份；未校验能否解析（PyYAML 缺席，见上）", "fix": ""}
+        return {"id": "traces", "label": "traces/", "kind": "data", "state": DEGRADE,
+                "detail": f"{len(files)} 份；未校验能否解析（缺 PyYAML）",
+                "fix": "先修 PyYAML，再重跑本命令复验 traces 能否解析"}
     bad = []
     for p in files:
         try:
@@ -304,22 +327,43 @@ def check_traces(root: Path):
     if bad:
         return {"id": "traces", "label": "traces/", "kind": "data", "state": BLOCK,
                 "detail": f"{len(files)} 份，其中 {len(bad)} 份解析不出（{'、'.join(bad[:3])}）",
+                "note": "导出交接包要解析它们",
                 "fix": "修那几份 trace 的 YAML（导出交接包与面板展开都读它们）"}
-    return {"id": "traces", "label": "traces/", "kind": "data", "state": OK, "detail": f"{len(files)} 份均可解析", "fix": ""}
+    return {"id": "traces", "label": "traces/", "kind": "data", "state": OK,
+            "detail": f"{len(files)} 份均可解析", "fix": ""}
 
 
 def check_index(root: Path):
     """索引是面板列表与候选路由的读入口。缺了只是要重建，不是环境问题。"""
     if (root / "knowledge" / "_index.yaml").is_file():
-        return {"id": "index", "label": "知识库索引", "kind": "data", "state": OK, "detail": "knowledge/_index.yaml 在", "fix": ""}
-    return {"id": "index", "label": "知识库索引", "kind": "data", "state": DEGRADE, "detail": "knowledge/_index.yaml 不在",
-            "fix": "python3 scripts/build_index.py"}
+        return {"id": "index", "label": "知识库索引", "kind": "data", "state": OK,
+                "detail": "knowledge/_index.yaml 在", "fix": ""}
+    return {"id": "index", "label": "知识库索引", "kind": "data", "state": DEGRADE,
+            "detail": "knowledge/_index.yaml 不在", "fix": "python3 scripts/build_index.py"}
+
+
+def check_capability_table(checks):
+    """能力表引用的 id 必须都存在于检查项里。
+
+    为什么值得单列一项：能力表按 id 取 state，写错一个 id 不会报错，只会让那条流程永远显示「能跑」——
+    假绿比缺项更难发现。
+    """
+    known = {c["id"] for c in checks}
+    unknown = sorted({n for _, needs in CAPABILITIES for n in needs if n not in known})
+    if not unknown:
+        return {"id": "capability-table", "label": "能力表自检", "kind": "data", "state": OK,
+                "detail": f"引用的 {len(known)} 个检查项都在", "fix": ""}
+    return {"id": "capability-table", "label": "能力表自检", "kind": "data", "state": BLOCK,
+            "detail": f"引用了不存在的检查项 id：{'、'.join(unknown)}",
+            "note": "拼错的 id 取不到 state，对应流程会静默显示「能跑」",
+            "fix": "修 scripts/doctor.py 的 CAPABILITIES"}
 
 
 def build_report(root: Path):
     checks = [check_python()]
     checks += check_third_party()
     checks += [check_git(root), check_node(), check_gh(), check_traces(root), check_index(root)]
+    checks.append(check_capability_table(checks))
     by_id = {c["id"]: c for c in checks}
     caps = []
     for name, needs in CAPABILITIES:
@@ -327,6 +371,12 @@ def build_report(root: Path):
         weak = [n for n in needs if by_id.get(n, {}).get("state") == DEGRADE]
         caps.append({"name": name, "needs": needs,
                      "state": "no" if miss else ("partial" if weak else "yes"), "missing": miss})
+    # 没有任何能力引用的阻断项（新出现的第三方包、能力表自检失败）：单独列一条，否则结论会一边报
+    # 「N 项阻断」一边说七条流程都能跑
+    covered = {n for _, needs in CAPABILITIES for n in needs}
+    orphan = [c["id"] for c in checks if c["state"] == BLOCK and c["id"] not in covered]
+    if orphan:
+        caps.append({"name": "其余脚本化流程", "needs": orphan, "state": "no", "missing": orphan})
     blocked = [c for c in checks if c["state"] == BLOCK]
     degraded = [c for c in checks if c["state"] == DEGRADE]
     actions = []
@@ -374,9 +424,19 @@ def render(rep) -> str:
     return "\n".join(lines)
 
 
+class _Parser(argparse.ArgumentParser):
+    """参数错误用 4，与「有阻断项」的 2 分开——面板和脚本要能区分「环境有问题」与「命令写错了」。"""
+
+    def error(self, message):
+        print(f"doctor: {message}", file=sys.stderr)
+        raise SystemExit(4)
+
+
 def main() -> int:
-    ap = argparse.ArgumentParser(description="本机环境体检：哪些流程能跑、哪些会降级")
-    ap.add_argument("--root", default=None, help="仓库根目录（默认：本脚本上两级）")
+    ap = _Parser(description="本机环境体检：哪些流程能跑、哪些会降级")
+    ap.add_argument("--root", default=None,
+                    help="仓库根目录（默认：本脚本上两级）。只改数据面基准（traces / 索引 / 检出判定）；"
+                         "依赖扫描始终跟本脚本所在的 scripts/")
     ap.add_argument("--json", action="store_true", help="只吐 JSON（面板/脚本用）")
     args = ap.parse_args()
 
