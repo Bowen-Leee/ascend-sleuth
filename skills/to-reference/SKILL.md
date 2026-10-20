@@ -210,6 +210,7 @@ content:
 
 - `status` **写 `active`**——产出即 active，PR review 即审核闸门，合入即生效；**深审条件在产出时就满足**（case-derived + methodology 需 ≥3 条 case 引用，CI 强校验，产出时不达标 PR 直接红——不允许以 active 提交未达深审门槛的词条）。未合入的 PR 分支不 main，天然不进诊断上下文；合入动作即审核通过；
 - 初始可信度按来源类型（写进词条注释，供审核参考；与 case 的排序分数不是一回事）：`official-doc` 0.6 / `engineer-input` 0.3 / `case-derived` 0.3–0.6（case 数与一致性越高越靠近 0.6）；
+- **`sources[].cases` / `content.*.source_cases` 只引用已升格的 case id**（在 `knowledge/` 里，含 `_archive/`）：草稿还在 `postmortems/inbox/` 时**不得**归纳——`verify_references.py` 会红（引用了不存在的 case），且草稿被 groom 拒掉后来源永久指空。升格后再提炼，或由 groom 的 R8 在本轮执行；
 - `last_verified` 填今天——grill 阶段用户认可即视为一次人工确认，但**这不替代 maintainer 审核**；
 - **产出前检查：词条文件里不得有任何 `#` 注释行**（上模板中的注释全部删掉）——`grep -c "#" <file>` 应为 0。
 

@@ -381,11 +381,12 @@ trace 记 {action: attribution, verdict: case_error|execution_error, evidence}
 | 面板能力 | 对应流程环节 | 说明 |
 |---|---|---|
 | 会话列表（状态徽章/更新时间/计数） | 诊断入口 | 按 `updated_at` 倒序，resume 续接后置顶 |
-| 搜索框（session/状态/框架/命中 case） | 诊断入口 | 会话多时快速过滤定位 |
+| 搜索框（session/状态/框架/命中 case/待沉淀/待闭环） | 诊断入口 | 会话多时快速过滤定位 |
 | 轨迹展开（summary/evidence/reason） | 诊断过程可视化 | summary=问题背景段；evidence=完整证据（inline 原文/文件引用/缺口）；reason=决策依据 |
 | 参考层标注 | 2.5 层先验知识 | `reference_lookup` 步骤带"参考层"徽章 + 使用统计 |
 | 继续诊断（指令 copy → 对话触发） | resume | 未解决会话的续接入口，与 resume skill 闭环 |
 | 沉淀此案例（指令 copy → 对话触发） | 沉淀（第 2 节） | 已解决未沉淀会话触发 to-postmortem |
+| 待沉淀 / 待闭环筛选与批量入口 | 沉淀 | 前者按筛选结果一次生成批量 to-postmortem 命令；后者勾选后批量闭环（只允许「已解决 · fix 生效」一种结局） |
 | 沉淀状态（submitted/knowledge/archived） | groom 转正跟踪 | 零推断：动作发生时写，不反查 inbox |
 | 证据文件点击打开 | 跨 agent 自包含 | `traces/evidence/<session_id>/` 本地文件 |
 | 指标 tab（timeline 快照/kind 过滤/实时计算） | 自演进观测（第 3 节） | 展示 `metrics/timeline.yaml` 各期快照（live/replay/example 可过滤）+ 运行 trace_metrics.py 实时对照 |

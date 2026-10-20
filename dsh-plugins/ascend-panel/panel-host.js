@@ -491,6 +491,9 @@ return {
             reportSource: rep ? rep.source : null,
             // `active_case` 是 case id 还是"没命中"的占位/说明串（见 activeCaseKindOf）
             activeCaseKind: activeCaseKindOf(activeCase),
+            // 沉淀状态（trace 顶层 `sedimented`）：列表要能筛「已闭环未沉淀 / 已沉淀待闭环」——
+            // 这两类此前只有展开卡片才看得见，会话一多就成了看不见的债。三种写法都认（见 readSedimented）。
+            sedimented: readSedimented(doc),
             sedimentCandidates: Array.isArray(doc.sediment_candidates) ? doc.sediment_candidates.length : 0,
             // 轨迹解析没收下的行数（见 anomalyOf）：列表上的步数由同一份解析结果算出，
             // 解析少了就标在卡片上，别让"1 用户输入"看起来像这单真的只有一步。

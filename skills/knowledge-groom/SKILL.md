@@ -66,9 +66,9 @@ disable-model-invocation: true
      - `new_pattern` → 结构化 + 语义校验 → **过升格闸门** → 升格 `knowledge/<ns>/`。校验失败标 `needs-structurer-review`，语义不明标 `needs-human-review`
      - **升格闸门（按来源分，不是一刀切）**：跑 `python3 scripts/verify_case_draft.py --gate <草稿路径>`。
        - **外部来源（issue-ingest / reference-ingest 管道、无 `source_session`）→ 跳过闸门**。这类 case 的"闭环"是维护者结论 / fix PR 已经替它确认过的（其 `verification` 档位即证明），现场没有 session 可闭环；对它们要求现场闭环等于把知识注入的主通道堵死。
-       - **自诊断来源（带 `source_session`）→ 默认须反馈闭环**：来源 trace 的 `feedback.outcome: resolved`（即 fix 被应用且问题消失）才升格。没解决的不必进知识库，留在本地即可。
+       - **自诊断来源（带 `source_session`）→ 默认须闭环**（两轴，与 `trace-status.yaml` 一致）：**命中单**看来源 trace 的 `feedback.outcome: resolved`（fix 被应用且问题消失）；**无命中单**没有 case 可归属，看来源 trace 的 `status: resolved`。没闭环的不必进知识库，留在本地即可。
        - **例外（未闭环但已有强外部证据）**：`verification` ∈ {`upstream-fix-merged`、`upstream-maintainer-confirmed`、`upstream-official-doc`、`engineer-report`} → **需 owner 双签**方可升格。理由：新根因当天发现、修复尚未应用是知识增长的主路径，不能一律挡掉；但这档必须是**外部验证**，不接受 `investigation` 纯推断。
-       - `verification: investigation` 且未闭环 → **拦下**，提示三条出路（等闭环 / 补强外部证据 / 走双签例外）。
+       - `verification: investigation` 且未闭环 → **拦下**，提示三条出路（等闭环 / 补强外部证据 / 走双签例外，草稿产出时 to-postmortem 的报告里已写闸门预判）。
    - **转正后回写来源 trace 的沉淀状态（闭环，动作发生时写）**：每条被 accept 的草稿，若来源是诊断 trace（头注释记了 `traces/<session_id>.yaml`），转正落位后**回写该 trace 的 `sedimented.state`**——`new_pattern`/`variant_of` 升格 Tier 2 → `{state: knowledge, caseId: <case-id>}`；`covered_by` 仅 postmortem 转正 → `{state: archived, caseId: <case-id>}`。教训：曾因 groom 转正后未回写，trace 停留 `submitted`，诊断面板"沉淀漏斗"显示 4 沉淀 → 0 转正（数据滞后于实际入库）——零推断纪律同样约束转正侧：**转正是动作，发生时必须写**。
    - inbox 停留 >2 周的条目在摘要里标红（队列不是档案）
    - **建议与决定分离**：预分诊只排序注意力，accept / adjust / reject 由人
@@ -149,7 +149,7 @@ disable-model-invocation: true
 - `references/` 下文件数 >50，**或** metrics 显示 reference 检索退化（漏检增多 / 平台匹配耗时长）；
 - 达到 → 变更摘要**建议**按层建索引——背景类走 `scripts/build_ref_summary_index.py`（生成 `references/_summary-index.yaml`），流程类走 `scripts/build_procedure_index.py`（生成 `references/_procedure-index.yaml`）；两层都已有生成物与 `--check`（CI 强制），**case 层 `build_index.py` 与之同构**。**建议不自动改生成物**（生成物只由脚本写，建议与决定分离）；未达到 → 不提及（目录 + grep 足够，不为不存在的规模购置基础设施）。
 
-**R8. case 共性提炼候选（case-derived reference 触发信号）**：跑 `python3 scripts/tag_hygiene.py`（机械聚类，零 token 手扫）——**同 tag 的 case ≥3 条且 ≥3 条未被 reference 收录** → 变更摘要列出该组（tag + case id），**建议**走 `/skill:to-reference --ingest-cases "[id1, id2...]"` 提炼共性（methodology / error-code 表追加）——只建议不自动提炼（建议与决定分离；同 tag 是弱信号，是否提炼由 owner 定）。
+**R8. case 共性提炼候选（case-derived reference 触发信号）**：跑 `python3 scripts/tag_hygiene.py`（机械聚类，零 token 手扫）——**同 tag 的 case ≥3 条且 ≥3 条未被 reference 收录** → 变更摘要列出该组（tag + case id），**建议**走 `/skill:to-reference --ingest-cases "[id1, id2...]"` 提炼共性（methodology / error-code 表追加）。**建议与决定分离**：同 tag 是弱信号，是否提炼由 owner 定；owner 认可后**在同一轮 groom 里由 agent 执行**（不再等下一次），产出的 reference 与本轮升格随同一个 PR 提交。**执行前提：case 已升格**——R8 只扫 `knowledge/`，引用的 id 天然都已入库；`references/**` 的 `sources[].cases` 不得出现 `postmortems/inbox/` 里的草稿 id（CI 会红）。
 
 - **按 tag 类别过滤**：脚本标注每组为「模型名 / 环境·特性 / 机制」。**只有「机制」族值得提炼**——模型名族（glm5/qwen3.5/deepseek-v4…）同模型 ≠ 同根因，提炼出来是"该模型排障清单"而非独立于事故的先验知识；环境·特性族（mtp/spec-decode/w8a8/310p/cudagraph）是"用了什么"而非"哪里坏了"，且多数已被现有方法论覆盖（如 `mtp` 归 `ascend-vllm-spec-decode-mtp-triage`）。摘要里模型名/特性族只列一行计数，不进候选。
 - **先看形态**：组内根因**分散**（同现象不同根因）→ 适合提炼 methodology（给分流路径）；根因**收敛**（同根因）→ 不走提炼，走 case 合并 / `variant_of`（提炼只会得到一条 case 的复述）。

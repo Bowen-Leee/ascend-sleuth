@@ -115,7 +115,7 @@ flowchart LR
 | `route.hit_case` | 字符串或空 | 案例 id | 阶段一命中的案例，与最终沉淀的案例可以不同 |
 | `touched.cases` | 列表 | 案例 id | 含命中、被加载、被排除三种触达方式 |
 | `touched.references` | 列表 | 先验词条 id | 来自 `reference_lookup` |
-| `outcome.status` | 枚举 | `in_progress`、`resolved`、`escalated`、`archived`、`unknown` | 词表在 `trace-status.yaml:16-53`。`abandoned` 不在这里，它是顶层 `stop_reason` 的取值 |
+| `outcome.status` | 枚举 | `in_progress`、`resolved`、`escalated`、`archived`、`unknown` | 词表在 `trace-status.yaml` 的 `status` 段。`abandoned` 不在这里，它是顶层 `stop_reason` 的取值 |
 | `feedback.outcome` | 枚举 | `pending`、`resolved`、`not_resolved`、`partial` | 现场回报结果，`pending` 表示还没回报。`feedback` 与 `outcome` 同为顶层字段，不是 `outcome` 的子键 |
 | `sedimented.state` | 枚举 | `none`、`submitted`、`knowledge`、`archived` | 未沉淀、草稿待审、已进知识库、转历史资料兜底检索（Tier 3） |
 | `tool_calls[].tool` | 字符串 | 工具名，如 `Grep`、`Read`、`Bash` | harness 侧的工具标识 |
@@ -586,7 +586,7 @@ EOF
 
 | 用途 | 入口 |
 |---|---|
-| 轨迹字段与事件词表 | `skills/diagnose/references/diagnosis-trace.md:5-15`、`diagnosis_state.yaml.example`、`trace-status.yaml:16-53` |
+| 轨迹字段与事件词表 | `skills/diagnose/references/diagnosis-trace.md:5-15`、`diagnosis_state.yaml.example`、`trace-status.yaml` 的 `status` 段 |
 | 诊断记录的汇总与本机明细 | `scripts/trace_entry_activity.py`、`metrics/entry-activity.local/<session_id>.yaml` |
 | 记录与生成物 | `metrics/entry-activity.d/<周>.yaml`、`scripts/build_entry_activity.py`、`metrics/entry-activity/<deployment>.yaml`、`scripts/verify_entry_activity.py` |
 | 期文件组装、体检与判据 | `scripts/metrics_snapshot.py`、`scripts/metrics_health.py`、`scripts/verify_metrics.py`、`metrics/gates.yaml` |
