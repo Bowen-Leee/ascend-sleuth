@@ -282,6 +282,18 @@ harness 侧的会话号（DSH 里是 `$DSH_SESSION_ID`）。**用途只有一个
 
 **无命中 case 的单没有 feedback 可写**：它的闭环只记 `status: resolved`（面板的「已解决」命令就是这么做的）。别为了"留一条"而补占位 `case` 的 feedback 事件——结算侧找不到 case 会把它挂成"待结算"、游标不再前进；升格闸门对这一类读 `status`（见 `scripts/verify_case_draft.py`）。
 
+## 沉淀状态（`sedimented`，第三条轴）
+
+顶层 `sedimented: {state, case_id, inbox_path}` 记"这单的结论进知识库了没"。它与 `status`（诊断收尾）、`feedback.outcome`（命中 case 的 fix 行不行）不是同一件事，三条轴各有名字，不互相借；但无命中单没有 case 可写 `outcome`，它的闭环落在 `status` 上。
+
+字段写法以 `diagnosis_state.yaml.example` 为准（`case_id` / `inbox_path`）；面板读端同时认旧 trace 里的 `caseId`：
+
+- `submitted`：to-postmortem 产出草稿、落 `postmortems/inbox/` 时回写（动作发生时写，不做推断）；
+- `knowledge` / `archived`：knowledge-groom 转正后回写，并记 `case_id`；
+- 字段缺失按 `none` 读，不显式写。
+
+取值与写入时机以仓库根 `trace-status.yaml` 的 `sedimented:` 段为准。诊断面板的「待升格」筛选就是 `submitted` 且来源诊断未闭环——这类草稿升格时会被 `scripts/verify_case_draft.py` 的闸门拦下；强外部证据档（上游修复已合入等）可走 owner 双签。
+
 ## 词表同步纪律
 
 `trace` 的 action 词表与 `scripts/trace_metrics.py` 的 `KNOWN_ACTIONS` 保持一致；`reference_lookup` 的 `purpose` 与 `outcome` 分别与 `KNOWN_PURPOSES` / `KNOWN_OUTCOMES` 保持一致；顶层 `stop_reason` 与 `KNOWN_STOP_REASONS` 保持一致；新增取值必须两处同步（本文 + 脚本）。user 事件无 action，不参与词表检查。
