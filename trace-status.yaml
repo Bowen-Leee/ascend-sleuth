@@ -76,12 +76,17 @@ outcome:
     counts_as: misdiagnosis  # 命中的 case 给出的 fix 不完整
     meaning: 症状缓解但未根治
 
-# 知识沉淀状态（trace 顶层 `sedimented`）——**第三条轴**，与上面两条正交：
+# 知识沉淀状态（trace 顶层 `sedimented`）——**第三条轴**，与上面两条不是同一件事：
 #   status    说"这单还管不管"（诊断收尾）；
 #   outcome   说"命中 case 的 fix 行不行"（诊断闭环，升格依据）；
 #   sedimented 说"结论进知识库了没"（本段）。
-# 谁读：诊断面板的列表筛选与徽标（「待沉淀」= 已闭环且 none；「待升格」= submitted 且未闭环）。
+# 三条轴不是互不相干：无命中单没有 case 可写 outcome，它的闭环落在 status 上
+# （`scripts/verify_case_draft.py` 的闸门对这一类读 `status: resolved` 且要求没有显式 outcome）。
+# 谁读：诊断面板的列表筛选与徽标（「待沉淀」= 已闭环、none、且命中的 case 不在库；
+#       「待升格」= submitted 且来源诊断未闭环）。
 # 判据同源：`scripts/verify_case_draft.py` 的升格闸门按前两条轴决定放行，本轴只记进度。
+# 字段写法以 `diagnosis_state.yaml.example` 为准：`case_id`、`inbox_path`；面板的读端同时认旧
+# trace 里的 `caseId`（camelCase，历史件就是这么写的）。
 sedimented:
   - value: none
     label: 未沉淀

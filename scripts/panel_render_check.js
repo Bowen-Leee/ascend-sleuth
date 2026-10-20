@@ -2587,18 +2587,30 @@ print(json.dumps([{'role': s(t.get('role')), 'step': s(t.get('step')), 'action':
       }
       const closedNew = Object.assign({}, base, { sessionId: 's-new', file: 's-new.yaml', status: 'resolved', sedimented: { state: 'none' } })
       const awaiting = Object.assign({}, base, { sessionId: 's-await', file: 's-await.yaml', feedback: 'pending', sedimented: { state: 'submitted' } })
+      // 判据回归夹具（变异测试踩过的两个删除点）：
+      //   staleOutcome    —— 无命中单已 resolved，但留了 feedback.outcome: not_resolved。
+      //                      闭环要求"没有显式 outcome"，所以它仍算未闭环 → 进待升格。
+      //                      删掉 isClosedOf 的 `&& !outcome`，待升格会从 2 掉到 1。
+      //   closedSubmitted —— 已闭环且草稿已提交。闭环的单不该再算待升格。
+      //                      删掉 needPromoteOf 的 `&& !isClosedOf`，待升格会从 2 涨到 3。
+      //   两者都靠下面"筛选入口各带数量"的精确值钉住。
+      const staleOutcome = Object.assign({}, base, { sessionId: 's-stale', file: 's-stale.yaml', status: 'resolved', feedback: 'not_resolved', sedimented: { state: 'submitted' } })
+      const closedSubmitted = Object.assign({}, base, { sessionId: 's-closed-sub', file: 's-closed-sub.yaml', status: 'resolved', sedimented: { state: 'submitted' } })
       const inKb = Object.assign({}, base, { sessionId: 's-kb', file: 's-kb.yaml', status: 'resolved', activeCase: 'C-9', activeCaseKind: 'case', activeCaseInKb: true, sedimented: { state: 'none' } })
-      const sessionsFixture = [closedNew, awaiting, inKb]
+      const sessionsFixture = [closedNew, awaiting, staleOutcome, closedSubmitted, inKb]
       const host = (m) => m === 'ascend-traces-list'
         ? { ok: true, sessions: sessionsFixture }
         : { ok: true, steps: [], summary: null }
       const t = (await renderAsync(ascSrc, { sessionId: 'sess-1' }, host)).text
       expect('已闭环未沉淀的单带「已闭环 · 待沉淀」徽标', /已闭环 · 待沉淀/.test(t), t.slice(0, 300))
-      expect('已沉淀未闭环的单带「已沉淀 · 待升格」徽标', /已沉淀 · 待升格/.test(t), t.slice(0, 300))
+      expect('草稿已提交但来源未闭环的单带「未闭环 · 待升格」徽标', /未闭环 · 待升格/.test(t), t.slice(0, 300))
       expect('命中 case 已在库的单不进待沉淀（再沉淀只会被判 covered_by）',
         (t.match(/已闭环 · 待沉淀/g) || []).length === 1, '徽标=' + (t.match(/已闭环 · 待沉淀/g) || []).length)
-      expect('三个筛选入口各带数量',
-        /未闭环 1/.test(t) && /待沉淀 1/.test(t) && /待升格 1/.test(t), t.slice(0, 300))
+      expect('未闭环徽标只挂在该挂的 2 单上（闭环 + 已提交的不算）',
+        (t.match(/未闭环 · 待升格/g) || []).length === 2, '徽标=' + (t.match(/未闭环 · 待升格/g) || []).length)
+      // 精确数量：待升格 = 2（awaiting + staleOutcome）而不是 1 或 3，直接钉住两条判据的删除点。
+      expect('三个筛选入口各带数量（待升格 = 2，含遗留 outcome 的单，不含已闭环的单）',
+        /未闭环 1/.test(t) && /待沉淀 1/.test(t) && /待升格 2/.test(t), t.slice(0, 300))
 
       // 两条批量分支**真的渲染并点得动**：源码字符串断言挡不住"分支写错/永不渲染"。
       hookIdx = 0; hookState = []; depState = []; effectQueue = []
@@ -2643,17 +2655,19 @@ print(json.dumps([{'role': s(t.get('role')), 'step': s(t.get('step')), 'action':
       expect('批量沉淀命令可复制出来且含 to-postmortem',
         /to-postmortem 批量沉淀这些 session/.test(treeText(tree)))
 
-      const chipPromote = findByText('待升格 1')
+      const chipPromote = findByText('待升格 2')
       expect('「待升格」筛选入口可点', !!chipPromote)
       if (chipPromote) { chipPromote.fn({}); await pumpTree(3) }
-      const btnAll = findByText('全选这 1 单')
+      const btnAll = findByText('全选这 2 单')
       expect('待升格的批量入口真的渲染出来', !!btnAll, treeText(tree).slice(0, 300))
       if (btnAll) { btnAll.fn({}); await pumpTree(3) }
-      const btnClose = findByText('批量标已解决（已选 1 单）')
+      const btnClose = findByText('批量标已解决（已选 2 单）')
       expect('勾选后出现批量标已解决按钮', !!btnClose, treeText(tree).slice(0, 300))
       if (btnClose) { btnClose.fn({}); await pumpTree(3) }
-      expect('批量闭环命令带出单一结局与两条轴的处理',
-        /结局都是「已解决 · fix 生效」/.test(treeText(tree)) && /未命中 case 的只标 status: resolved/.test(treeText(tree)))
+      expect('批量闭环命令带出单一结局、两条轴的处理，以及清理遗留 outcome',
+        /结局都是「已解决 · fix 生效」/.test(treeText(tree))
+        && /未命中 case 的只标 status: resolved/.test(treeText(tree))
+        && /一并清掉/.test(treeText(tree)))
 
       // 诊断收尾轴：未闭环筛选只留没收尾的单（escalated/archived 是终态，不算未闭环）。
       const chipOpen = findByText('未闭环 1')

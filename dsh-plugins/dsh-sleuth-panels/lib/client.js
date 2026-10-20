@@ -1,6 +1,6 @@
 /* eslint-disable */
 // 生成物 —— 勿手改。由 `node scripts/build_panel_bundle.js` 从下列源文件拼出：
-//   dsh-plugins/ascend-panel/panel-client.js  (sha256:2f497b602677)
+//   dsh-plugins/ascend-panel/panel-client.js  (sha256:2d5be90d690a)
 //   dsh-plugins/ev-panel/panel-client.js  (sha256:9e836d4c1993)
 // 校验：`node scripts/build_panel_bundle.js --check`。
 //
@@ -63,7 +63,7 @@ window.__ModuleLoader__.load({
       id: 'ascend-panel',
       build(host, styles) {
         return (function () {
-// ---- dsh-plugins/ascend-panel/panel-client.js (sha256:2f497b602677) 原文开始 ----
+// ---- dsh-plugins/ascend-panel/panel-client.js (sha256:2d5be90d690a) 原文开始 ----
 return {
   apply(ctx) {
     const slots = ctx.get('slots')
@@ -637,9 +637,10 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
     // 三条轴各有名字，不互相借（词表见仓库根 `trace-status.yaml`）：
     //   诊断收尾 `status`（还管不管这单）｜诊断闭环（能不能升格）｜知识沉淀 `sedimented.state`。
     // 「待闭环」以前同时指后两条轴，筛选出来的到底是哪一类债，读者分不清。
+    // 三条轴不是互不相干：无命中单的闭环就落在收尾轴上（它没有 case 可写反馈）。
     //
-    // 诊断闭环的判据必须与 `scripts/verify_case_draft.py` 的升格闸门逐字同源，否则面板说
-    // "已闭环"、groom 却拦（或反过来）：
+    // 诊断闭环的判据与 `scripts/verify_case_draft.py` 的升格闸门是同一口径——两处各自实现，
+    // 改一处必须同步另一处，否则面板说"已闭环"、groom 却拦（或反过来）：
     //   - 命中单看 `feedback.outcome: resolved`；
     //   - 无命中单看 `status: resolved` **且没有显式 outcome**——outcome 有值就表示
     //     "明确未闭环"或"还没回报"，status 不能覆盖它（闸门就是这么判的）。
@@ -655,7 +656,10 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
     function isClosedOf(s) {
       if (!s) return false
       const outcome = String(s.feedback || '')
-      if (caseKindOf(s) === 'case') return outcome === 'resolved'
+      // 与闸门同一顺序：先认 outcome: resolved（命中单的正常闭环；无命中单理论上不写，
+      // 但交接包里可能出现，闸门对这类也放行）；再认无命中单的 status: resolved。
+      if (outcome === 'resolved') return true
+      if (caseKindOf(s) === 'case') return false
       return s.status === 'resolved' && !outcome
     }
     // 已闭环、还没沉淀、且本次命中的 case 不是库里已有的 → 值得沉淀（新形态或未命中单）。
@@ -1721,7 +1725,7 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
         key: 'rs', label: '继续诊断', style: btnPrimary, title: '生成续接指令',
         cmd: '用 /skill:resume-diagnosis 续接 ' + s.sessionId,
       })
-      for (const c of closeCmds) actions.push({ key: c.key, label: c.label, style: toneStyle(c.tone), title: '生成闭环指令（复制后粘到对话执行）', cmd: c.cmd })
+      for (const c of closeCmds) actions.push({ key: c.key, label: c.label, style: toneStyle(c.tone), title: '生成收尾指令（复制后粘到对话执行）', cmd: c.cmd })
       const openedCmd = actions.filter(a => a.key === showCmd)[0] || null
       // 报告入口（diagnose 步骤 6 的产出）。**沉淀候选的明细不在这里**——它归展开态的沉淀区
       // （case 与先验候选分家、各带入口，见上方「沉淀区」）：候选与"本单沉淀状态"是同一件事的两面，
@@ -1812,7 +1816,7 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
         // 键盘与事件都会打架。它只在「待升格」筛选下渲染。
         selectable ? React.createElement('label', { style: { display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px 0', fontSize: 'var(--t-sm)', color: T.text2, cursor: 'pointer' } },
           React.createElement('input', { type: 'checkbox', checked: selected, onChange: onToggle }),
-          '选中用于批量闭环') : null,
+          '选中用于批量标已解决') : null,
         React.createElement('button', {
           type: 'button', 'aria-expanded': !!open, onClick: toggle, className: 'sleu-row',
           style: { width: '100%', padding: '12px 16px', cursor: 'pointer', background: 'transparent', border: 'none', textAlign: 'left', color: T.text, font: 'inherit' },
@@ -1850,7 +1854,7 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
             // 「待沉淀」「待升格」两条待办的徽标（判据与升格闸门同源）。
             // 它们此前只有展开卡片才看得见——会话一多就成了看不见的积压。
             needSedOf(s) ? React.createElement('span', { title: '已闭环、还没沉淀——在「待沉淀」筛选里可一次生成批量沉淀命令', style: tinyBadge('var(--d-purple)') }, '已闭环 · 待沉淀') : null,
-            needPromoteOf(s) ? React.createElement('span', { title: '草稿已提交到 inbox，但来源诊断还没闭环——升格闸门会拦；在「待升格」筛选里可勾选后批量标已解决', style: tinyBadge('var(--d-amber)') }, '已沉淀 · 待升格') : null,
+            needPromoteOf(s) ? React.createElement('span', { title: '草稿已提交到 inbox，但来源诊断还没闭环——升格前的检查会拦；在「待升格」筛选里可勾选后批量标已解决', style: tinyBadge('var(--d-amber)') }, '未闭环 · 待升格') : null,
             // 外来单（从另一台机器接手来的）：标在收起来的卡片上，因为"这单不是本机开的"
             // 会影响怎么读它的状态——比如知识库版本不一致时，候选集可能与 trace 记的对不上。
             // 依据是 traces/handoff/<sid>.yaml（import_trace.py 落位时留档）；host 读不到就不给这个标记。
@@ -2037,14 +2041,15 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
         nNeedSed ? nNeedSed + ' 待沉淀' : null,
         nNeedPromote ? nNeedPromote + ' 待升格' : null,
       ].filter(Boolean).join(' · ')
+      // 说明放 title：这几个词只有在点开时才需要，常驻在筛选条上会把一行 chip 读成文档。
       const kbChips = [
         { id: 'all', label: '全部' },
-        { id: 'kb', label: '库中已有' },
-        { id: 'new', label: '新形态' },
-        { id: 'miss', label: '未定位' },
-        { id: 'open', label: '未闭环' + (nOpen ? ' ' + nOpen : '') },
-        { id: 'need-sed', label: '待沉淀' + (nNeedSed ? ' ' + nNeedSed : '') },
-        { id: 'need-promote', label: '待升格' + (nNeedPromote ? ' ' + nNeedPromote : '') },
+        { id: 'kb', label: '库中已有', title: '命中的 case 已在 knowledge/ 里' },
+        { id: 'new', label: '新形态', title: '命中了某个 case，但库里还没有它' },
+        { id: 'miss', label: '未定位', title: '还没定位到知识库 case' },
+        { id: 'open', label: '未闭环' + (nOpen ? ' ' + nOpen : ''), title: '诊断还没收尾（进行中，或状态未知）' },
+        { id: 'need-sed', label: '待沉淀' + (nNeedSed ? ' ' + nNeedSed : ''), title: '已闭环、还没沉淀，且命中的 case 不在库里——这类值得入库' },
+        { id: 'need-promote', label: '待升格' + (nNeedPromote ? ' ' + nNeedPromote : ''), title: '草稿已提交到 inbox，但来源诊断还没闭环；升格（把草稿转成正式 case 前的检查）会拦下' },
       ]
 
       // 空态：先说"这一屏为什么空"，再说下一步。筛选为空与"还没有任何诊断"是两件事——
@@ -2057,7 +2062,7 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
         miss: '没有"尚未定位到 case"的诊断。',
         open: '没有进行中或状态未知的诊断。已收尾的单不在其中。',
         'need-sed': '没有"已闭环、尚未沉淀"的单。值得入库的诊断在闭环后会出现在这里，可一次生成批量沉淀命令。',
-        'need-promote': '没有"草稿已提交、来源诊断尚未闭环"的单。这类单升格时会被闸门拦下。',
+        'need-promote': '没有"草稿已提交、来源诊断尚未闭环"的单。这类单升格时会被拦下；有强外部证据（上游修复已合入等）的可走 owner 双签。',
       }
       const emptyTitle = q ? '没有匹配的会话'
         : (!totalSessions ? '还没有诊断记录'
@@ -2099,7 +2104,7 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
           const ids = chosen.map(s => s.sessionId).filter(Boolean)
           const text = '批量闭环以下 ' + ids.length + ' 单，结局都是「已解决 · fix 生效」：' + ids.join('、')
             + '。逐单：有命中 case 的标 status: resolved + feedback{outcome: resolved} 并写一条 feedback 事件；'
-            + '未命中 case 的只标 status: resolved，不写 feedback。'
+            + '未命中 case 的只标 status: resolved，不写 feedback；若 trace 里还留着 feedback.outcome（旧数据），一并清掉。'
           const allSelected = list.every(s => sel[s.file])
           return React.createElement('div', { style: { marginBottom: 8, padding: '8px 10px', border: '1px solid var(--hair)', borderRadius: 9, background: T.bg2 } },
             React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' } },
@@ -2141,13 +2146,13 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
           nAwaiting && nClose ? React.createElement('span', { style: { color: T.text2 } }, '·') : null,
           nClose ? React.createElement('span', null, nClose + ' 个待标收尾') : null,
           React.createElement('span', { style: { color: T.text2, marginLeft: 'auto', fontSize: 12.5 } },
-            '在查=诊断没结论（含等现场补材料）；等回报=结论已给、fix 没验证；待标收尾=回报已生效、status 还停在进行中｜卡片里点按钮生成指令 → 复制 → 粘到对话执行'),
+            '在查=诊断没结论（含等现场补材料）；等回报=结论已给、fix 没验证；待标收尾=回报已生效、状态还停在进行中｜卡片里点按钮生成指令 → 复制 → 粘到对话执行'),
           React.createElement('span', { className: 'sleu-mono', title: '面板包版本：与 dsh-plugins/dsh-sleuth-panels/package.json 一致。看到的不是这个版本 = 装的还是旧包，或浏览器缓存了旧 bundle', style: { color: T.text2, fontSize: 'var(--t-md2)', opacity: 0.75 } }, PANEL_VERSION),
         ) : null,
         // 工具栏（筛选 + 搜索）**吸顶**：会话一多就得往下滚，工具不该滚走
         React.createElement('div', { style: { position: 'sticky', top: 0, zIndex: 2, paddingTop: 2, paddingBottom: 8, marginBottom: 4, background: T.bg, backgroundImage: 'var(--surf)' } },
           React.createElement('div', { style: { display: 'flex', gap: 6, marginBottom: 8, flexWrap: 'wrap' } },
-            kbChips.map(c => React.createElement('button', { key: c.id, type: 'button', onClick: () => setKbFilter(c.id), className: 'sleu-chip', style: c.id === kbFilter ? { ...btnPrimary, padding: '4px 13px', borderRadius: 999 } : { ...btnGhost, padding: '4px 13px', borderRadius: 999 } }, c.label)),
+            kbChips.map(c => React.createElement('button', { key: c.id, type: 'button', title: c.title || null, onClick: () => setKbFilter(c.id), className: 'sleu-chip', style: c.id === kbFilter ? { ...btnPrimary, padding: '4px 13px', borderRadius: 999 } : { ...btnGhost, padding: '4px 13px', borderRadius: 999 } }, c.label)),
           ),
           React.createElement('div', { style: { position: 'relative' } },
             React.createElement('span', { style: { position: 'absolute', left: 11, top: '50%', transform: 'translateY(-50%)', width: 10, height: 10, borderRadius: 999, border: '1.5px solid ' + T.text2, display: 'block' } }),
