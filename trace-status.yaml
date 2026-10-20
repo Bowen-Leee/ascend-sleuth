@@ -11,7 +11,9 @@
 # 位置说明：放仓库根（与 `triage-tree.yaml` 同类：顶层数据文件）。**不能放 `traces/`**——那目录
 # 是 gitignored 的运行时件，面板与脚本在别的检出读不到。
 #
-# 改这里 = 改判据：同步 `diagnosis_state.yaml.example`、`skills/diagnose`、`skills/resume-diagnosis`。
+# 改这里 = 改判据：同步 `diagnosis_state.yaml.example`、`skills/diagnose`、`skills/resume-diagnosis`；
+# 改 `sedimented` 段还要同步 `skills/to-postmortem`、`skills/knowledge-groom`（写侧）与
+# 诊断面板的列表筛选（读侧，`dsh-plugins/ascend-panel/panel-client.js`）。
 
 status:
   - value: in_progress
@@ -73,3 +75,27 @@ outcome:
     label: 部分生效
     counts_as: misdiagnosis  # 命中的 case 给出的 fix 不完整
     meaning: 症状缓解但未根治
+
+# 知识沉淀状态（trace 顶层 `sedimented`）——**第三条轴**，与上面两条正交：
+#   status    说"这单还管不管"（诊断收尾）；
+#   outcome   说"命中 case 的 fix 行不行"（诊断闭环，升格依据）；
+#   sedimented 说"结论进知识库了没"（本段）。
+# 谁读：诊断面板的列表筛选与徽标（「待沉淀」= 已闭环且 none；「待升格」= submitted 且未闭环）。
+# 判据同源：`scripts/verify_case_draft.py` 的升格闸门按前两条轴决定放行，本轴只记进度。
+sedimented:
+  - value: none
+    label: 未沉淀
+    meaning: 结论还没进知识库（含从未尝试沉淀）
+    when_to_set: 不显式写；字段缺失即按 none 读
+  - value: submitted
+    label: 已提交待升格
+    meaning: 草稿已落 `postmortems/inbox/`，等 groom 审核升格
+    when_to_set: to-postmortem 产出草稿时回写来源 trace（动作发生时写，零推断）
+  - value: knowledge
+    label: 已升格（Tier 2）
+    meaning: 已升格为 `knowledge/<ns>/` 下的 case
+    when_to_set: knowledge-groom 按 new_pattern / variant_of 转正后回写，并记 case_id
+  - value: archived
+    label: 已归档（Tier 3）
+    meaning: 只沉淀为 postmortem（covered_by：已有 case 覆盖）
+    when_to_set: knowledge-groom 按 covered_by 转正后回写，并记 case_id

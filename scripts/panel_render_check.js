@@ -1517,6 +1517,8 @@ _MS._run_no_pipe = no_fallback`)
         declared.includes('in_progress') && declared.includes('resolved') && declared.includes('escalated') && declared.includes('archived'))
       expect('trace-status.yaml 声明 outcome 词表（含 pending）',
         declared.includes('pending') && declared.includes('not_resolved') && declared.includes('partial'))
+      expect('trace-status.yaml 声明 sedimented 词表（含 submitted）',
+        /^sedimented:/m.test(vocab) && declared.includes('submitted') && declared.includes('knowledge'))
       expect('面板引用的状态词都在词表里',
         ['in_progress', 'resolved', 'escalated', 'archived'].every(v => declared.includes(v)))
       expect('词表标注"未回报不计 hit/误诊"（pending → counts_as: none）', /counts_as: none/.test(vocab))
@@ -1532,13 +1534,13 @@ _MS._run_no_pipe = no_fallback`)
       const follow = [
         mkSession(1, { status: 'in_progress', feedbackPending: null, feedback: null }),          // 在查
         mkSession(2, { status: 'in_progress', feedbackPending: 'pending', feedback: null }),     // 等回报（旧口径会双算）
-        mkSession(3, { status: 'in_progress', feedbackPending: null, feedback: 'resolved' }),    // 该闭环
+        mkSession(3, { status: 'in_progress', feedbackPending: null, feedback: 'resolved' }),    // 待标收尾
         mkSession(4, { status: 'resolved', feedbackPending: null, feedback: 'resolved' }),       // 闭环，不计
       ]
       const dg3 = await renderAsync(ascSrc, { sessionId: 'sess-1' },
         (m, a) => (m === 'ascend-traces-list' ? { ok: true, sessions: follow } : diagHost(m, a)))
-      expect('待跟进三类各自计数（1 在查 / 1 等回报 / 1 该闭环）',
-        /1 个在查/.test(dg3.text) && /1 个等回报/.test(dg3.text) && /1 个该闭环/.test(dg3.text), dg3.text.slice(0, 200))
+      expect('待跟进三类各自计数（1 在查 / 1 等回报 / 1 待标收尾）',
+        /1 个在查/.test(dg3.text) && /1 个等回报/.test(dg3.text) && /1 个待标收尾/.test(dg3.text), dg3.text.slice(0, 200))
       expect('待跟进徽章 = 三类之和（3，不是把等回报双算成 4）',
         /3 项待跟进/.test(dg3.text) && !/4 项待跟进/.test(dg3.text), dg3.text.slice(0, 160))
       expect('横幅点明两条轴（在查=诊断没结论；等回报=结论已给、fix 没验证）',
@@ -2573,8 +2575,9 @@ print(json.dumps([{'role': s(t.get('role')), 'step': s(t.get('step')), 'action':
         /«title:traces\/s-rep\.report\.md»/.test(ct) && !/traces\/traces\//.test(ct),
         (ct.match(/«title:[^»]*»/g) || []).join(' '))
     }
-    // —— 待沉淀 / 待闭环：状态徽标 + 批量入口（2026-10）——
-    // 判据与升格闸门同源：已闭环未沉淀、已沉淀未闭环。它们此前只有展开卡片才看得见。
+    // —— 未闭环 / 待沉淀 / 待升格：状态徽标 + 批量入口（2026-10）——
+    // 三条轴各有名字：未闭环看诊断收尾，待沉淀看"已闭环未沉淀"，待升格看"草稿已提交、
+    // 来源诊断未闭环"。判据与升格闸门同源。它们此前只有展开卡片才看得见。
     {
       const base = {
         status: 'in_progress', framework: 'vllm-ascend', platform: 'A2-910B', category: 'interrupt',
@@ -2591,10 +2594,11 @@ print(json.dumps([{'role': s(t.get('role')), 'step': s(t.get('step')), 'action':
         : { ok: true, steps: [], summary: null }
       const t = (await renderAsync(ascSrc, { sessionId: 'sess-1' }, host)).text
       expect('已闭环未沉淀的单带「已闭环 · 待沉淀」徽标', /已闭环 · 待沉淀/.test(t), t.slice(0, 300))
-      expect('已沉淀未闭环的单带「已沉淀 · 待闭环」徽标', /已沉淀 · 待闭环/.test(t), t.slice(0, 300))
+      expect('已沉淀未闭环的单带「已沉淀 · 待升格」徽标', /已沉淀 · 待升格/.test(t), t.slice(0, 300))
       expect('命中 case 已在库的单不进待沉淀（再沉淀只会被判 covered_by）',
         (t.match(/已闭环 · 待沉淀/g) || []).length === 1, '徽标=' + (t.match(/已闭环 · 待沉淀/g) || []).length)
-      expect('两个筛选入口各带数量', /待沉淀 1/.test(t) && /待闭环 1/.test(t), t.slice(0, 300))
+      expect('三个筛选入口各带数量',
+        /未闭环 1/.test(t) && /待沉淀 1/.test(t) && /待升格 1/.test(t), t.slice(0, 300))
 
       // 两条批量分支**真的渲染并点得动**：源码字符串断言挡不住"分支写错/永不渲染"。
       hookIdx = 0; hookState = []; depState = []; effectQueue = []
@@ -2639,20 +2643,38 @@ print(json.dumps([{'role': s(t.get('role')), 'step': s(t.get('step')), 'action':
       expect('批量沉淀命令可复制出来且含 to-postmortem',
         /to-postmortem 批量沉淀这些 session/.test(treeText(tree)))
 
-      const chipClose = findByText('待闭环 1')
-      expect('「待闭环」筛选入口可点', !!chipClose)
-      if (chipClose) { chipClose.fn({}); await pumpTree(3) }
+      const chipPromote = findByText('待升格 1')
+      expect('「待升格」筛选入口可点', !!chipPromote)
+      if (chipPromote) { chipPromote.fn({}); await pumpTree(3) }
       const btnAll = findByText('全选这 1 单')
-      expect('待闭环的批量入口真的渲染出来', !!btnAll, treeText(tree).slice(0, 300))
+      expect('待升格的批量入口真的渲染出来', !!btnAll, treeText(tree).slice(0, 300))
       if (btnAll) { btnAll.fn({}); await pumpTree(3) }
       const btnClose = findByText('批量标已解决（已选 1 单）')
-      expect('勾选后出现批量闭环按钮', !!btnClose, treeText(tree).slice(0, 300))
+      expect('勾选后出现批量标已解决按钮', !!btnClose, treeText(tree).slice(0, 300))
       if (btnClose) { btnClose.fn({}); await pumpTree(3) }
       expect('批量闭环命令带出单一结局与两条轴的处理',
         /结局都是「已解决 · fix 生效」/.test(treeText(tree)) && /未命中 case 的只标 status: resolved/.test(treeText(tree)))
+
+      // 诊断收尾轴：未闭环筛选只留没收尾的单（escalated/archived 是终态，不算未闭环）。
+      const chipOpen = findByText('未闭环 1')
+      expect('「未闭环」筛选入口可点', !!chipOpen)
+      if (chipOpen) { chipOpen.fn({}); await pumpTree(3) }
+      const openText = treeText(tree)
+      expect('未闭环筛选只留诊断没收尾的单',
+        /s-await/.test(openText) && !/s-new/.test(openText) && !/s-kb/.test(openText), openText.slice(0, 300))
+
+      // 空态：筛选为空要说清是"这一类没有"，不能统一喊"去跑一次 diagnose"。
+      const chipNew = findByText('新形态')
+      expect('「新形态」筛选入口可点', !!chipNew)
+      if (chipNew) { chipNew.fn({}); await pumpTree(3) }
+      const emptyText = treeText(tree)
+      expect('筛选为空时按当前筛选说明原因',
+        /「新形态」下没有会话/.test(emptyText)
+        && /没有"命中 case、但库里还没有"的诊断/.test(emptyText)
+        && !/在对话里跑一次 \/skill:diagnose/.test(emptyText), emptyText.slice(0, 300))
     }
     {
-      expect('host 的会话列表带沉淀状态（列表才能筛待沉淀 / 待闭环）',
+      expect('host 的会话列表带沉淀状态（列表才能筛待沉淀 / 待升格）',
         /sedimented: readSedimented\(doc\)/.test(hostSrc))
       expect('待沉淀可一次生成批量 to-postmortem 命令',
         /用 \/skill:to-postmortem 批量沉淀这些 session：/.test(ascSrc))
