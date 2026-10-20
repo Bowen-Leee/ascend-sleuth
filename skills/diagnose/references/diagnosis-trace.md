@@ -290,7 +290,7 @@ harness 侧的会话号（DSH 里是 `$DSH_SESSION_ID`）。**用途只有一个
 - `knowledge` / `archived`：knowledge-groom 转正后回写，并记 `caseId`；
 - 字段缺失按 `none` 读，不显式写。
 
-取值与写入时机的唯一词表在仓库根 `trace-status.yaml` 的 `sedimented:` 段。诊断面板的「待升格」筛选就是 `submitted` 且来源诊断未闭环——这类草稿升格时会被 `scripts/verify_case_draft.py` 的闸门拦下。
+取值与写入时机以仓库根 `trace-status.yaml` 的 `sedimented:` 段为准。诊断面板的「待升格」筛选就是 `submitted` 且来源诊断未闭环——这类草稿升格时会被 `scripts/verify_case_draft.py` 的闸门拦下。
 
 ## 词表同步纪律
 
