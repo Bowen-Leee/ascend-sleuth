@@ -30,7 +30,7 @@ status:
       有命中 case 时同时写 `feedback.outcome: resolved`；无命中 case 时只写 status，
       不写 feedback 事件（feedback 轴没有 case 可归属，结算侧不记计数）。
       升格闸门对这一类读 status（见 `scripts/verify_case_draft.py`）。
-    writes_feedback: true
+    writes_feedback: true          # 仅命中单写 feedback 事件；无命中单不写（见 when_to_set）
   - value: escalated
     label: 已转上游
     resumable: false
