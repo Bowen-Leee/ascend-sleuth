@@ -133,7 +133,8 @@ def recorded_before(root: Path, fixture: str) -> str | None:
     rel = f"{GOLDEN}/{fixture}"
     try:
         r = subprocess.run(["git", "log", "-1", "--format=%cs", "--", rel],
-                           cwd=str(root), capture_output=True, text=True, timeout=15)
+                           cwd=str(root), capture_output=True, text=True, timeout=15,
+                           encoding="utf-8", errors="replace")
     except (OSError, subprocess.SubprocessError):
         return None
     out = (r.stdout or "").strip()

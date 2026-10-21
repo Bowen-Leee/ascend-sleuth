@@ -65,7 +65,8 @@ def frozen_artifacts(root: Path) -> set:
 
 
 def tracked_files(root: Path):
-    out = subprocess.run(["git", "ls-files"], cwd=root, capture_output=True, text=True).stdout.split()
+    out = subprocess.run(["git", "ls-files"], cwd=root, capture_output=True, text=True,
+                         encoding="utf-8", errors="replace").stdout.split()
     return [p for p in out if Path(p).suffix in TEXT_SUFFIXES and not p.startswith(SKIP_DIRS)]
 
 
