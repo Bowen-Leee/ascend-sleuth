@@ -332,7 +332,8 @@ def mark_merged_from_prs(root: Path, limit: int, dry_run: bool, prs_file: str = 
         prs = _json.loads(Path(prs_file).read_text(encoding="utf-8"))
     else:
         r = subprocess.run(["gh", "pr", "list", "--state", "merged", "--limit", str(limit),
-                            "--json", "number,title,body"], capture_output=True, text=True)
+                            "--json", "number,title,body"], capture_output=True, text=True,
+                           encoding="utf-8", errors="replace")
         if r.returncode != 0:
             print(f"ev_proposal: 取 PR 列表失败（gh 未登录？）：{r.stderr.strip()[:160]}", file=sys.stderr)
             return 2
