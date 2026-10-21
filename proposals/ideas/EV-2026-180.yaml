@@ -10,7 +10,7 @@ id: EV-2026-180
 layer: L2
 target_component: dsh-plugins/ascend-panel/panel-host.js
 title: "面板只读脚本的沙箱档位跟随会话；报错把「子进程被挡在启动之前」与「缺 Python/PyYAML」分开"
-status: in_experiment
+status: validated
 authorization: review              # 动了 EV-2026-080 定下的安全边界判据，面板可见行为随之变化
 dimension: observability
 supersedes: []
@@ -111,3 +111,16 @@ decisions:
       本卡 measure 与产物门实跑：`node scripts/panel_render_check.js` 全部通过（exit 0）、
       `node scripts/build_panel_bundle.js --check` 一致、`node scripts/check_panel_bundle.js` 冒烟通过。
       真机判据（success_criteria ⑤）要等 DSH Desktop 重启后才能验，未验之前不把本卡判成 validated。
+  - who: agent
+    when: 2026-10-21
+    type: eval
+    conclusion: >-
+      真机判据满足：用户重启 DSH Desktop 后，「指标」tab 的闭环判决正常显示（同一台机器上此前只剩
+      「未找到可用的 Python 3 解释器」）。即只读脚本跟随会话档位这条路在完全权限会话下走通了，
+      success_criteria ⑤ 达成，status 由 in_experiment 收口为 validated。观察到的因果链与预测一致：
+      探活 → 会话档位（完全权限，不进受限令牌 runner）→ 体检脚本跑出判决；没有改动机器的文件权限，
+      也没有放宽写操作那一档。
+  - who: agent
+    when: 2026-10-21
+    type: action
+    conclusion: "合入指针回写：本卡随 PR #356 进入 main（merge commit 8b7a039），供判据「待合入积压」读取"
