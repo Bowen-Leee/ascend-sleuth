@@ -1,0 +1,113 @@
+# ============================================================
+# EV-2026-180 —— 只读脚本的沙箱档位跟随会话，报错把「进程没起来」与「缺依赖」分开
+# 来源：面板「指标」tab 与自演进看板一直报「未找到可用的 Python 3 解释器」，用户问「到底怎么修」
+# 触发：RPC 带回探测失败原因 `py -3 退出码 3221225794`（= 0xC0000142，进程初始化失败）；同一台机器
+#       上直接跑 `python scripts/metrics_health.py --json` 是通的，PyYAML 6.0.3 也在
+# 脱敏：只含仓库路径、DSH 服务契约与探针输出；不含客户数据
+# ============================================================
+
+id: EV-2026-180
+layer: L2
+target_component: dsh-plugins/ascend-panel/panel-host.js
+title: "面板只读脚本的沙箱档位跟随会话；报错把「子进程被挡在启动之前」与「缺 Python/PyYAML」分开"
+status: in_experiment
+authorization: review              # 动了 EV-2026-080 定下的安全边界判据，面板可见行为随之变化
+dimension: observability
+supersedes: []
+superseded_by: null
+created_at: 2026-10-21
+source_signals:
+  - signal: process_friction
+    evidence: >-
+      面板「指标 · 闭环判决」与「自演进看板」两条 RPC 都返回「未找到可用的 Python 3 解释器（已试
+      python3 / python / py -3）」，带上探测原因后是 `py -3 退出码 3221225794：（无输出）`。
+      3221225794 = 0xC0000142（进程初始化失败）。同一台机器上 `python scripts/metrics_health.py --json`
+      能跑通、`python scripts/doctor.py` 判 PyYAML 6.0.3 正常；面板侧换一个不需要 Python 的功能
+      （「打开证据」）也是同一个码：`四种打开方式都不行（powershell=3221225794 macos-open=3221225794
+      xdg-open=3221225794 explorer=3221225794）`——即受限令牌沙箱在本机**任何**子进程都起不来。
+      用 DSH 自带的那份权限诊断脚本（`app.asar` 内 `dsh-sandbox-windows-acl/assets/`）在
+      `E:\projects\ascend-sleuth` 及其 `E:\projects`、`E:\` 上跑了一轮：`VERDICT=NOT_THIS_CLASS`、
+      `SUMMARY FIXED=0 GRANTED=0`，一个权限都没改——排除"文件权限"这一类。
+      在此之前，面板还把那句依赖提示当成唯一解释：旧文案只说「装好 Python 3 并确保在 PATH 里」，
+      读者被引去装包；`pip install pyyaml` 这条提示同样只在脚本 stderr 出现 `No module named 'yaml'`
+      时才有依据。
+    trajectory:
+      - "dsh-plugins/ascend-panel/panel-host.js：resolvePython / runMetricsHealth / runLiveMetrics / exportHandoff"
+      - "dsh-plugins/ev-panel/panel-host.js：resolvePython / runScript（刻意重复的副本）"
+      - "Host 服务契约：dsh-pwsh-sandbox/lib/index.js:148 —— `request.sandboxPolicy ?? ctx.sandboxPolicy.resolve()`（无参 resolve 拿不到会话事件，回落部署默认档位）"
+      - "Host 服务契约：dsh-sandbox-policy README 的策略解析一节 —— `resolve({ session, mode })`，effective = 显式授予 > 会话 sandbox/mode 事件 > 部署默认"
+      - "DSH 自带权限诊断：app.asar 内 dsh-sandbox-windows-acl/assets/diagnose-windows-sandbox-acl（判 NOT_THIS_CLASS，未改权限）"
+      - "报告：E:\\projects\\dsh-acl-report\\acl-report-c8cc2201ac0c4b5ba5998b6385ad74f2.jsonl"
+hypothesis: >-
+  把面板的 shell 调用按"要不要写仓库里的文件"分两类——写操作（只有交接包导出这一处）继续写死
+  `workspace-write` + 根=会话工作区；只读脚本（解释器探活、体检、实时计算、看板两个脚本）改为跟随
+  **会话自己解析出来的档位**（`ctx.sandboxPolicy.resolve({session})`）。这样：①完全权限的会话里
+  只读调用不再进沙箱，受限令牌 runner 起不来子进程时面板仍能读到数据；②工作区写 / 只读的会话仍受限，
+  边界只放宽到用户自己选的那一档，不是替用户提权；③报错分成「档位 / 解释器 / 子进程被挡在启动之前」
+  三类，不再把执行环境问题说成缺依赖。
+predicted_effect:
+  metric: 面板读数据的两条链（指标体检、自演进看板）在受限令牌沙箱不可用时是否还能跑通，以及失败时读者能否分辨成因
+  from: "每条 shell 调用都写死 workspace-write → 沙箱 runner 起不来子进程时，指标 tab 与看板只剩一句「未找到可用的 Python 3 解释器」，读者被引去装包"
+  to: "只读调用跟随会话档位（完全权限即不隔离） → 体检与看板能跑；仍失败时报出「沙箱档位 / 解释器 / 子进程被挡在启动之前」三类，不再提示 pip install"
+  measure:
+    command: "node scripts/panel_render_check.js"
+    expect_exit: 0
+    expect_stdout: "全部通过"
+validation:
+  method: metrics_compare
+  baseline: >-
+    改动前：ascend-panel 4 处、ev-panel 2 处 shell 调用全部写死
+    `sandboxPolicy: { mode: 'workspace-write', workspaceRoot: cwd }`；渲染检查的源级断言要求
+    "每个调用点都带同一个写死对象"，缺少它即红。解释器探测失败只有一句「未找到可用的 Python 3 解释器」。
+  success_criteria: >-
+    ① 源级断言改成两类：写死 `workspace-write` 的对象只许出现在交接包导出（ascend 恰 1 处、
+    ev 恰 0 处）；只读点必须把策略作为形参传进 `shell.resolve`（ascend ≥3 处、ev ≥2 处），
+    写成"跟随 shell 默认"即红——无参 resolve 回落的是部署默认档位，等于又钉死一次；
+    ② 探活把工作区根与档位都当参数接进来（`resolvePython(cwd, policy)`）；
+    ③ 报错分三类且都带执行上下文：档位（含根）、实际解释器、`looksLikeSpawnFailure` 单列；
+    ④ 交接包导出的策略断言与「沙箱拒绝单独报出来」的断言不放宽；
+    ⑤ 真机确认：重启后指标 tab 的「重新体检」能出判决，或文案明确写着「子进程被挡在启动之前」
+    并给出档位（此时说明平台侧 runner 连完全权限档位也起不来，属平台问题而不是面板）。
+  rollback: >-
+    单个提交、以新增为主（两个 helper + 策略形参 + 三类文案 + 断言改写）。`git revert` 即回原状；
+    面板代码在 Package 里是快照，重装上一版即恢复。
+gate:
+  condition: "再出现「面板报缺依赖但本机依赖正常」或「面板功能因受限环境整片不可用」时，重跑 measure 并复查是否有新的 shell 调用点绕过档位分类"
+risk: low
+principle_refs: [2, 8, 10]
+actual_cost:
+  tokens: 0
+  source: estimate
+  note: >-
+    本会话未接 tokenMeter 取数，按仓库口径写 0 并说明：这个 0 表示"未单独量化"，不表示零成本
+    （本轮含面板 RPC 复现、DSH 权限诊断一轮、两面板 host 与断言改动、产物重建与三条门）。
+decisions:
+  - who: agent
+    when: 2026-10-21
+    type: decision
+    conclusion: >-
+      不改安全边界题：**没有**选"沙箱不可用时对只读命令自动重试无策略"，也没有把全局档位提到
+      `danger-full-access`。做法是把档位交还给会话解析（`resolve({session})`），由用户自己选的档位
+      决定隔离强度：完全权限的会话不隔离，工作区写 / 只读的会话仍受限。这样面板既解决"读不到数据"，
+      又不替用户放宽边界。
+  - who: agent
+    when: 2026-10-21
+    type: decision
+    conclusion: >-
+      写死的 `workspace-write` 只保留在交接包导出（面板唯一的写动作）。理由沿用 EV-2026-080 的实测：
+      省略策略时 shell 的默认根是 DSH 自己的检出，导出会被拒且只剩一句 EPERM。
+  - who: agent
+    when: 2026-10-21
+    type: action
+    conclusion: >-
+      报错分三类：档位（`policyNote`，含 mode 与 workspaceRoot）、实际解释器（PyYAML 提示改成
+      `<py> -m pip install pyyaml`，让读者知道要装给哪个解释器）、以及
+      `looksLikeSpawnFailure`（NTSTATUS / 负数退出码 / runner 的 127+`windows-acl-run` 方言，
+      文案明确写"与 Python / PyYAML 是否安装无关"）。
+  - who: agent
+    when: 2026-10-21
+    type: eval
+    conclusion: >-
+      本卡 measure 与产物门实跑：`node scripts/panel_render_check.js` 全部通过（exit 0）、
+      `node scripts/build_panel_bundle.js --check` 一致、`node scripts/check_panel_bundle.js` 冒烟通过。
+      真机判据（success_criteria ⑤）要等 DSH Desktop 重启后才能验，未验之前不把本卡判成 validated。
