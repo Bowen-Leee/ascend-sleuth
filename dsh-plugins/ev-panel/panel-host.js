@@ -12,6 +12,9 @@ return {
     // 「无法解析工作区」。两者都有断言（panel_render_check 的 `[ev-panel host 失败路径]` 一节）。
     const sessions = ctx.get('sessions')
     const shell = ctx.get('shell')
+    // 会话的沙箱档位（显式授予 > 会话最后一条 sandbox/mode 事件 > 部署默认）。服务缺席时
+    // readPolicy 返回 undefined，调用点把策略省掉、交回 shell 默认，行为与改动前一致。
+    const sandboxPolicySvc = ctx.get('sandboxPolicy')
 
     function resolveCwd(sessionId) {
       if (sessions && sessionId) {
@@ -21,28 +24,56 @@ return {
       return undefined
     }
 
+    // 只读脚本的沙箱档位 = 本会话自己选的那一档。**刻意与 ascend-panel 重复**（同 resolvePython）：
+    // dynamic Cordis 插件不能 import，两边各留一份副本。写死 `workspace-write` 会在受限令牌
+    // runner 起不来子进程的机器上把看板一起堵死（实测：三条候选全返回 3221225794 = 0xC0000142）。
+    function readPolicy(sessionId) {
+      if (!sandboxPolicySvc || typeof sandboxPolicySvc.resolve !== 'function') return undefined
+      let session = null
+      try { session = sessions && sessionId ? sessions.get(sessionId) : null } catch (e) { session = null }
+      try {
+        const policy = session ? sandboxPolicySvc.resolve({ session: session }) : sandboxPolicySvc.resolve()
+        if (policy && typeof policy.mode === 'string') return policy
+      } catch (e) {
+        return undefined
+      }
+      return undefined
+    }
+
+    function policyNote(policy) {
+      if (!policy) return '沙箱档位：未指定（跟随 shell 默认）'
+      return '沙箱档位：' + String(policy.mode) + (policy.workspaceRoot ? '，根 ' + String(policy.workspaceRoot) : '')
+    }
+
+    // 子进程根本没起来（NTSTATUS / 负数退出码 / runner 的 127+方言）——与"没装 Python"是两回事。
+    function looksLikeSpawnFailure(exitCode, text) {
+      const code = Number(exitCode)
+      if (Number.isFinite(code) && code < 0) return true
+      if (Number.isFinite(code) && code >= 0xC0000000) return true
+      if (code === 127 && /windows-acl-run|sandbox/i.test(String(text || ''))) return true
+      return false
+    }
+
     // Python 解释器解析（Windows 兼容）：面板用 shell 跑 Python 脚本，但 Windows 上
     // `python3` 常不存在——python.org 安装器装的是 `python.exe` + `py.exe` 启动器；
     // 若 PATH 里还有 Store 的「应用执行别名」占位程序，执行 `python3` 不报"找不到命令"
     // 而是弹 Microsoft Store。因此按候选逐个探测，取第一个能打印 Python 3.x 的
     // （退出码 0 + 版本号双重判据，占位程序两者都过不了）；成功缓存、失败不缓存（环境修好后自愈）。
     // 注意：dynamic Cordis 插件不能 import，此函数与 ascend-panel 的同名函数是刻意重复的副本。
-    // 探活**也要带沙箱策略**（2026-09-22 实测）：不带策略时 DSH 回落到 harness 进程自身的
-    // cwd 当写权限根；服务器从 `C:\Program Files (x86)\Cntlm` 这类调用者改不动 DACL 的目录
-    // 启动时，Windows 的 ACL 受限令牌 runner 会 `SetNamedSecurityInfoW failed (Win32 5)` →
-    // 三条探活全挂。探活把异常原文记进 resolvePython.lastError，调用点把它带回面板，
-    // 而不是只报一句误导的「未找到可用的 Python 3 解释器」。
+    // 探活**跟随会话档位**（见 readPolicy）：写死 workspace-write 会在受限令牌 runner 起不来
+    // 子进程的机器上让三条候选全挂，而报出来只有一句「未找到 Python」——真因被吞。
     let pythonCmd
-    async function resolvePython(cwd) {
+    async function resolvePython(cwd, policy) {
       if (pythonCmd !== undefined) return pythonCmd
       let lastError = ''
+      let spawnFailed = false
       for (const candidate of ['python3', 'python', 'py -3']) {
         try {
           const spec = shell.resolve({
             command: candidate + ' --version',
             workdir: cwd,
             stdoutMaxBytes: 4096,
-            sandboxPolicy: { mode: 'workspace-write', workspaceRoot: cwd },
+            ...(policy ? { sandboxPolicy: policy } : {}),
           })
           const r = await shell.run(spec)
           const out = [r && r.stdout && r.stdout.text, r && r.stderr && r.stderr.text]
@@ -52,6 +83,7 @@ return {
             resolvePython.lastError = ''
             return pythonCmd
           }
+          if (looksLikeSpawnFailure(r && r.exitCode, out)) spawnFailed = true
           lastError = candidate + ' 退出码 ' + String(r && r.exitCode) + '：' + (out.trim() || '（无输出）').slice(0, 200)
         } catch (e) {
           // 候选不可执行 → 试下一个；异常原文要留下来，否则报出来只有那句误导的「没找到 Python」
@@ -61,7 +93,10 @@ return {
       // 失败**不进缓存**：解释器或执行环境修好后，下一次调用就自愈，不必重载面板。
       // 内网 Win11 现场：工作区文件权限修好后，面板仍一直报同一句错，直到重载插件——
       // 旧写法的 `pythonCmd = null` 把这次失败当成了结论（`null !== undefined`）。
-      resolvePython.lastError = lastError
+      resolvePython.lastError = spawnFailed
+        ? lastError + '\n（三条候选都是"进程起来了但初始化失败"，即受限环境把子进程挡在启动之前：'
+          + '这与解释器有没有装、装在哪都无关。本会话若已是「完全权限」仍如此，属平台侧沙箱问题。）'
+        : lastError
       return null
     }
 
@@ -69,10 +104,12 @@ return {
       const cwd = resolveCwd(sessionId)
       if (!cwd) return { ok: false, error: '无法解析工作区' }
       if (!shell) return { ok: false, error: 'shell 不可用' }
-      const py = await resolvePython(cwd)
+      const policy = readPolicy(sessionId)
+      const py = await resolvePython(cwd, policy)
       if (!py) {
         return { ok: false, error: '未找到可用的 Python 3 解释器（已试 python3 / python / py -3）——'
           + '自演进看板的数据脚本 ' + scriptName + ' 需要它，装好 Python 3 并确保在 PATH 里'
+          + '\n' + policyNote(policy)
           + (resolvePython.lastError ? '\n探测失败原因：' + resolvePython.lastError : '') }
       }
       try {
@@ -82,17 +119,24 @@ return {
           stdoutMaxBytes: 4 * 1024 * 1024, // EV 卡聚合 JSON 随库增长（实测 89KB），防截断
           // 面板按 UTF-8 读 stdout；钉住子进程编码，防脚本侧漏掉 UTF-8 输出（Windows GBK 管道）
           env: { PYTHONIOENCODING: 'utf-8' },
-          // 写权限的沙箱根要给成会话工作区：不给时 shell 默认根是 DSH 自己的检出，子进程写仓库
-          // 里任何路径都只报一句 EPERM（诊断面板的交接包导出实测踩过；这里两个脚本现在只读，
-          // 但同类陷阱不该在别的面板重演）
-          sandboxPolicy: { mode: 'workspace-write', workspaceRoot: cwd },
+          // 只读脚本 → 跟随会话档位（与诊断面板同一规则：写死 workspace-write 会在受限令牌
+          // runner 起不来子进程的机器上把看板一起堵死）
+          ...(policy ? { sandboxPolicy: policy } : {}),
         })
         const r = await shell.run(spec)
         const stdout = r && r.stdout && typeof r.stdout.text === 'string' ? r.stdout.text : ''
         if (!stdout.trim()) {
           const stderrStr = r && r.stderr && typeof r.stderr.text === 'string' ? r.stderr.text : ''
+          if (looksLikeSpawnFailure(r && r.exitCode, stderrStr)) {
+            return { ok: false, error: '自演进看板的数据脚本没跑起来：子进程在受限环境里被挡在启动之前'
+              + '（与 Python / PyYAML 是否安装无关）——' + policyNote(policy)
+              + '\n脚本 ' + scriptName + '（工作目录 ' + cwd + '）'
+              + '\n手工复现：在仓库根目录执行 ' + py + ' ' + scriptName + (extraArgs ? ' ' + extraArgs : '')
+              + '\n退出码 ' + String(r && r.exitCode) + '；把本会话切到「完全权限」或按平台侧沙箱问题处理。' }
+          }
           if (/no module named ['\"]?yaml/i.test(stderrStr)) {
-            return { ok: false, error: '运行自演进看板需要 PyYAML——请安装：pip install pyyaml（或 brew install pyyaml）后重开面板' }
+            return { ok: false, error: '运行自演进看板需要 PyYAML——面板实际按解释器 ' + py + ' 跑，'
+              + '要给这个解释器装：' + py + ' -m pip install pyyaml（' + policyNote(policy) + '）后重开面板' }
           }
           const err = stderrStr || scriptName + ' 无输出'
           return { ok: false, error: String(err).slice(0, 800) }

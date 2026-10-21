@@ -3,6 +3,9 @@ return {
     const fs = ctx.get('fs')
     const sessions = ctx.get('sessions')
     const shell = ctx.get('shell')
+    // 会话的沙箱档位由 sandbox-policy 服务解析（显式授予 > 会话最后一条 sandbox/mode 事件 > 部署默认）。
+    // 服务缺席时下面退回写死的 workspace-write，行为与改动前一致。
+    const sandboxPolicySvc = ctx.get('sandboxPolicy')
 
     // fs 缺失时**只降级依赖它的功能**，不再让整个插件静默不注册。
     //
@@ -20,22 +23,27 @@ return {
         + '指标 tab 的「闭环判决」「实时计算」不经 fs，仍然可用',
     })
 
-    // ── 跑子进程的沙箱写权限根（每个 shell.resolve 调用点都要带）──────────────────────
+    // ── 跑子进程的沙箱策略（按调用点分两类）────────────────────────────────────────
     //
-    // 写法：`sandboxPolicy: { mode: 'workspace-write', workspaceRoot: cwd }`——**不能省**。
+    // 两类调用点，判据是"它要不要写仓库里的文件"：
     //
-    // 为什么（实测）：`shell.resolve` 不给 `sandboxPolicy` 时，shell 实现自己的默认根是
-    // **DSH 自己的检出**（实测 workspaceRoot = …/deepseek-harness），于是子进程写仓库里的任何路径
-    // 都被沙箱拒掉，报出来只有一句 `[Errno 1] Operation not permitted`——读者从这句看不出是沙箱干的
-    // （文件权限与 ACL 都正常，`ls -lOe` 查下来毫无异常）。交接包导出是面板里第一个"子进程写文件"的
-    // 功能，一头撞上它；其余 RPC 当时只读，所以一直没暴露。
+    // ① 写操作（只此一处：交接包导出写 `<检出>/traces/exports/`）→ 显式写死
+    //    `{ mode: 'workspace-write', workspaceRoot: cwd }`。理由（实测）：`shell.resolve` 不给
+    //    策略时，shell 自己的默认根是 **DSH 自己的检出**（实测 workspaceRoot = …/deepseek-harness），
+    //    子进程写仓库里任何路径都被拒，报出来只有一句 `[Errno 1] Operation not permitted`——
+    //    读者从这句看不出是沙箱干的（文件权限与 ACL 都正常）。`workspace-write` 是够用的最小一档：
+    //    写只许落在检出内，读不受限，比本会话自身的文件策略更窄，不是提权。
     //
-    // `workspace-write` 是够用的最小一档：写只许落在检出内（导出写 `<检出>/traces/exports/`），
-    // 读不受限（解释器在别处、脚本要读仓库内文件都照常）。它比本会话自身的文件策略更窄，不是提权。
+    // ② 只读脚本（解释器探活、`metrics_health.py`、`trace_metrics.py`）→ 跟随**会话自己的档位**
+    //    （`readPolicy()`，见下）。它们不写仓库，没必要把会话档位改窄；而写死 `workspace-write`
+    //    会在受限令牌沙箱起不来子进程的机器上把面板读数据的路一起堵死（实测：探活三个候选全返回
+    //    `3221225794` = `0xC0000142`，面板只剩一句"未找到 Python"，而同一台机器上直接跑脚本是通的）。
+    //    改成跟随会话后：完全权限的会话不隔离（能读），工作区写 / 只读的会话仍受限，边界只放宽到
+    //    用户自己选的那一档。
     //
-    // 不抽成 helper 的原因：`panel_render_check` 会把下面几个函数**单独抽出来求值**（只注入
-    // shell / resolvePython），引外部 helper 会直接 ReferenceError。漏带的调用点由该检查的
-    // 源级断言兜（策略数 ≠ 脚本调用数即红）。
+    // 不抽成"每条都带策略"的 helper：`panel_render_check` 会把下面几个函数**单独抽出来求值**
+    // （只注入 shell / resolvePython），所以策略只能以**形参**传进来，不能引外部 helper。
+    // 两类调用点各由该检查的源级断言兜（写死 workspace-write 的必须只有导出、只读点必须走形参）。
 
     // 工作区解析。**三处消费者的共同前提**：面板读 traces/ knowledge/ metrics/ scripts/ 全靠它。
     //
@@ -62,6 +70,40 @@ return {
         if (s && s.header && s.header.cwd) return s.header.cwd
       }
       return pickCwdFromSessions()
+    }
+
+    // 只读脚本的沙箱档位 = 本会话自己选的那一档（完全权限 / 工作区写 / 只读）。
+    // 解析不出时返回 `undefined`，调用点把策略整个省掉、交回 shell 的默认解析——
+    // 不能在这里兜成 `workspace-write`：那正是受限令牌 runner 起不来时把面板堵死的写法。
+    function readPolicy(sessionId) {
+      if (!sandboxPolicySvc || typeof sandboxPolicySvc.resolve !== 'function') return undefined
+      let session = null
+      try { session = sessions && sessionId ? sessions.get(sessionId) : null } catch (e) { session = null }
+      try {
+        const policy = session ? sandboxPolicySvc.resolve({ session: session }) : sandboxPolicySvc.resolve()
+        if (policy && typeof policy.mode === 'string') return policy
+      } catch (e) {
+        return undefined
+      }
+      return undefined
+    }
+
+    // 子进程起不来的方言：Windows 上是受限令牌沙箱的 runner 失败，退出码是 NTSTATUS
+    // （`0xC0000142` 进程初始化失败，十进制 3221225794），或 runner 自己以 127 退出并在
+    // stderr 报 `windows-acl-run:`。这类失败与"机器没装 Python"是两回事，必须分开说，
+    // 否则读者会被引去装包（实测：本机 PyYAML / Python 都正常，报的却是"缺依赖"）。
+    function looksLikeSpawnFailure(exitCode, text) {
+      const code = Number(exitCode)
+      if (Number.isFinite(code) && code < 0) return true
+      if (Number.isFinite(code) && code >= 0xC0000000) return true
+      if (code === 127 && /windows-acl-run|sandbox/i.test(String(text || ''))) return true
+      return false
+    }
+
+    // 沙箱档位进文案：读者要能看出"面板按哪一档跑的"，而不是只看到一句"找不到 Python"。
+    function policyNote(policy) {
+      if (!policy) return '沙箱档位：未指定（跟随 shell 默认）'
+      return '沙箱档位：' + String(policy.mode) + (policy.workspaceRoot ? '，根 ' + String(policy.workspaceRoot) : '')
     }
 
     // ── 主检出解析（worktree 里开面板时，运行时件读主检出那一份）───────────────────
@@ -1574,16 +1616,18 @@ return {
     // 三条探活全挂。探活把异常原文记进 resolvePython.lastError，调用点把它带回面板，
     // 而不是只报一句误导的「未找到可用的 Python 3 解释器」。
     let pythonCmd
-    async function resolvePython(cwd) {
+    async function resolvePython(cwd, policy) {
       if (pythonCmd !== undefined) return pythonCmd
       let lastError = ''
+      let spawnFailed = false
       for (const candidate of ['python3', 'python', 'py -3']) {
         try {
           const spec = shell.resolve({
             command: candidate + ' --version',
             workdir: cwd,
             stdoutMaxBytes: 4096,
-            sandboxPolicy: { mode: 'workspace-write', workspaceRoot: cwd },   // 见上面「跑子进程的沙箱写权限根」
+            // 只读探活 → 跟随会话档位（见上面「跑子进程的沙箱策略」②）；policy 为 undefined 时省掉这一项
+            ...(policy ? { sandboxPolicy: policy } : {}),
           })
           const r = await shell.run(spec)
           const out = [r && r.stdout && r.stdout.text, r && r.stderr && r.stderr.text]
@@ -1593,6 +1637,7 @@ return {
             resolvePython.lastError = ''
             return pythonCmd
           }
+          if (looksLikeSpawnFailure(r && r.exitCode, out)) spawnFailed = true
           lastError = candidate + ' 退出码 ' + String(r && r.exitCode) + '：' + (out.trim() || '（无输出）').slice(0, 200)
         } catch (e) {
           // 候选不可执行 → 试下一个；异常原文要留下来，否则报出来只有那句误导的「没找到 Python」
@@ -1602,7 +1647,10 @@ return {
       // 失败**不进缓存**：解释器或执行环境修好后，下一次调用就自愈，不必重载面板。
       // 内网 Win11 现场：工作区文件权限修好后，面板仍一直报同一句错，直到重载插件——
       // 旧写法的 `pythonCmd = null` 把这次失败当成了结论（`null !== undefined`）。
-      resolvePython.lastError = lastError
+      resolvePython.lastError = spawnFailed
+        ? lastError + '\n（三条候选都是"进程起来了但初始化失败"，即受限环境把子进程挡在启动之前：'
+          + '这与解释器有没有装、装在哪都无关。本会话若已是「完全权限」仍如此，属平台侧沙箱问题。）'
+        : lastError
       return null
     }
 
@@ -1625,21 +1673,21 @@ return {
     // 读者要立刻重试就点「重新体检」。
     const VERDICT_TTL_MS = 30000
     const verdictCache = new Map()   // key(cwd) → { at, promise }；存 promise 让并发挂载共享同一次体检
-    function loadMetricsVerdict(cwd, force) {
+    function loadMetricsVerdict(cwd, force, policy) {
       if (!shell) {
         return Promise.resolve({ ok: false, error: '体检需要 shell 服务（当前不可用）——判据与命令见 metrics/gates.yaml 与 scripts/metrics_health.py' })
       }
       const key = cwd || '?'
       const hit = verdictCache.get(key)
       if (!force && hit && (Date.now() - hit.at) < VERDICT_TTL_MS) return hit.promise
-      const promise = buildMetricsVerdict(cwd)
+      const promise = buildMetricsVerdict(cwd, policy)
       verdictCache.set(key, { at: Date.now(), promise: promise })
       return promise
     }
     // drift：索引头注声明的 case 数 vs 磁盘实际 case 文件数。面板读的是生成物索引，
     // 索引落后于磁盘时面板会安静地显示旧数——这类"看到的不等于现实"必须被说出来。
-    async function buildMetricsVerdict(cwd) {
-      const res = await runMetricsHealth(cwd)
+    async function buildMetricsVerdict(cwd, policy) {
+      const res = await runMetricsHealth(cwd, policy)
       if (!res.ok) return res
       const v = res.verdict
       try {
@@ -1674,7 +1722,7 @@ return {
       }
     }
 
-    async function runMetricsHealth(cwd) {
+    async function runMetricsHealth(cwd, policy) {
       if (!shell) {
         return { ok: false, error: '体检需要 shell 服务（当前不可用）——判据在 metrics/gates.yaml，'
           + '手工复现：python3 scripts/metrics_health.py' }
@@ -1686,10 +1734,11 @@ return {
           + '仍可用，但它们不代表判据结论。手工复现：在检出根目录跑 python3 scripts/metrics_health.py',
           null, cwd, null, '')
       }
-      const py = await resolvePython(cwd)
+      const py = await resolvePython(cwd, policy)
       if (!py) {
         return { ok: false, error: '未找到可用的 Python 3 解释器（已试 python3 / python / py -3）——'
           + '体检跑的是 scripts/metrics_health.py，装好 Python 3 并确保在 PATH 里'
+          + '\n' + policyNote(policy)
           + (resolvePython.lastError ? '\n探测失败原因：' + resolvePython.lastError : '') }
       }
       let r = null
@@ -1701,7 +1750,8 @@ return {
           stdoutMaxBytes: 65536,
           // 面板按 UTF-8 读 stdout；钉住子进程编码，防脚本侧漏掉 UTF-8 输出（Windows GBK 管道）
           env: { PYTHONIOENCODING: 'utf-8' },
-          sandboxPolicy: { mode: 'workspace-write', workspaceRoot: cwd },   // 见上面「跑子进程的沙箱写权限根」
+          // 只读脚本 → 跟随会话档位（见上面「跑子进程的沙箱策略」②）
+          ...(policy ? { sandboxPolicy: policy } : {}),
         }))
       } catch (e) {
         return shellFail('体检脚本执行失败: ' + String(e && e.message || e), py, cwd, null, '')
@@ -1724,19 +1774,27 @@ return {
         return { ok: false, error: '体检输出不是对象', py: py, cwd: cwd }
       }
       if (/ModuleNotFoundError|No module named 'yaml'/.test(err)) {
-        return shellFail('体检脚本缺 PyYAML——pip install pyyaml', py, cwd, r, err)
+        return shellFail('体检脚本缺 PyYAML——面板实际按解释器 ' + py + ' 跑，要给这个解释器装：'
+          + py + ' -m pip install pyyaml（' + policyNote(policy) + '）', py, cwd, r, err)
+      }
+      // 子进程根本没起来（受限环境把进程挡在启动之前）时，别让读者去装包：
+      // 这一类的特征是退出码是 NTSTATUS、stderr 里没有 Python 的 traceback。
+      if (looksLikeSpawnFailure(r && r.exitCode, err)) {
+        return shellFail('体检脚本没跑起来：子进程在受限环境里被挡在启动之前（与 Python / PyYAML 是否安装无关）——'
+          + policyNote(policy) + '；把本会话切到「完全权限」或按平台侧沙箱问题处理。执行上下文：', py, cwd, r, err)
       }
       // traceback 的**末几行**才是结论；别用 slice(0,N) 把头截下来（实测踩过：异常类型被截掉）
       if (err.trim()) return shellFail('体检脚本报错（stderr 末几行）:', py, cwd, r, err)
       return shellFail('体检脚本无输出（脚本不存在？工作区不是 ascend-sleuth 检出？）', py, cwd, r, err)
     }
 
-    async function runLiveMetrics(cwd) {
+    async function runLiveMetrics(cwd, policy) {
       if (!shell || !cwd) return { ok: false, error: '实时计算需要 shell 与工作区（当前不可用）' }
-      const py = await resolvePython(cwd)
+      const py = await resolvePython(cwd, policy)
       if (!py) {
         return { ok: false, error: '未找到可用的 Python 3 解释器（已试 python3 / python / py -3）——'
           + '实时计算跑的是 scripts/trace_metrics.py，装好 Python 3 并确保在 PATH 里'
+          + '\n' + policyNote(policy)
           + (resolvePython.lastError ? '\n探测失败原因：' + resolvePython.lastError : '') }
       }
       try {
@@ -1746,7 +1804,8 @@ return {
           stdoutMaxBytes: 16384,
           // 面板按 UTF-8 读 stdout；钉住子进程编码，防脚本侧漏掉 UTF-8 输出（Windows GBK 管道）
           env: { PYTHONIOENCODING: 'utf-8' },
-          sandboxPolicy: { mode: 'workspace-write', workspaceRoot: cwd },   // 见上面「跑子进程的沙箱写权限根」
+          // 只读脚本 → 跟随会话档位（见上面「跑子进程的沙箱策略」②）
+          ...(policy ? { sandboxPolicy: policy } : {}),
         })
         const r = await shell.run(spec)
         let out = null
@@ -1765,7 +1824,7 @@ return {
     // **直接干活**——它只读 trace 与证据、落一个 gitignore 的运行时件（`traces/exports/`），
     // 不动知识库、不改 trace 内容，不想要了删掉那个目录即撤销。既然可逆、又不需要语义判断，
     // 让它绕 agent 一圈（复制指令 → 粘到对话 → agent 跑脚本）只是多两步。
-    async function exportHandoff(cwd, traceFile, intent) {
+    async function exportHandoff(cwd, traceFile, intent, policy) {
       const rel = 'traces/' + String(traceFile || '')
       // 文件名来自面板自己的列表，仍然按白名单卡一道：它要拼进命令行
       if (!/^traces\/[^\/\\"']+\.yaml$/.test(rel)) {
@@ -1779,10 +1838,11 @@ return {
         return { ok: false, error: '拿不到会话工作区（session.header.cwd），定位不到 scripts/export_trace.py。'
           + '手工复现：在 ascend-sleuth 检出根目录跑 ' + manual }
       }
-      const py = await resolvePython(cwd)
+      const py = await resolvePython(cwd, policy)
       if (!py) {
         return { ok: false, error: '未找到可用的 Python 3 解释器（已试 python3 / python / py -3）。'
           + '手工复现：' + manual
+          + '\n' + policyNote(policy)
           + (resolvePython.lastError ? '\n探测失败原因：' + resolvePython.lastError : '') }
       }
       let r = null
@@ -1794,7 +1854,7 @@ return {
           stdoutMaxBytes: 262144,
           // 面板按 UTF-8 读 stdout；钉住子进程编码，防脚本侧漏掉 UTF-8 输出（Windows GBK 管道）
           env: { PYTHONIOENCODING: 'utf-8' },
-          sandboxPolicy: { mode: 'workspace-write', workspaceRoot: cwd },   // 见上面「跑子进程的沙箱写权限根」
+          sandboxPolicy: { mode: 'workspace-write', workspaceRoot: cwd },   // 写操作：见上面「跑子进程的沙箱策略」①
         }))
       } catch (e) {
         return { ok: false, error: '导出脚本执行失败: ' + String(e && e.message || e), manual: manual }
@@ -2364,7 +2424,7 @@ return {
       // 体检器读 knowledge/ 与 scripts/（进 git 的两侧都跟会话检出），不读 traces/
       const cwd = await resolveRepoCwd(sessionId)
       // `refresh: true` = 绕过复用窗口强制重跑（面板「重新体检」按钮）
-      return loadMetricsVerdict(cwd, !!(args && args.refresh === true))
+      return loadMetricsVerdict(cwd, !!(args && args.refresh === true), readPolicy(sessionId))
     })
 
     // 导出交接包（跨机继续定位）。与 open-evidence 一样只依赖 shell，不需要 fs 服务。
@@ -2373,7 +2433,7 @@ return {
       const traceFile = args && args.traceFile ? String(args.traceFile) : null
       if (!traceFile) return { ok: false, error: '缺 traceFile' }
       const cwd = await resolveCwd(sessionId)
-      return exportHandoff(cwd, traceFile, args && args.intent)
+      return exportHandoff(cwd, traceFile, args && args.intent, readPolicy(sessionId))
     })
 
     return () => {
