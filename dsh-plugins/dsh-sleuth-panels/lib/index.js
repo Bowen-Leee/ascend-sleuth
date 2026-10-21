@@ -1,6 +1,6 @@
 /* eslint-disable */
 // 生成物 —— 勿手改。由 `node scripts/build_panel_bundle.js` 从下列源文件拼出：
-//   dsh-plugins/ascend-panel/panel-host.js  (sha256:5939db632cc2)
+//   dsh-plugins/ascend-panel/panel-host.js  (sha256:e0627c5bbcb7)
 //   dsh-plugins/ev-panel/panel-host.js  (sha256:e45522d60c58)
 // 校验：`node scripts/build_panel_bundle.js --check`（源文件改了没重跑生成器即红）。
 //
@@ -81,7 +81,7 @@ const PANELS = [
     id: 'ascend-panel',
     build(harness) {
       return (function () {
-// ---- dsh-plugins/ascend-panel/panel-host.js (sha256:5939db632cc2) 原文开始 ----
+// ---- dsh-plugins/ascend-panel/panel-host.js (sha256:e0627c5bbcb7) 原文开始 ----
 return {
   apply(ctx) {
     const fs = ctx.get('fs')
@@ -1912,7 +1912,17 @@ return {
         const tail = (err || out).trim().split('\n').slice(-4).join(' / ')
         return { ok: false, error: '导出脚本没有给出 JSON 结果：' + (tail || '（无输出）'), manual: manual }
       }
-      if (!doc.ok) return { ok: false, error: String(doc.error || '导出失败'), manual: manual }
+      if (!doc.ok) {
+        // 写权限被拒时把面板给子进程的写权限根一并给出：读者据此区分"根不覆盖目标"与别的原因，
+        // 不必自己从一句 EPERM 里猜。脚本自身的修法（改道 / 换 --out）仍在它自己那段文案里。
+        const msg = String(doc.error || '导出失败')
+        const permish = /WinError 5|拒绝访问|Errno 1[3]|EPERM|EACCES|Operation not permitted|permission/i.test(msg)
+        return {
+          ok: false, manual: manual,
+          error: permish ? msg + '\n［面板让子进程可写的范围只到：' + String(cwd) + '］' : msg,
+          workspaceRoot: cwd || null,
+        }
+      }
       // 面板的「打开目录」走 openEvidence，它拒绝绝对路径——这里换成仓库内相对路径（不在检出内就不给）
       const cwdN = String(cwd).replace(/\\/g, '/').replace(/\/+$/, '')
       const dirN = String(doc.dir || '').replace(/\\/g, '/')
@@ -1927,6 +1937,9 @@ return {
         mdBytes: doc.md_bytes,
         totalBytes: doc.total_bytes,
         dirRel: dirRel,
+        // 脚本在 traces/exports 写不进去时会改道到检出内的 .handoff/，并把"本想去哪、实际落在哪、
+        // 为什么"放在 fallback 里。面板不改写这个事实，原样交给 client 显示（面板不做判断）。
+        fallback: doc.fallback || null,
         manual: manual,
       })
     }

@@ -1,0 +1,98 @@
+# ============================================================
+# EV-2026-179 —— 交接包导出：写不进 traces/exports 时改道，并把两路径与原因上屏
+# 来源：内网 Windows 机器上面板点「导出交接包」报 [WinError 5] 拒绝访问；同一命令在终端里成功
+# 触发：面板子进程的写权限根与会话工作区同源、与主检出的 traces/ 不同锚，导出是面板唯一的写动作，
+#       于是它是唯一会撞墙的按钮，且失败文案只能猜"可能是沙箱"
+# 脱敏：只含脚本名、命令与路径形态，不含客户数据
+# ============================================================
+
+id: EV-2026-179
+layer: L2
+target_component: scripts/export_trace.py
+title: "交接包导出在写权限受限时改写落点：落到同一检出内的 .handoff/ 并给出两处路径与原因"
+status: validated
+authorization: auto
+dimension: observability
+supersedes: []
+superseded_by: null
+created_at: 2026-10-20
+source_signals:
+  - signal: process_friction
+    evidence: >-
+      内网 Windows 机器：面板点「导出交接包」报「无法创建产出目录 …： [WinError 5] 拒绝访问」，
+      脚本自己的提示只能写「文件权限/ACL 正常时多半是沙箱」。同一条命令在 PowerShell 里跑成功，
+      产出 21.9 KB zip 与 49.7 KB md。用户报告「基本几乎所有诊断卡都报这个导出失败」——
+      面板子进程的写权限根与会话工作区同源，而导出固定写到主检出的 traces/；导出是面板唯一的
+      写动作，读操作不受限，所以形态必然是"别的功能都好、只有导出坏"，读者无从判断是权限还是包坏了。
+    trajectory:
+      - "scripts/export_trace.py：产出目录改成候选序列（traces/exports → 进程工作目录/.handoff → 主检出/.handoff），遇到 EPERM/EACCES 换下一个；给 --out 时不改道"
+      - "scripts/export_trace.py：--json 增 fallback（requested/dir/reason），人读输出加一行「导出目录改道」"
+      - "dsh-plugins/ascend-panel/panel-host.js：改道事实原样带出；写权限类失败附带「面板给子进程的写权限根」"
+      - "dsh-plugins/ascend-panel/panel-client.js：结果行显示改道原因与落点，「打开目录」指向实际落点"
+      - "scripts/panel_render_check.js：改道事实、落点、写权限根与按钮说明四条断言"
+      - "docs/guide/handoff.md 与面板 README：写清改道条件与「接收侧不认目录名」这条前提"
+hypothesis: >-
+  把"写权限受限"从整次失败改成"换一个能长期保存的位置并说明"：①面板在 worktree 会话、独立沙箱实现、
+  ACL 异常这三类环境下都能产出可发送的包；②失败时读者拿到的是一行可核对的理由（本想去哪、实际落在哪、
+  错误码），不再从一句 EPERM 里猜；③改道不触碰接收契约——import_trace.py 只读包与交接单。
+predicted_effect:
+  metric: 写权限受限时导出是否仍产出可发送的包，且事实可核对
+  from: "traces/exports 不可写 → 整次导出失败（退出码 3），包没有产出，读者只能换终端手工跑"
+  to: "同一条件下产出落在检出内的 .handoff/，--json 给出 fallback{requested,dir,reason}；指定 --out 时仍失败并写明原因"
+  measure:
+    command: >-
+      python3 -c "import json,os,subprocess,sys,tempfile,pathlib;t=pathlib.Path(tempfile.mkdtemp()).resolve()/'traces';t.mkdir(parents=True);(t/'probe-sess.yaml').write_text('session_id: probe-sess\nstatus: in_progress\ntrace: []\n',encoding='utf-8');os.chmod(t,0o555);r=subprocess.run([sys.executable,'scripts/export_trace.py','traces/probe-sess.yaml','--traces-root',str(t),'--intent','continue','--json'],capture_output=True,text=True);os.chmod(t,0o755);lines=[l for l in r.stdout.splitlines() if l.strip().startswith('{')];d=json.loads(lines[-1]) if lines else {};fb=d.get('fallback') or {};zipok=bool(d.get('zip')) and pathlib.Path(d['zip']).is_file();ok=(r.returncode==0 and d.get('ok') is True and bool(fb.get('reason')) and bool(fb.get('dir')) and zipok and '.handoff' in str(fb.get('dir')) and str(fb.get('requested','')).startswith(str(t)));print('exit',r.returncode);print('fallback_dir',fb.get('dir'));print('zip_exists',zipok);print('rule_ok',ok);raise SystemExit(0 if ok else 1)"
+    expect_exit: 0
+    expect_stdout: "rule_ok True"
+validation:
+  method: metrics_compare
+  baseline: >-
+    改动前：`traces/exports` 的 mkdir 一旦被拒就 `fail(..., 3)`，包不产出；错误串只有错误码与
+    「多半是沙箱」的推断，没有落点、没有候选目录。
+  success_criteria: >-
+    ① measure：把 traces 目录置为不可写后跑导出，退出 0、`fallback.dir` 落在 `.handoff`、zip 真实存在、
+    `fallback.requested` 指向那个不可写的目录；
+    ② 显式 `--out` 指向不可写目录时仍失败（退出 3），失败文案说明去掉 `--out` 会改道；
+    ③ 面板：`panel_render_check` 的四条断言通过（改道事实带出、落点、写权限根、按钮说明），
+    且「client 读的字段 host 全都给」的成对断言仍绿。
+  rollback: >-
+    单提交反转：删候选循环与 `fallback` 字段、恢复单次 mkdir 即回原状；`.handoff/` 是运行时件
+    （已进 .gitignore），无需清理数据。
+gate:
+  condition: "再出现「导出因写权限整体失败」或「改道后读者仍去 traces/exports 找不到包」时，重跑 measure 与面板断言"
+risk: low
+principle_refs: [7, 8, 10]
+decisions:
+  - who: agent
+    when: 2026-10-20
+    type: decision
+    conclusion: >-
+      改道落点选检出内的 `.handoff/`，不用系统临时目录：面板子进程的 TMP/TEMP 是沙箱私有目录，
+      进程退出即被清理，写进去等于把一次没有产物的运行报成成功。落点必须在 gitignore 内。
+      候选顺序是「`traces/exports` → 主检出 `.handoff/` → 会话工作区 `.handoff/`」：主检出排前，
+      因为运行时件锚在主检出，worktree 被清理时它下面的 gitignore 件一起消失。
+  - who: agent
+    when: 2026-10-20
+    type: decision
+    conclusion: >-
+      指定 `--out` 时不改道。`--out` 是显式选择，替调用方改主意会让"我明明指了目录却写到别处"变成
+      新的不可预期；失败文案里写明去掉 `--out` 会自动改道即可。
+  - who: agent
+    when: 2026-10-20
+    type: eval
+    conclusion: >-
+      measure 实跑 PASS（exit 0 / fallback_dir 落在 .handoff / zip_exists True / rule_ok True）。
+      负向对照：`--out` 指向同一不可写目录 → 退出 3，文案含「给了 --out 时不改道」。
+  - who: agent
+    when: 2026-10-20
+    type: action
+    conclusion: >-
+      面板侧只做"把事实带给读者"，不做判断：host 原样透传 `fallback`，并在写权限类失败时附上它交给
+      子进程的写权限根（`workspaceRoot`）。边界照实标注：①改道后的包不在 `traces/exports`，
+      历史习惯要重新建立；②面板的错误文案是脚本原文加一句它给子进程的可写范围，没有替读者判断范围对不对；
+      ③未加 write 探针（本轮范围外，另行评估）。
+actual_cost:
+  tokens: 32000
+  source: estimate
+  note: >-
+    含脚本候选目录与文案迭代、面板 host/client 与四条断言、文档与面板 README、EV 卡、门禁往返。
