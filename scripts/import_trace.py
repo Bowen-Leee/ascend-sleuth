@@ -51,6 +51,23 @@ EVIDENCE_RE = re.compile(
     re.S)
 
 
+def read_text_exact(path: Path, errors: str = "strict") -> str:
+    """按 UTF-8 原样读：不做换行翻译（`Path.read_text` 在 Windows 上把 `\\r\\n` 归一成 `\\n`）。"""
+    with open(path, "r", encoding="utf-8", errors=errors, newline="") as f:
+        return f.read()
+
+
+def write_text_exact(path: Path, text: str) -> None:
+    """按 UTF-8 原样写：不做换行翻译（`Path.write_text` 在 Windows 上把 `\\n` 翻成 `\\r\\n`）。
+
+    落位是交接契约里"内容不改"的那一环：源 trace 用 LF 写时，文本模式写回会变成 CRLF，
+    接手方算出来的 hash 与上家不一致（实测：`check_handoff.py` 的真 trace 段抓到）。
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "w", encoding="utf-8", newline="") as f:
+        f.write(text)
+
+
 def now_iso() -> str:
     return datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds")
 
@@ -92,7 +109,7 @@ def die(msg, code=2, as_json=False, result=None):
 
 def read_md_package(path: Path, stage: Path, problems: list, truncated: list = None):
     """把单文件 md 包摊成 stage 目录，并合成一份 manifest（它本来就内嵌在 md 里）。"""
-    text = path.read_text(encoding="utf-8", errors="replace")
+    text = read_text_exact(path, errors="replace")
     if MD_HEAD not in text:
         problems.append("这不是交接包 md（缺标记 " + MD_HEAD + "）")
         return None
@@ -118,18 +135,20 @@ def read_md_package(path: Path, stage: Path, problems: list, truncated: list = N
     if not sid:
         problems.append("交接单缺 session_id")
         return None
-    (stage / f"{sid}.yaml").write_text(strip_fence(trace_block.group(1)) + "\n", encoding="utf-8")
+    # 摊平出来的三处也按原样写：md 是文本投影，块内容里的换行照抄即可，别在这里翻一次
+    # （翻一次就与上家不同——实测：LF 写的 trace 走 md 通道落位后变成 CRLF，hash 对不上）。
+    write_text_exact(stage / f"{sid}.yaml", strip_fence(trace_block.group(1)) + "\n")
     if report_block:
         rep = str((manifest.get("contents") or {}).get("report_file") or f"{sid}.report.md")
         rp = stage / rep
         rp.parent.mkdir(parents=True, exist_ok=True)
-        rp.write_text(report_block.group(1).strip("\n") + "\n", encoding="utf-8")
+        write_text_exact(rp, report_block.group(1).strip("\n") + "\n")
     for m in EVIDENCE_RE.finditer(text):
         rel, declared, body = m.group(1), m.group(2), m.group(3)
         dst = stage / rel
         dst.parent.mkdir(parents=True, exist_ok=True)
         content = strip_fence(body)
-        dst.write_text(content + "\n", encoding="utf-8")
+        write_text_exact(dst, content + "\n")
         # 实到字节明显少于声明字节 = 通道把内容截了（邮件正文有长度上限，这是文本通道的主要风险）。
         # 截断的证据比没有证据更危险：它看起来是齐的。留出 ±64 字节余量给围栏剥壳与换行归一。
         if declared and truncated is not None:
@@ -213,7 +232,7 @@ def validate(base: Path, manifest: dict, problems: list, missing: list):
     if not tpath.is_file():
         problems.append(f"包内缺 trace 本体 {sid}.yaml")
         return None
-    trace_text = tpath.read_text(encoding="utf-8")
+    trace_text = read_text_exact(tpath)
     try:
         doc = load_text(trace_text)
     except Exception as e:
@@ -306,25 +325,30 @@ def apply_import(base: Path, traces_root: Path, manifest: dict, doc, target_sid:
     # 接收侧可能是**全新检出**：traces/ 是 gitignore 的运行时件，第一次接手时它还不存在。
     # 不建这一层，最常见的那个场景（新机器上的第一单）会以一句 No such file or directory 收场。
     traces_root.mkdir(parents=True, exist_ok=True)
-    trace_text = (base / f"{sid}.yaml").read_text(encoding="utf-8")
+    trace_text = read_text_exact(base / f"{sid}.yaml")
     if renamed:
         # 一次替换搞定 session_id、evidence.files、report_file 与正文里对本案的称呼；
         # 单遍 re.sub 不会二次命中（新名字含旧名字做前缀，但正则只在原文上扫一遍）。
         trace_text = re.sub(re.escape(sid), target_sid, trace_text)
-    (traces_root / f"{target_sid}.yaml").write_text(trace_text, encoding="utf-8")
+    write_text_exact(traces_root / f"{target_sid}.yaml", trace_text)
     written.append(f"{target_sid}.yaml")
 
     contents = manifest.get("contents") if isinstance(manifest.get("contents"), dict) else {}
     report_rel = str(contents.get("report_file") or "")
     if report_rel and (base / report_rel).is_file():
         new_report = f"{target_sid}.report.md"
-        (traces_root / new_report).write_text(
-            (base / report_rel).read_text(encoding="utf-8", errors="replace"), encoding="utf-8")
+        write_text_exact(traces_root / new_report,
+                         read_text_exact(base / report_rel, errors="replace"))
         written.append(new_report)
-        # trace 里的 report_file 已随改名一并改写；若原名不含 sid（自定义名），这里补正
-        t = (traces_root / f"{target_sid}.yaml").read_text(encoding="utf-8")
-        t = re.sub(r'(?m)^(report_file:).*$', f'\\1 "{new_report}"', t, count=1)
-        (traces_root / f"{target_sid}.yaml").write_text(t, encoding="utf-8")
+        # trace 里的 report_file 已随改名一并改写；若原名不含 sid（自定义名），这里补正。
+        # **只在值真的不同时才写**：多一次写就多一次"内容被改写"的机会——文本模式与 `.*$`
+        # 吃掉的 `\r` 都曾让落位后的 hash 与上家不一致（check_handoff.py 实测）。
+        path_now = traces_root / f"{target_sid}.yaml"
+        t = read_text_exact(path_now)
+        m = re.search(r'(?m)^(report_file:)([^\r\n]*)', t)
+        fixed = (m.group(2).strip().strip('"').strip("'") if m else "")
+        if m and fixed != new_report:
+            write_text_exact(path_now, t[:m.start(2)] + f' "{new_report}"' + t[m.end(2):])
 
     src_ev = base / "evidence" / sid
     if src_ev.is_dir():

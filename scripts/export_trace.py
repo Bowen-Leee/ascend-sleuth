@@ -293,6 +293,24 @@ def decide_inlining(evidence_entries, inline_limit, total_limit):
     return inline, skipped
 
 
+def read_text_exact(path: Path, errors: str = "strict") -> str:
+    """按 UTF-8 原样读：不做换行翻译。
+
+    为什么不用 `Path.read_text`：它走文本模式，在 Windows 上把 `\r\n` 归一成 `\n`。交接包的契约是
+    "内容不改"，一旦读出时就归一、写回时再翻一次，接手侧拿到的字节数就与上家不同（实测：
+    `check_handoff.py` 的真 trace 段抓到 hash 不一致，源是 LF、落位后成 CRLF）。
+    """
+    with open(path, "r", encoding="utf-8", errors=errors, newline="") as f:
+        return f.read()
+
+
+def write_text_exact(path: Path, text: str) -> None:
+    """按 UTF-8 原样写：不做换行翻译（`Path.write_text` 在 Windows 上会把 `\n` 翻成 `\r\n`）。"""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "w", encoding="utf-8", newline="") as f:
+        f.write(text)
+
+
 def md_projection(sid, manifest, trace_text, report_text, inline_entries, not_inlined):
     """单文件纯文本投影。返回 (markdown 文本, 读取失败的清单)。"""
     read_failed = []
@@ -537,7 +555,7 @@ def main() -> int:
             return fail(f"{traces_root} 下没有 {sid}.yaml。现有会话：{hint}", 2, args.json)
 
     try:
-        trace_text = trace_path.read_text(encoding="utf-8")
+        trace_text = read_text_exact(trace_path)
         doc = load_text(trace_text)
     except Exception as e:
         return fail(f"读/解析 {trace_path.name} 失败：{e}", 2, args.json)
@@ -573,7 +591,7 @@ def main() -> int:
         rp = traces_root / name
         if rp.is_file():
             try:
-                report_text = rp.read_text(encoding="utf-8", errors="replace")
+                report_text = read_text_exact(rp, errors="replace")
             except OSError as e:
                 # 读不到就当"这次没带报告"：若把 report_rel 记下而正文为空，包内清单会写上一个
                 # 根本没落盘的文件，接收侧于是报"清单里有、包里没有"——自相矛盾的包
@@ -701,10 +719,12 @@ def main() -> int:
 
     # ---- 落盘：包内树 ----
     try:
-        (tree / f"{sid}.yaml").write_text(trace_text, encoding="utf-8")
+        # 包内 trace 与报告按**原样字节**落盘：契约是"内容不改"，而文本模式写会在 Windows 上
+        # 把换行翻成 CRLF（上家是 LF 时接手侧 hash 就变了）。
+        write_text_exact(tree / f"{sid}.yaml", trace_text)
         if report_rel and report_text:
             # 报告名保持原名（接手侧按 report_file 找它）；同名不同后缀是契约
-            (tree / report_rel).write_text(report_text, encoding="utf-8")
+            write_text_exact(tree / report_rel, report_text)
         for rel, path, size in ev:
             if any(f["path"] == rel for f in included):
                 dst = tree / rel
@@ -764,7 +784,7 @@ def main() -> int:
             sid, manifest, trace_text, report_text, inline_entries, md_skipped)
         not_inlined = md_skipped + read_failed
         try:
-            md_path.write_text(md_text, encoding="utf-8")
+            write_text_exact(md_path, md_text)
         except OSError as e:
             return fail(f"写 md 失败（{md_path}）：{e}{write_hint(e)}", 3, args.json)
         manifest["projection"]["md_not_inlined"] = not_inlined

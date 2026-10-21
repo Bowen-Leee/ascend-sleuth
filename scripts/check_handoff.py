@@ -48,17 +48,31 @@ def run(args, cwd=None):
 
     `cwd` 用来复现"从别的目录跑"的调用形状（面板就是 workdir=检出）；脚本路径随之要绝对化，
     否则在别的工作目录下会找不到 scripts/xxx.py——那测的就成了"路径写对了没有"，不是被测行为。
+
+    `encoding` 必须钉成 utf-8（2026-10-21 实测）：不钉时 subprocess 用**本机 locale** 解码子进程
+    输出，中文 Windows 上是 GBK，而 `export_trace.py` 打印的是 UTF-8 中文——读取线程抛
+    `UnicodeDecodeError: 'gbk' codec can't decode byte 0x88` 后直接死掉，`r.stdout` 变成 `None`，
+    本脚本随后在 `out.strip()` 崩成 AttributeError，报错里看不出真因。同仓的
+    `exec_log_path.py` / `log_skill_exec.py` / `src_fetch.py` 都是同一写法（钉 utf-8 + errors=replace）。
     """
     argv = list(args)
     if argv and argv[0].startswith("scripts/"):
         argv[0] = str(REPO / argv[0])
     r = subprocess.run([sys.executable, *argv], cwd=str(cwd or REPO),
-                       capture_output=True, text=True)
+                       capture_output=True, text=True, encoding="utf-8", errors="replace")
     return r.returncode, r.stdout, r.stderr
 
 
 def run_json(args, cwd=None):
+    """取子进程输出里最后一行 JSON。
+
+    `out` 兜成空串（不是靠调用方保证）：子进程输出解不出来时 `stdout` 是 `None`，直接 `.strip()`
+    会把"解码/执行失败"报成 AttributeError，读者只能看到与本意无关的一行崩溃。兜住之后，同一条
+    调用会走"导出失败"那条断言，detail 里带着 stderr，真因留在屏幕上。
+    """
     code, out, err = run(args, cwd)
+    out = out or ""
+    err = err or ""
     doc = None
     for line in reversed(out.strip().splitlines()):
         line = line.strip()
@@ -84,7 +98,7 @@ def git_init(path: Path, msg: str):
     subprocess.run(["git", "add", "-A"], cwd=str(path), capture_output=True, env=env)
     subprocess.run(["git", "commit", "-qm", msg], cwd=str(path), capture_output=True, env=env)
     r = subprocess.run(["git", "rev-parse", "--short", "HEAD"], cwd=str(path),
-                       capture_output=True, text=True, env=env)
+                       capture_output=True, text=True, encoding="utf-8", errors="replace", env=env)
     return r.stdout.strip()
 
 
@@ -241,8 +255,15 @@ def main() -> int:
         code, doc4, raw = run_json(["scripts/import_trace.py", str(md_path),
                                     "--traces-root", str(recv_b), "--json"])
         check("单文件 md 接手成功（exit 0）", code == 0 and doc4 and doc4.get("ok"), raw.strip()[-400:])
-        check("md 通道：trace 内容与上家一致",
-              digest(src / f"{sid}.yaml") == digest(recv_b / f"{sid}.yaml"))
+        # md 是**文本投影**：围栏剥壳与块边界会把行尾与末尾换行归一，所以这条按"归一后内容相同"比，
+        # 不按原始字节（zip 通道那条才是逐字节）。混用 LF/CRLF 的作者写出来的 trace 走文本通道时，
+        # 字节必然变——把它当成失败会逼着实现去猜上家的换行，那不是交接契约要保的东西。
+        def _flat(p: Path) -> bytes:
+            return p.read_bytes().replace(b"\r\n", b"\n").rstrip(b"\n")
+
+        check("md 通道：trace 内容与上家一致（文本投影按换行归一比较）",
+              _flat(src / f"{sid}.yaml") == _flat(recv_b / f"{sid}.yaml"),
+              f"src={len(_flat(src / f'{sid}.yaml'))}B dst={len(_flat(recv_b / f'{sid}.yaml'))}B")
         miss = {str(m.get("path")): str(m.get("reason")) for m in doc4.get("missing") or []}
         big = [k for k in miss if "big-plog.txt" in k]
         never = [k for k in miss if "never-packed.txt" in k]
