@@ -1312,8 +1312,11 @@ print(json.dumps(n))
       }
       return null
     }
-    const fnSrc = [grab('shellFail'), grab('runMetricsHealth')].filter(Boolean).join('\n')
-    expect('能从 host 源文件抽出 runMetricsHealth + shellFail', !!grab('shellFail') && !!grab('runMetricsHealth'))
+    // 抽出来的函数会用到同层的两个 helper（失败分类、档位文案），一并抽出来配桩运行，
+    // 否则 new Function 里会 ReferenceError。
+    const fnSrc = [grab('shellFail'), grab('looksLikeSpawnFailure'), grab('policyNote'), grab('runMetricsHealth')].filter(Boolean).join('\n')
+    expect('能从 host 源文件抽出 runMetricsHealth + shellFail + 失败分类与档位文案',
+      !!grab('shellFail') && !!grab('runMetricsHealth') && !!grab('looksLikeSpawnFailure') && !!grab('policyNote'))
 
     const build = async (shellStub) => {
       // 抽出来的函数体里有 await → 必须包在 async 函数里（new Function 体本身不是 async）。
@@ -1955,49 +1958,31 @@ _MS._run_no_pipe = no_fallback`)
       const hoBlock = ascSrc.slice(ascSrc.indexOf('// ---- 交接包'), ascSrc.indexOf('const actionArea'))
       expect('交接包：注明它是"直接动作"（与"生成指令"类按钮的分工）', /直接动作/.test(hoBlock), 'slice=' + hoBlock.length)
       {
-        // 按**调用点邻接**判，不按全文计数：脚本名在错误提示与注释里也出现（手工复现那句就写着
-        // scripts/export_trace.py），按计数判会得出"15 处调用"这种假数字。
-        const countPolicy = (src) => {
-          const lines = src.split(/\r?\n/)
-          const needsPolicy = (line) => {
-            // 两个面板跑脚本都是 `command: py + '…'` 这个形状（ev-panel 拼的是变量 scriptName）
-            if (/command: py \+/.test(line)) return true
-            // 解释器**探活**同样是一次 shell 调用（`command: candidate + ' --version'`）。原先漏的
-            // 就是这个形状：不带策略时 DSH 回落到 harness 进程 cwd 当写权限根，Windows 上撞
-            // `SetNamedSecurityInfoW failed (Win32 5)`；而探活把异常 catch 掉，报出来是
-            // 「未找到可用的 Python 3 解释器」——真因被吞（2026-09-22 实测）。
-            return /command: candidate \+ ' --version'/.test(line)
-          }
-          let sites = 0
-          let ok = 0
-          for (let i = 0; i < lines.length; i++) {
-            if (!needsPolicy(lines[i])) continue
-            sites++
-            // 窗口只用于"没带策略就判红"，不是解析器：同一 shell.resolve({…}) 里的
-            // workdir / env 等字段行数会变，窗口给宽一点。
-            for (let j = i + 1; j < Math.min(i + 14, lines.length); j++) {
-              if (/sandboxPolicy: \{ mode: 'workspace-write', workspaceRoot: cwd \}/.test(lines[j])) { ok++; break }
-              if (/^\s*\}\)\)?\s*$/.test(lines[j])) break   // shell.resolve({...}) 调用结束
-            }
-          }
-          return { sites: sites, ok: ok }
-        }
-        // 探活点单独判：cwd 得从参数**传进来**，只在 resolvePython 内部写死一个 cwd
-        // 解决不了"面板不知道根在哪"这件事。
+        // 两类调用点分开判（见 host 里「跑子进程的沙箱策略」）：写操作写死 workspace-write，
+        // 只读脚本跟随会话档位。判据：
+        //   ① 写死的对象只许出现在交接包导出——多一处就是"只读调用把自己钉回受限档位"，
+        //      在受限令牌 runner 起不来子进程的机器上等于把面板读数据的路堵死（实测报出来只有
+        //      「未找到可用的 Python 3 解释器」，而同一台机器上直接跑脚本是通的）；
+        //   ② 只读点必须把会话解析出来的策略传进 shell.resolve，不能省成"跟随 shell 默认"——
+        //      默认解析拿不到会话事件，回落的是部署默认档位，等于又钉死一次。
+        const pinned = (src) => (src.match(/sandboxPolicy: \{ mode: 'workspace-write', workspaceRoot: cwd \}/g) || []).length
+        const follows = (src) => (src.match(/\.\.\.\(policy \? \{ sandboxPolicy: policy \} : \{\}\)/g) || []).length
+        const ascSrcFile = fs.readFileSync(path.join(repo, 'dsh-plugins/ascend-panel/panel-host.js'), 'utf8')
+        const evSrcFile = fs.readFileSync(path.join(repo, 'dsh-plugins/ev-panel/panel-host.js'), 'utf8')
+        expect('沙箱策略：写死 workspace-write 的只剩交接包导出这一处（写操作）', pinned(ascSrcFile) === 1, 'pinned=' + pinned(ascSrcFile))
+        expect('沙箱策略：自演进面板不再写死档位（两个调用点都跟随会话）', pinned(evSrcFile) === 0, 'pinned=' + pinned(evSrcFile))
+        expect('沙箱策略：诊断面板的探活/体检/实时计算三个只读点都跟随会话档位（' + follows(ascSrcFile) + ' 处）',
+          follows(ascSrcFile) >= 3, 'follows=' + follows(ascSrcFile))
+        expect('沙箱策略：自演进面板的探活与数据脚本都跟随会话档位（' + follows(evSrcFile) + ' 处）',
+          follows(evSrcFile) >= 2, 'follows=' + follows(evSrcFile))
+        // 探活点单独判：cwd 与档位都得从参数**传进来**，只在 resolvePython 内部写死一个 cwd
+        // 解决不了"面板不知道根在哪"这件事，档位同理（要按会话解析）。
         const probeWired = (src) => {
           const fn = (src.match(/async function resolvePython\([^)]*\)/) || [''])[0]
-          return /async function resolvePython\(cwd\)/.test(fn)
-            && (src.match(/await resolvePython\(cwd\)/g) || []).length >= 1
+          return /async function resolvePython\(cwd, policy\)/.test(fn)
+            && (src.match(/await resolvePython\(cwd, policy\)/g) || []).length >= 1
         }
-        const ascSrcFile = fs.readFileSync(path.join(repo, 'dsh-plugins/ascend-panel/panel-host.js'), 'utf8')
-        const asc = countPolicy(ascSrcFile)
-        expect('沙箱策略：诊断面板每个 shell 调用点（含解释器探活）都带写权限根（' + asc.ok + '/' + asc.sites + '）',
-          asc.sites >= 4 && asc.ok === asc.sites, JSON.stringify(asc))
-        expect('沙箱策略：诊断面板的探活把工作区根当参数接进来（不是内部写死）', probeWired(ascSrcFile))
-        const evSrcFile = fs.readFileSync(path.join(repo, 'dsh-plugins/ev-panel/panel-host.js'), 'utf8')
-        const ev = countPolicy(evSrcFile)
-        expect('沙箱策略：自演进面板的 runScript 与探活都带（同类陷阱不在别的面板重演）',
-          ev.sites >= 2 && ev.ok === ev.sites, JSON.stringify(ev))
+        expect('沙箱策略：诊断面板的探活把工作区根与档位当参数接进来（不是内部写死）', probeWired(ascSrcFile))
         expect('沙箱策略：自演进面板的探活同样接参数', probeWired(evSrcFile))
       }
       expect('交接包：结果里回报体量、未纳入数、待补材料条数',
@@ -2922,11 +2907,11 @@ print(json.dumps([{'role': s(t.get('role')), 'step': s(t.get('step')), 'action':
     }
     expect('能从 ev-panel host 源文件抽出 resolveCwd / resolvePython / runScript',
       !!grabEv('resolveCwd') && !!grabEv('resolvePython') && !!grabEv('runScript'))
-    const evFnSrc = [grabEv('resolveCwd'), 'let pythonCmd', grabEv('resolvePython'), grabEv('runScript')].join('\n')
-    const buildEv = async (shell, sessions) => {
-      const factory = new Function('shell', 'sessions',
+    const evFnSrc = [grabEv('resolveCwd'), 'let pythonCmd', grabEv('looksLikeSpawnFailure'), grabEv('policyNote'), grabEv('readPolicy'), grabEv('resolvePython'), grabEv('runScript')].join('\n')
+    const buildEv = async (shell, sessions, sandboxPolicySvc) => {
+      const factory = new Function('shell', 'sessions', 'sandboxPolicySvc',
         'return (async () => {\n' + evFnSrc + '\nreturn { runScript }\n})()')
-      return await factory(shell, sessions)
+      return await factory(shell, sessions, sandboxPolicySvc)
     }
     const SESS = { get: () => ({ header: { cwd: 'E:/projects/ascend-sleuth' } }) }
     const okShell = (runImpl) => ({ resolve: (x) => x, run: runImpl })
