@@ -2666,7 +2666,7 @@ print(json.dumps([{'role': s(t.get('role')), 'step': s(t.get('step')), 'action':
         summarySnippet: '问题背景：服务启动失败', userSteps: 2, agentSteps: 4, lastRole: 'agent',
         lastOutput: '结论', updatedAt: new Date().toISOString(),
       }
-      const closedNew = Object.assign({}, base, { sessionId: 's-new', file: 's-new.yaml', status: 'resolved', sedimented: { state: 'none' } })
+      const closedNew = Object.assign({}, base, { sessionId: 's-new', file: 's-new.yaml', status: 'resolved', sedimented: { state: 'none' }, sedimentCandidates: 1, caseCandidates: 1 })
       const awaiting = Object.assign({}, base, { sessionId: 's-await', file: 's-await.yaml', feedback: 'pending', sedimented: { state: 'submitted' } })
       // 判据回归夹具（变异测试踩过的两个删除点）：
       //   staleOutcome    —— 无命中单已 resolved，但留了 feedback.outcome: not_resolved。
@@ -2678,20 +2678,48 @@ print(json.dumps([{'role': s(t.get('role')), 'step': s(t.get('step')), 'action':
       const staleOutcome = Object.assign({}, base, { sessionId: 's-stale', file: 's-stale.yaml', status: 'resolved', feedback: 'not_resolved', sedimented: { state: 'submitted' } })
       const closedSubmitted = Object.assign({}, base, { sessionId: 's-closed-sub', file: 's-closed-sub.yaml', status: 'resolved', sedimented: { state: 'submitted' } })
       const inKb = Object.assign({}, base, { sessionId: 's-kb', file: 's-kb.yaml', status: 'resolved', activeCase: 'C-9', activeCaseKind: 'case', activeCaseInKb: true, sedimented: { state: 'none' } })
-      const sessionsFixture = [closedNew, awaiting, staleOutcome, closedSubmitted, inKb]
+      // openWork：还挂着、没有任何结论/材料/草稿的单——「未收尾」里唯一该留的那一类。
+      // awaiting 也是 in_progress，但它草稿已交，必须只算「已交草稿」（否则两屏数字不能相加）。
+      const openWork = Object.assign({}, base, { sessionId: 's-work', file: 's-work.yaml', sedimented: { state: 'none' } })
+      const sessionsFixture = [closedNew, awaiting, staleOutcome, closedSubmitted, inKb, openWork]
       const host = (m) => m === 'ascend-traces-list'
         ? { ok: true, sessions: sessionsFixture }
         : { ok: true, steps: [], summary: null }
       const t = (await renderAsync(ascSrc, { sessionId: 'sess-1' }, host)).text
-      expect('已闭环未沉淀的单带「已闭环 · 待沉淀」徽标', /已闭环 · 待沉淀/.test(t), t.slice(0, 300))
-      expect('草稿已提交但来源未闭环的单带「未闭环 · 待升格」徽标', /未闭环 · 待升格/.test(t), t.slice(0, 300))
+      // 严重级 / 有没有给 fix / fix 验证结果：三个字段是列表上"该不该先停、有没有可执行修复、
+      // 那个修复管不管用"的唯一出口。缺记录时不占位（benign 与 null 都不出徽标）。
+      {
+        const b = {
+          status: 'resolved', framework: 'vllm-ascend', platform: 'A2-910B', category: 'interrupt',
+          activeCase: null, activeCaseKind: null, activeCaseInKb: false, feedbackPending: null,
+          summarySnippet: '问题背景', userSteps: 2, agentSteps: 4, lastRole: 'agent',
+          lastOutput: '结论', updatedAt: new Date().toISOString(), sedimented: { state: 'none' },
+        }
+        const risk = Object.assign({}, b, { sessionId: 's-risk', file: 's-risk.yaml', severity: 'data-loss-risk', fixEmitted: false, caseCandidates: 1 })
+        const ok = Object.assign({}, b, { sessionId: 's-ok', file: 's-ok.yaml', severity: 'benign', fixEmitted: true, feedback: 'resolved', caseCandidates: 1 })
+        const plain = Object.assign({}, b, { sessionId: 's-plain', file: 's-plain.yaml', caseCandidates: 1 })
+        const host3 = (m) => m === 'ascend-traces-list'
+          ? { ok: true, sessions: [risk, ok, plain] }
+          : { ok: true, steps: [], summary: null }
+        const t3 = (await renderAsync(ascSrc, { sessionId: 'sess-1' }, host3)).text
+        expect('数据风险的单挂「数据风险 · 先停」徽标', /数据风险 · 先停/.test(t3), t3.slice(0, 400))
+        expect('没给 fix 的单挂「未给 fix」，给了的挂「已给 fix」',
+          /未给 fix/.test(t3) && /已给 fix/.test(t3), t3.slice(0, 400))
+        expect('fix 被验证过的单挂「fix 已验证」', /fix 已验证/.test(t3), t3.slice(0, 400))
+        expect('benign 与字段缺失都不挂严重级徽标（不制造噪声）',
+          (t3.match(/数据风险 · 先停/g) || []).length === 1 && !/影响服务/.test(t3), t3.slice(0, 400))
+      }
+      expect('已收尾未沉淀的单带「已收尾 · 待沉淀」徽标', /已收尾 · 待沉淀/.test(t), t.slice(0, 300))
+      expect('草稿已提交但来源未收尾的单带「未收尾 · 待升格」徽标', /未收尾 · 待升格/.test(t), t.slice(0, 300))
       expect('命中 case 已在库的单不进待沉淀（再沉淀只会被判 covered_by）',
-        (t.match(/已闭环 · 待沉淀/g) || []).length === 1, '徽标=' + (t.match(/已闭环 · 待沉淀/g) || []).length)
-      expect('未闭环徽标只挂在该挂的 2 单上（闭环 + 已提交的不算）',
-        (t.match(/未闭环 · 待升格/g) || []).length === 2, '徽标=' + (t.match(/未闭环 · 待升格/g) || []).length)
+        (t.match(/已收尾 · 待沉淀/g) || []).length === 1, '徽标=' + (t.match(/已收尾 · 待沉淀/g) || []).length)
+      expect('已收尾的草稿标「已交草稿 · 等整理」，与会被闸门拦下的那批分开',
+        /已交草稿 · 等整理/.test(t), t.slice(0, 300))
+      expect('未收尾徽标只挂在该挂的 2 单上（闭环 + 已提交的不算）',
+        (t.match(/未收尾 · 待升格/g) || []).length === 2, '徽标=' + (t.match(/未收尾 · 待升格/g) || []).length)
       // 精确数量：待升格 = 2（awaiting + staleOutcome）而不是 1 或 3，直接钉住两条判据的删除点。
-      expect('三个筛选入口各带数量（待升格 = 2，含遗留 outcome 的单，不含已闭环的单）',
-        /未闭环 1/.test(t) && /待沉淀 1/.test(t) && /待升格 2/.test(t), t.slice(0, 300))
+      expect('筛选入口各带数量（未收尾 1、待沉淀 1、已交草稿 3：两单来源未收尾 + 一单已收尾等整理）',
+        /未收尾 1/.test(t) && /待沉淀 1/.test(t) && /已交草稿 3/.test(t), t.slice(0, 300))
 
       // 两条批量分支**真的渲染并点得动**：源码字符串断言挡不住"分支写错/永不渲染"。
       hookIdx = 0; hookState = []; depState = []; effectQueue = []
@@ -2736,11 +2764,12 @@ print(json.dumps([{'role': s(t.get('role')), 'step': s(t.get('step')), 'action':
       expect('批量沉淀命令可复制出来且含 to-postmortem',
         /to-postmortem 批量沉淀这些 session/.test(treeText(tree)))
 
-      const chipPromote = findByText('待升格 2')
-      expect('「待升格」筛选入口可点', !!chipPromote)
+      const chipPromote = findByText('已交草稿 3')
+      expect('「已交草稿」筛选入口可点', !!chipPromote)
       if (chipPromote) { chipPromote.fn({}); await pumpTree(3) }
       const btnAll = findByText('全选这 2 单')
-      expect('待升格的批量入口真的渲染出来', !!btnAll, treeText(tree).slice(0, 300))
+      expect('已交草稿里"来源未收尾"那 2 单的批量入口真的渲染出来（已收尾的那单不参与批量）',
+        !!btnAll, treeText(tree).slice(0, 300))
       if (btnAll) { btnAll.fn({}); await pumpTree(3) }
       const btnClose = findByText('批量标已解决（已选 2 单）')
       expect('勾选后出现批量标已解决按钮', !!btnClose, treeText(tree).slice(0, 300))
@@ -2751,12 +2780,13 @@ print(json.dumps([{'role': s(t.get('role')), 'step': s(t.get('step')), 'action':
         && /一并清掉/.test(treeText(tree)))
 
       // 诊断收尾轴：未闭环筛选只留没收尾的单（escalated/archived 是终态，不算未闭环）。
-      const chipOpen = findByText('未闭环 1')
-      expect('「未闭环」筛选入口可点', !!chipOpen)
+      const chipOpen = findByText('未收尾 1')
+      expect('「未收尾」筛选入口可点', !!chipOpen)
       if (chipOpen) { chipOpen.fn({}); await pumpTree(3) }
       const openText = treeText(tree)
-      expect('未闭环筛选只留诊断没收尾的单',
-        /s-await/.test(openText) && !/s-new/.test(openText) && !/s-kb/.test(openText), openText.slice(0, 300))
+      expect('未收尾筛选只留诊断还挂着、且没有结论也没交草稿的单',
+        /s-work/.test(openText) && !/s-await/.test(openText) && !/s-new/.test(openText) && !/s-kb/.test(openText),
+        openText.slice(0, 400))
 
       // 空态：筛选为空要说清是"这一类没有"，不能统一喊"去跑一次 diagnose"。
       const chipNew = findByText('新形态')
@@ -2767,6 +2797,32 @@ print(json.dumps([{'role': s(t.get('role')), 'step': s(t.get('step')), 'action':
         /「新形态」下没有会话/.test(emptyText)
         && /没有"命中 case、但库里还没有"的诊断/.test(emptyText)
         && !/在对话里跑一次 \/skill:diagnose/.test(emptyText), emptyText.slice(0, 300))
+    }
+    // 「有没有结论」只认 `kind: case` 的沉淀候选——报告每单都有，`reference` / `triage` 候选
+    // 记的是覆盖缺口与路由词，两者都不能证明根因定了（实测 telechat 有 2 条候选全是 reference）。
+    // 这里钉三件：有报告无 case 候选 → 待复核；只有 reference 候选 → 待复核；什么都没有 → 未收尾。
+    {
+      const b = {
+        status: 'in_progress', framework: 'vllm-ascend', platform: 'A2-910B', category: 'interrupt',
+        activeCase: null, activeCaseKind: null, activeCaseInKb: false, feedbackPending: null,
+        summarySnippet: '问题背景', userSteps: 2, agentSteps: 4, lastRole: 'agent',
+        lastOutput: '结论', updatedAt: new Date().toISOString(),
+      }
+      const withReport = Object.assign({}, b, { sessionId: 's-rep', file: 's-rep.yaml', reportFile: 's-rep.report.md', sedimented: { state: 'none' } })
+      const withCands = Object.assign({}, b, { sessionId: 's-cand', file: 's-cand.yaml', sedimentCandidates: 2, sedimented: { state: 'none' } })
+      const bare = Object.assign({}, b, { sessionId: 's-bare', file: 's-bare.yaml', sedimented: { state: 'none' } })
+      const host2 = (m) => m === 'ascend-traces-list'
+        ? { ok: true, sessions: [withReport, withCands, bare] }
+        : { ok: true, steps: [], summary: null }
+      const t2 = (await renderAsync(ascSrc, { sessionId: 'sess-1' }, host2)).text
+      // 「待沉淀」这三个字在界面上有固定的两处：筛选 chip 与搜索框占位文字。某一单真带了
+      // 待沉淀徽标就会变成 3 次——所以这里按次数判，比"文本里不出现"更不容易误判。
+      expect('有报告、但还没有 case 候选的单进「待复核」（不是待沉淀）',
+        /待复核/.test(t2) && (t2.match(/待沉淀/g) || []).length === 2,
+        '待沉淀出现 ' + (t2.match(/待沉淀/g) || []).length + ' 次')
+      expect('只有 reference / triage 候选也算有材料：两单各挂一个「待复核」徽标',
+        (t2.match(/待复核/g) || []).length >= 2, '徽标=' + (t2.match(/待复核/g) || []).length)
+      expect('既无报告也无候选、状态还挂着的单归「未收尾」', /未收尾 1/.test(t2), t2.slice(0, 300))
     }
     {
       expect('host 的会话列表带沉淀状态（列表才能筛待沉淀 / 待升格）',

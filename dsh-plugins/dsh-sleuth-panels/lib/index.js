@@ -1,6 +1,6 @@
 /* eslint-disable */
 // 生成物 —— 勿手改。由 `node scripts/build_panel_bundle.js` 从下列源文件拼出：
-//   dsh-plugins/ascend-panel/panel-host.js  (sha256:e5125d4a2050)
+//   dsh-plugins/ascend-panel/panel-host.js  (sha256:7e479789df8e)
 //   dsh-plugins/ev-panel/panel-host.js  (sha256:7cb53df00162)
 // 校验：`node scripts/build_panel_bundle.js --check`（源文件改了没重跑生成器即红）。
 //
@@ -81,7 +81,7 @@ const PANELS = [
     id: 'ascend-panel',
     build(harness) {
       return (function () {
-// ---- dsh-plugins/ascend-panel/panel-host.js (sha256:e5125d4a2050) 原文开始 ----
+// ---- dsh-plugins/ascend-panel/panel-host.js (sha256:7e479789df8e) 原文开始 ----
 return {
   apply(ctx) {
     const fs = ctx.get('fs')
@@ -488,13 +488,14 @@ return {
     // 缓存是派生物：读不到/损坏/版本不一致就整份重建，删掉也不影响正确性。
     // 存量不需要迁移——第一次刷新全量解析一遍并写缓存，之后都是增量。
     const INDEX_CACHE_FILE = '.panel-index.json'
-    const INDEX_SCHEMA = 1
+    const INDEX_SCHEMA = 3   // v3: 列表条目多带 severity 与 fixEmitted（v2 加了 caseCandidates）
     // 改 `buildCoreItem` 的字段必须同步这份清单：形状不符的缓存条目会被丢弃并重解析，
     // 避免"旧缓存把新字段喂成 undefined"在列表上静默少一列。
     const INDEX_CORE_FIELDS = ['sessionId', 'file', 'status', 'framework', 'platform', 'category', 'activeCase',
       'summarySnippet', 'excludedCount', 'feedbackPending', 'feedback', 'feedbackKind', 'feedbackCase',
       'waitingFor', 'userSteps', 'agentSteps', 'lastAction', 'lastRole', 'lastOutput', 'createdAt', 'updatedAt',
-      'recordedReport', 'activeCaseKind', 'sedimented', 'sedimentCandidates', 'parseAnomaly']
+      'recordedReport', 'activeCaseKind', 'sedimented', 'sedimentCandidates', 'caseCandidates',
+      'severity', 'fixEmitted', 'parseAnomaly']
     function coreShapeOk(item) {
       if (!item || typeof item !== 'object') return false
       const keys = Object.keys(item)
@@ -629,7 +630,39 @@ return {
         activeCaseKind: activeCaseKindOf(activeCase),
         sedimented: readSedimented(doc),
         sedimentCandidates: Array.isArray(doc.sediment_candidates) ? doc.sediment_candidates.length : 0,
+        // 其中 `kind: case` 的条数。「有可沉淀的根因结论」只认这一种：`reference` 候选记的是
+        // "知识库缺某个词条"（覆盖缺口），`triage` 记的是路由词，两者都不是根因结论。
+        // 实测 `2026-09-14-telechat-cq-alloc-dev5` 有 2 条候选、全是 reference——按"有候选"
+        // 判断会把它当成已定位，按"有 case 候选"才判得对。
+        // 严重级与"有没有给出 fix"：只为让列表能读出"这单该不该先停 / 有没有可执行的修复"。
+        // 两种写法都认：顶层 `severity` / `fix_emitted`（诊断按平铺字段写），或 `outcome.fix_emitted`
+        // （detail 侧旧形状）。缺就是没记，不猜。
+        severity: scalarStr(doc.severity),
+        fixEmitted: hasValue(doc, 'fix_emitted')
+          ? (doc.fix_emitted === true || doc.fix_emitted === 'true')
+          : (hasValue(doc.outcome, 'fix_emitted')
+            ? (doc.outcome.fix_emitted === true || doc.outcome.fix_emitted === 'true')
+            : null),
+        caseCandidates: Array.isArray(doc.sediment_candidates)
+          ? doc.sediment_candidates.filter(c => c && String(c.kind || '') === 'case').length
+          : 0,
         parseAnomaly: anomalyOf(stats),
+      }
+    }
+
+    // inbox 里的草稿：面板此前完全不读这个目录，于是"草稿已进 inbox、但 trace 没回写
+    // `sedimented.state`"的那批在界面上根本不存在（手工 to-postmortem、issue-ingest 的产出都属这类）。
+    // 只回文件名，不读正文——这里要回答的是"还有几份没整理"，不是内容。
+    async function listInboxDrafts(cwd) {
+      try {
+        const dir = await fs.resolve('postmortems/inbox', { cwd })
+        const entries = (await fs.listDir(dir)) || []
+        return entries
+          .map(e => String(e && e.name || ''))
+          .filter(n => n && !/^README\.md$/i.test(n) && /\.(ya?ml|md)$/i.test(n) && !/\.report\.md$/i.test(n))
+          .sort()
+      } catch (e) {
+        return []
       }
     }
 
@@ -648,7 +681,7 @@ return {
         // 全新检出无 traces/（gitignored、按需生成）→ 友好空态，而非报错。
         // 注意：resolve 对不存在的路径**不抛错**（沿最近存在的祖先回走、拼回缺失段），
         // 抛 FS_NOT_FOUND 的是 listDir——存在性判断必须挂在 listDir 这一侧。
-        if (e && e.code === 'FS_NOT_FOUND') return { ok: true, sessions: [], elapsedMs: Date.now() - startedAt, parsed: 0, cached: 0, skipped: 0 }
+        if (e && e.code === 'FS_NOT_FOUND') return { ok: true, sessions: [], inboxDrafts: [], elapsedMs: Date.now() - startedAt, parsed: 0, cached: 0, skipped: 0 }
         return { ok: false, error: 'traces 目录不可读: ' + String(e && e.message || e) }
       }
       const kbIds = await loadKbCaseIds(kbCwd || cwd)
@@ -746,7 +779,8 @@ return {
         if (ub !== null && ua === null) return 1
         return a.file < b.file ? 1 : -1
       })
-      return { ok: true, sessions: out, elapsedMs: Date.now() - startedAt, parsed: parsedCount, cached: cachedCount, skipped: skippedCount }
+      return { ok: true, sessions: out, inboxDrafts: await listInboxDrafts(cwd),
+        elapsedMs: Date.now() - startedAt, parsed: parsedCount, cached: cachedCount, skipped: skippedCount }
     }
 
     // ---- 知识库健康聚合 ----
@@ -1152,11 +1186,15 @@ return {
         toolFailures: failures,
         touchedCases: asList(touched.cases),
         touchedReferences: asList(touched.references),
+        // 诊断按平铺字段写（顶层 `stop_reason`、`fix_emitted`），老形状写 `outcome` 块。
+        // 只读块里那份时，20 单全部显示"本次没记"——两个写入点各写各的，读端只认一个。
         outcome: {
           status: scalarStr(ouc.status),
-          fixEmitted: hasValue(ouc, 'fix_emitted') ? (ouc.fix_emitted === true || ouc.fix_emitted === 'true') : null,
-          stopReason: scalarStr(ouc.stop_reason),
+          fixEmitted: hasValue(ouc, 'fix_emitted') ? (ouc.fix_emitted === true || ouc.fix_emitted === 'true')
+            : (hasValue(doc, 'fix_emitted') ? (doc.fix_emitted === true || doc.fix_emitted === 'true') : null),
+          stopReason: scalarStr(ouc.stop_reason) || scalarStr(doc.stop_reason),
         },
+        severity: scalarStr(doc.severity),
         feedback: {
           case: scalarStr(fb.case), outcome: scalarStr(fb.outcome), confirmedAt: scalarStr(fb.confirmed_at),
         },
@@ -2437,7 +2475,7 @@ return {
       const repoCwd = await resolveRepoCwd(sessionId)
       const r = await listTraces(cwd, repoCwd)
       if (!r.ok) return { ok: false, error: r.error }
-      return { ok: true, sessions: r.sessions, elapsedMs: r.elapsedMs, parsed: r.parsed, cached: r.cached, skipped: r.skipped }
+      return { ok: true, sessions: r.sessions, inboxDrafts: r.inboxDrafts || [], elapsedMs: r.elapsedMs, parsed: r.parsed, cached: r.cached, skipped: r.skipped }
     })
 
     const detailDisposer = harness.handle('ascend-traces-detail', async (args) => {

@@ -188,9 +188,10 @@ def trace_closure(root: Path, sid: str):
 
     闭环有两条轴（词表见仓库根 `trace-status.yaml`）：
       - 命中 case：`feedback.outcome == resolved`（feedback 轴记"那个 case 的 fix 行不行"）；
-      - 无命中 case：没有 case 可归属，结果只记 `status: resolved`（面板的闭环命令就是
-        这么写的：不写 feedback）。此前闸门只读 feedback，导致"无命中但已解决"的新形态
-        case 永远过不了闸——而这类恰是知识增长的主路径（无命中才会产出新 case）。
+      - 无命中 case：没有 case 可归属，结果只记 `status: resolved`（它表示"这单已收尾、根因
+        定位明确"，不表示 fix 生效；无命中单本来就没有 case 的 fix 可验证，所以收尾即闭环）。
+        面板的闭环命令就是这么写的：不写 feedback。此前闸门只读 feedback，导致"无命中但已收尾"
+        的新形态 case 永远过不了闸——而这类恰是知识增长的主路径（无命中才会产出新 case）。
 
     `traces/` 是 gitignored 的共享运行时件、锚在主检出——worktree 里通常不存在，故必须走
     `resolve_traces()` 解析，不能假定 `<root>/traces/`。取不到返回 None（按未闭环处理）。
@@ -226,8 +227,9 @@ def gate_case(case, path: Path, root: Path, fail, warn):
     tr = trace_closure(root, sid) or {}
     outcome = tr.get("outcome")
     status = tr.get("status")
-    # 无命中单的闭环由 status 承载；但**只在没有显式反馈结论时**——status 不能覆盖
-    # not_resolved / partial / pending（那些是"明确没闭环"或"还没回报"）。
+    # 无命中单的闭环由 status 承载（status: resolved = 已收尾，与"fix 生效"无关）；但**只在
+    # 没有显式反馈结论时**——status 不能覆盖 not_resolved / partial / pending（那些是"明确
+    # 没闭环"或"还没回报"）。
     no_hit_closed = is_no_hit_case(tr.get("active_case")) and status == "resolved" and not outcome
     ver = (case.get("verification") or {}).get("source")
 
