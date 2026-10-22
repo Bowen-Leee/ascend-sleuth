@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<!--
+  生成同名 PNG（Windows，Chrome 或 Edge 均可）：
+  chrome --headless=new --disable-gpu --no-sandbox --hide-scrollbars \
+    --force-device-scale-factor=2 --window-size=1400,600 \
+    --screenshot="ui-install-config.png" "file:///<绝对路径>/ui-install-config.html"
+  截图后按内容裁边（留 28px 外边距）再提交；HTML 是唯一真源，改样式先改这里。
+-->
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>DSH 界面设计稿：安装与配置</title>
+<style>
+  :root{
+    --bg:#f2f4f7; --card:#ffffff; --line:#e3e6ea; --line2:#eef1f4;
+    --text:#1f2328; --text2:#5c6570; --text3:#8b949e;
+    --blue:#2563eb; --blue-bg:#eaf1fe; --green:#16a34a; --green-bg:#e9f7ee;
+    --amber:#b45309; --amber-bg:#fdf3e4; --purple:#7c3aed;
+    --r-xs:5px; --r-sm:7px; --r-md:9px; --r-lg:12px; --r-pill:999px;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--text);width:1400px;
+       font:14px/1.55 "Microsoft YaHei","PingFang SC","Segoe UI",system-ui,sans-serif;
+       padding:26px 26px 18px}
+  .sheet{display:flex;gap:22px;align-items:flex-start}
+  .frame{background:var(--card);border:1px solid var(--line);border-radius:var(--r-lg);
+         overflow:hidden;box-shadow:0 1px 2px rgba(16,24,40,.04),0 6px 18px rgba(16,24,40,.05)}
+  .frame-cap{padding:10px 14px;border-bottom:1px solid var(--line2);
+             display:flex;align-items:center;gap:8px;background:#fafbfc}
+  .frame-cap .n{width:20px;height:20px;border-radius:var(--r-pill);background:var(--text);
+                color:#fff;font-size:11px;display:grid;place-items:center;flex:none}
+  .frame-cap .t{font-size:13px;font-weight:600;white-space:nowrap}
+  .frame-cap .s{font-size:12px;color:var(--text3);margin-left:auto;white-space:nowrap}
+  .badge{font-size:11px;line-height:18px;padding:0 7px;border-radius:var(--r-pill);
+         background:var(--blue-bg);color:var(--blue);border:1px solid #cfe0fd;white-space:nowrap}
+  .badge.add{background:#fff;border-color:var(--blue);color:var(--blue)}
+  .dot{width:6px;height:6px;border-radius:var(--r-pill);display:inline-block}
+
+  /* frame A */
+  .plug{display:grid;grid-template-columns:56px 1fr}
+  .rail{border-right:1px solid var(--line2);padding:12px 0;display:flex;flex-direction:column;
+        align-items:center;gap:10px;background:#fbfcfd}
+  .rail .ic{width:30px;height:30px;border-radius:var(--r-sm);display:grid;place-items:center;
+            color:var(--text3);font-size:14px}
+  .rail .ic.on{background:var(--blue-bg);color:var(--blue)}
+  .rail .sep{flex:1;min-height:120px}
+  .plug-main{padding:14px 16px 16px}
+  .h1{font-size:16px;font-weight:700}
+  .sub{font-size:12px;color:var(--text3);margin-top:2px}
+  .rows{margin-top:12px;border:1px solid var(--line2);border-radius:var(--r-md);overflow:hidden}
+  .row{display:grid;grid-template-columns:1fr 34px;gap:10px;align-items:center;
+       padding:11px 12px;border-bottom:1px solid var(--line2)}
+  .row:last-child{border-bottom:0}
+  .row .name{font-size:13px;font-weight:600;display:flex;align-items:center;gap:6px}
+  .row .meta{font-size:11.5px;color:var(--text3);margin-top:2px}
+  .sw{width:34px;height:19px;border-radius:var(--r-pill);background:#d7dce1;position:relative;flex:none}
+  .sw i{position:absolute;top:2px;left:2px;width:15px;height:15px;border-radius:50%;
+        background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.15)}
+  .sw.on{background:var(--green)}
+  .sw.on i{left:auto;right:2px}
+  .foot{margin-top:12px;display:flex;gap:8px;align-items:center;font-size:12px;color:var(--text3)}
+
+  /* frame B */
+  .set{display:grid;grid-template-columns:150px 1fr}
+  .nav{border-right:1px solid var(--line2);padding:14px 10px;background:#fbfcfd}
+  .nav .grp{font-size:11px;color:var(--text3);padding:8px 8px 6px}
+  .nav .it{padding:7px 9px;border-radius:var(--r-sm);font-size:13px;color:var(--text2);
+           display:flex;align-items:center;gap:6px}
+  .nav .it.on{background:var(--blue-bg);color:var(--blue);font-weight:600}
+  .set-main{padding:16px 18px 18px}
+  .set-main .sub{margin-bottom:14px}
+  .field{display:grid;grid-template-columns:96px 1fr;gap:12px;align-items:center;
+         padding:9px 0;border-bottom:1px solid var(--line2)}
+  .field:last-of-type{border-bottom:0}
+  .lab{font-size:12.5px;color:var(--text2)}
+  .box{border:1px solid var(--line);border-radius:var(--r-sm);padding:7px 10px;
+       font:12.5px/1.4 ui-monospace,Consolas,monospace;color:var(--text);
+       background:#fff;display:flex;align-items:center;gap:8px}
+  .box .hint{margin-left:auto;font-family:inherit;font-size:11.5px;color:var(--blue);white-space:nowrap}
+  .check{border:1px solid var(--line);border-radius:var(--r-md);padding:12px;margin-top:14px;background:#fcfdfe}
+  .check .t{font-size:12.5px;font-weight:600;display:flex;align-items:center;gap:8px}
+  .res{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
+  .chip{font-size:12px;padding:4px 10px;border-radius:var(--r-pill);border:1px solid var(--line);background:#fff}
+  .chip.ok{background:var(--green-bg);border-color:#c9ebd5;color:#137a37}
+  .chip.warn{background:var(--amber-bg);border-color:#f3ddba;color:var(--amber)}
+  .acts{display:flex;gap:10px;margin-top:16px;align-items:center}
+  .btn{padding:7px 16px;border-radius:var(--r-sm);font-size:13px;font-weight:600}
+  .btn.p{background:var(--blue);color:#fff}
+  .btn.g{background:#fff;color:var(--text2);border:1px solid var(--line)}
+  .btn.t{background:#fff;color:var(--blue);border:1px solid #cfe0fd}
+  .note{margin-top:12px;font-size:12px;color:var(--text3)}
+  .legend{display:flex;gap:18px;margin-top:18px;font-size:12px;color:var(--text2);align-items:center}
+  .legend .k{display:flex;gap:6px;align-items:center}
+</style>
+</head>
+<body>
+<div class="sheet">
+
+  <div class="frame" style="width:640px">
+    <div class="frame-cap"><span class="n">1</span><span class="t">侧栏 · 插件页</span>
+      <span class="s">装包与开关</span></div>
+    <div class="plug">
+      <div class="rail">
+        <div class="ic on">◧</div><div class="ic">▤</div><div class="ic">◍</div>
+        <div class="sep"></div><div class="ic">⚙</div>
+      </div>
+      <div class="plug-main">
+        <div class="h1">插件</div>
+        <div class="sub">已安装 6 个包 · 5 个启用 · 来源：团队 registry</div>
+
+        <div class="rows">
+          <div class="row">
+            <div><div class="name">sleuth-core <span class="badge">代码</span></div>
+              <div class="meta">技能 · 脚本 · 工具 · 设置页 · v1.4.0 · registry</div></div>
+            <div class="sw on"><i></i></div>
+          </div>
+          <div class="row">
+            <div><div class="name">kb-ascend-training <span class="badge">知识</span>
+                <span class="badge add">新增</span></div>
+              <div class="meta">训练 · 精度 / 性能 / 中断 · 1,284 条 case · v0.9.2</div></div>
+            <div class="sw on"><i></i></div>
+          </div>
+          <div class="row">
+            <div><div class="name">kb-vllm-inference <span class="badge">知识</span>
+                <span class="badge add">新增</span></div>
+              <div class="meta">推理 · 部署 / 精度 · 412 条 case · v0.8.0 · 私有源</div></div>
+            <div class="sw on"><i></i></div>
+          </div>
+          <div class="row">
+            <div><div class="name">ref-platform-facts <span class="badge">先验</span></div>
+              <div class="meta">平台事实 · 错误码家族 · 工具词条 · v1.1.0</div></div>
+            <div class="sw"><i></i></div>
+          </div>
+          <div class="row">
+            <div><div class="name">sleuth-panels <span class="badge">面板</span></div>
+              <div class="meta">诊断 / 指标 / 自演进三个视图 · v1.4.0</div></div>
+            <div class="sw on"><i></i></div>
+          </div>
+          <div class="row">
+            <div><div class="name">cap-doc-search <span class="badge">能力</span>
+                <span class="badge add">新增</span></div>
+              <div class="meta">外部检索 · 槽位 external_lookup · capability_api 1</div></div>
+            <div class="sw on"><i></i></div>
+          </div>
+        </div>
+
+        <div class="foot">
+          <span class="dot" style="background:var(--green)"></span>
+          停用不卸载，再开启不需要重装；换版本要重启 DSH。
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="frame" style="width:660px">
+    <div class="frame-cap"><span class="n">2</span><span class="t">设置页 · sleuth 节</span>
+      <span class="s">路径与自检</span></div>
+    <div class="set">
+      <div class="nav">
+        <div class="grp">设置</div>
+        <div class="it">通用</div><div class="it">模型</div><div class="it">插件</div>
+        <div class="it on">sleuth <span class="badge add">新增</span></div>
+      </div>
+      <div class="set-main">
+        <div class="h1">sleuth</div>
+        <div class="sub">状态与知识库的位置。改完对下一次诊断生效。</div>
+
+        <div class="field">
+          <div class="lab">状态目录</div>
+          <div class="box">E:\ascend-state <span class="hint">浏览</span></div>
+        </div>
+        <div class="field">
+          <div class="lab">知识库克隆</div>
+          <div class="box">E:\ascend-kb\clone <span class="hint">浏览</span></div>
+        </div>
+        <div class="field">
+          <div class="lab">上游仓</div>
+          <div class="box">git@corp:team/sleuth-kb.git <span class="hint">测试连接</span></div>
+        </div>
+
+        <div class="check">
+          <div class="t">自检 <span class="badge">只读</span></div>
+          <div class="res">
+            <span class="chip ok">缺件 0</span>
+            <span class="chip warn">本地分叉 12 个提交</span>
+            <span class="chip ok">包内容与发布版本一致</span>
+            <span class="chip ok">能力槽位 1 个已填</span>
+            <span class="chip ok">python3 与 PyYAML 可用</span>
+          </div>
+        </div>
+
+        <div class="acts">
+          <div class="btn p">保存</div>
+          <div class="btn g">恢复默认</div>
+          <div class="btn t">重新自检</div>
+        </div>
+        <div class="note">自检不装包、不改文件，只读三样：已装包、状态目录、上游版本。</div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<div class="legend">
+  <span class="k"><span class="badge add">新增</span> 目标态新增的界面项</span>
+  <span class="k"><span class="badge">代码</span> 包类型徽标</span>
+  <span class="k"><span class="sw on" style="transform:scale(.85)"><i></i></span> 启用状态</span>
+</div>
+</body>
+</html>

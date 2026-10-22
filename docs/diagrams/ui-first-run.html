@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>DSH 界面设计稿：首次安装对话流程</title>
+<style>
+  :root{
+    --bg:#f2f4f7; --card:#ffffff; --line:#e3e6ea; --line2:#eef1f4;
+    --text:#1f2328; --text2:#5c6570; --text3:#8b949e;
+    --blue:#2563eb; --blue-bg:#eaf1fe; --green:#16a34a; --green-bg:#e9f7ee;
+    --amber:#b45309; --amber-bg:#fdf3e4;
+    --r-xs:5px; --r-sm:7px; --r-md:9px; --r-lg:12px; --r-pill:999px;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--text);width:1400px;
+       font:14px/1.55 "Microsoft YaHei","PingFang SC","Segoe UI",system-ui,sans-serif;
+       padding:26px 26px 18px}
+  .sheet{display:flex;gap:22px;align-items:flex-start}
+  .frame{background:var(--card);border:1px solid var(--line);border-radius:var(--r-lg);
+         overflow:hidden;box-shadow:0 1px 2px rgba(16,24,40,.04),0 6px 18px rgba(16,24,40,.05)}
+  .cap{padding:10px 14px;border-bottom:1px solid var(--line2);background:#fafbfc;
+       display:flex;align-items:center;gap:8px}
+  .cap .n{width:20px;height:20px;border-radius:var(--r-pill);background:var(--text);color:#fff;
+          font-size:11px;display:grid;place-items:center;flex:none}
+  .cap .t{font-size:13px;font-weight:600;white-space:nowrap}
+  .cap .s{font-size:12px;color:var(--text3);margin-left:auto;white-space:nowrap}
+  .badge{font-size:11px;line-height:18px;padding:0 7px;border-radius:var(--r-pill);
+         background:var(--blue-bg);color:var(--blue);border:1px solid #cfe0fd;white-space:nowrap}
+  .badge.ok{background:var(--green-bg);border-color:#c9ebd5;color:#137a37}
+
+  .chat{padding:16px 18px 18px;display:flex;flex-direction:column;gap:12px}
+  .msg{display:flex;gap:10px;max-width:92%}
+  .msg.me{align-self:flex-end;flex-direction:row-reverse}
+  .av{width:26px;height:26px;border-radius:var(--r-pill);flex:none;display:grid;place-items:center;
+      font-size:11px;font-weight:700}
+  .av.a{background:var(--blue-bg);color:var(--blue)}
+  .av.u{background:#e9edf2;color:var(--text2)}
+  .bub{background:#f7f9fb;border:1px solid var(--line2);border-radius:var(--r-md);
+       padding:9px 12px;font-size:13px}
+  .msg.me .bub{background:var(--blue);border-color:var(--blue);color:#fff}
+  .tool{border:1px solid var(--line2);border-radius:var(--r-md);overflow:hidden;background:#fcfdfe;
+        max-width:92%;margin-left:36px}
+  .tool .th{padding:7px 11px;border-bottom:1px solid var(--line2);display:flex;gap:8px;align-items:center;
+            font-size:12px;color:var(--text2);background:#fafbfc}
+  .tool .th .name{font-weight:600;color:var(--text)}
+  .tool .tb{padding:9px 11px;font:11.5px/1.7 ui-monospace,Consolas,monospace;color:var(--text2)}
+  .tool .tb b{font-weight:600;color:var(--text)}
+  .ok{color:var(--green)}
+  .step{display:grid;grid-template-columns:22px 1fr;gap:10px;padding:9px 0;border-bottom:1px solid var(--line2)}
+  .step:last-child{border-bottom:0}
+  .step .i{width:20px;height:20px;border-radius:var(--r-pill);display:grid;place-items:center;
+           font-size:11px;background:var(--green-bg);color:#137a37;font-weight:700}
+  .step .i.wait{background:#f1f3f5;color:var(--text3)}
+  .step .t{font-size:12.5px;font-weight:600}
+  .step .d{font-size:11.5px;color:var(--text3);margin-top:1px}
+  .side{padding:16px 16px 18px}
+  .side .h{font-size:13px;font-weight:700;display:flex;align-items:center;gap:8px}
+  .side .sub{font-size:11.5px;color:var(--text3);margin-top:2px}
+  .warn{margin-top:14px;border:1px solid #f3ddba;background:var(--amber-bg);border-radius:var(--r-md);
+        padding:10px 12px;font-size:12px;color:#8a4b06}
+  .warn .t{font-weight:700;margin-bottom:3px}
+  .warn code{font:11.5px ui-monospace,Consolas,monospace}
+  .after{margin-top:14px;border:1px solid var(--line2);border-radius:var(--r-md);padding:10px 12px;background:#fcfdfe}
+  .after .t{font-size:12px;font-weight:700;margin-bottom:4px}
+  .after .l{font:12px/1.6 ui-monospace,Consolas,monospace;color:var(--text2)}
+  .legend{display:flex;gap:18px;margin-top:18px;font-size:12px;color:var(--text2);align-items:center;flex-wrap:wrap}
+  .legend .k{display:flex;gap:6px;align-items:center}
+</style>
+</head>
+<body>
+<div class="sheet">
+
+  <div class="frame" style="width:900px">
+    <div class="cap"><span class="n">3</span><span class="t">会话页 · 首次安装</span>
+      <span class="s">对话式，四轮之内完成</span></div>
+
+    <div class="chat">
+
+      <div class="msg me"><div class="av u">工</div>
+        <div class="bub">帮我把 sleuth 诊断装好，走团队的源。</div></div>
+
+      <div class="tool">
+        <div class="th"><span class="name">sleuth_env_check</span><span>本机环境自检</span>
+          <span class="badge ok" style="margin-left:auto">通过</span></div>
+        <div class="tb">
+          python3 <b>3.13.0</b> <span class="ok">✓</span> · PyYAML <b>6.0.2</b> <span class="ok">✓</span><br>
+          git <b>2.55.0</b> <span class="ok">✓</span> · 团队源 <b>180 ms</b> <span class="ok">✓</span> · 磁盘余量 <b>2.1 GB</b>
+        </div>
+      </div>
+
+      <div class="msg"><div class="av a">A</div>
+        <div class="bub">环境齐。建议装核心包 <b>sleuth-core 1.4.0</b> 与训练知识包
+          <b>kb-ascend-training 0.9.2</b>。要装这两件吗？</div></div>
+
+      <div class="msg me"><div class="av u">工</div><div class="bub">装。</div></div>
+
+      <div class="tool">
+        <div class="th"><span class="name">sleuth_install</span><span>装包</span>
+          <span class="badge ok" style="margin-left:auto">完成</span></div>
+        <div class="tb">
+          sleuth-core <b>1.4.0</b> · 4.2 MB · 12 s · 技能 13 · 工具 4<br>
+          kb-ascend-training <b>0.9.2</b> · 38 MB · 24 s · case 1,284<br>
+          索引进状态目录 · 1,284 条 · 重建 <b>3 s</b>
+        </div>
+      </div>
+
+      <div class="msg"><div class="av a">A</div>
+        <div class="bub">还差两个路径：状态目录与知识库克隆。用默认值
+          <b>E:\ascend-state</b> 与 <b>E:\ascend-kb</b>？</div></div>
+
+      <div class="msg me"><div class="av u">工</div><div class="bub">用默认。</div></div>
+
+      <div class="tool">
+        <div class="th"><span class="name">sleuth_settings_write</span><span>写设置并自检</span>
+          <span class="badge ok" style="margin-left:auto">通过</span></div>
+        <div class="tb">
+          状态目录 <b>E:\ascend-state</b> · 知识库克隆 <b>E:\ascend-kb</b><br>
+          自检 · 缺件 <b>0</b> · 分叉 <b>0</b> · 包内容一致 <b>✓</b> · 索引就绪 <b>✓</b>
+        </div>
+      </div>
+
+      <div class="msg"><div class="av a">A</div>
+        <div class="bub">装好了。随便找个目录开会话就能用；要接内部检索就再装一个能力包，不装也不影响诊断。</div></div>
+
+    </div>
+  </div>
+
+  <div class="col" style="width:430px;display:flex;flex-direction:column;gap:22px">
+
+    <div class="frame">
+      <div class="cap"><span class="t">安装进度</span><span class="s">预计 5 分钟</span></div>
+      <div class="side">
+        <div class="h">四步，前两步不需要人</div>
+        <div style="margin-top:10px">
+          <div class="step"><div class="i">1</div>
+            <div><div class="t">环境自检</div><div class="d">python3 · PyYAML · git · 源可达</div></div></div>
+          <div class="step"><div class="i">2</div>
+            <div><div class="t">装包与重建索引</div><div class="d">核心包 · 知识包 · 索引按包版本缓存</div></div></div>
+          <div class="step"><div class="i">3</div>
+            <div><div class="t">填路径并自检</div><div class="d">状态目录 · 知识库克隆 · 缺件与分叉</div></div></div>
+          <div class="step"><div class="i wait">4</div>
+            <div><div class="t">试跑一条诊断</div><div class="d">可选：用示例问题确认技能已加载</div></div></div>
+        </div>
+
+        <div class="warn">
+          <div class="t">缺依赖时停在第 1 步</div>
+          报缺哪个并给一条安装命令，不进半装状态。例如 <code>python3 -m pip install pyyaml</code>。
+        </div>
+
+        <div class="after">
+          <div class="t">装完之后</div>
+          <div class="l">状态目录 E:\ascend-state 存轨迹与草稿；知识库克隆 E:\ascend-kb 是升格与回流的出口。</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="frame">
+      <div class="cap"><span class="t">装错了怎么办</span><span class="s">三条命令</span></div>
+      <div class="side">
+        <div class="after" style="margin-top:0">
+          <div class="t">装回上一个版本</div>
+          <div class="l">dsh plugin add sleuth-core@1.3.2</div>
+        </div>
+        <div class="after">
+          <div class="t">卸载但保留数据</div>
+          <div class="l">dsh plugin remove sleuth-core</div>
+        </div>
+        <div class="after">
+          <div class="t">状态目录</div>
+          <div class="l">卸载不删 E:\ascend-state；轨迹与草稿都在这里。</div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<div class="legend">
+  <span class="k"><span class="badge ok">通过</span> 工具调用结果</span>
+  <span class="k"><span class="badge">装包</span> 由代码包提供的工具</span>
+  <span class="k">深色气泡＝工程师，浅色气泡＝agent</span>
+</div>
+</body>
+</html>

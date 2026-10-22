@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<!--
+  生成同名 PNG（Windows，Chrome 或 Edge 均可）：
+  chrome --headless=new --disable-gpu --no-sandbox --hide-scrollbars \
+    --force-device-scale-factor=2 --window-size=1400,860 \
+    --screenshot="ui-panels.png" "file:///<绝对路径>/ui-panels.html"
+  截图后按内容裁边（留 28px 外边距）再提交；HTML 是唯一真源，改样式先改这里。
+-->
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>DSH 界面设计稿：会话页三个面板</title>
+<style>
+  :root{
+    --bg:#f2f4f7; --card:#ffffff; --line:#e3e6ea; --line2:#eef1f4;
+    --text:#1f2328; --text2:#5c6570; --text3:#8b949e;
+    --blue:#2563eb; --blue-bg:#eaf1fe; --green:#16a34a; --green-bg:#e9f7ee;
+    --amber:#b45309; --amber-bg:#fdf3e4; --red:#b42318; --red-bg:#fdeceb;
+    --purple:#7c3aed; --purple-bg:#f3edfe;
+    --r-xs:5px; --r-sm:7px; --r-md:9px; --r-lg:12px; --r-pill:999px;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--text);width:1400px;
+       font:14px/1.55 "Microsoft YaHei","PingFang SC","Segoe UI",system-ui,sans-serif;
+       padding:26px 26px 18px}
+  .sheet{display:flex;gap:22px;align-items:flex-start}
+  .col{display:flex;flex-direction:column;gap:22px}
+  .frame{background:var(--card);border:1px solid var(--line);border-radius:var(--r-lg);
+         overflow:hidden;box-shadow:0 1px 2px rgba(16,24,40,.04),0 6px 18px rgba(16,24,40,.05)}
+  .tabs{display:flex;gap:4px;padding:8px 10px;border-bottom:1px solid var(--line2);background:#fafbfc}
+  .tab{font-size:12.5px;padding:5px 12px;border-radius:var(--r-pill);color:var(--text2);white-space:nowrap}
+  .tab.on{background:var(--blue-bg);color:var(--blue);font-weight:600}
+  .tab .n{margin-left:6px;font-size:11px;color:var(--text3)}
+  .pan{padding:14px 16px 16px}
+  .head{display:flex;align-items:center;gap:8px}
+  .h1{font-size:15px;font-weight:700}
+  .sub{font-size:12px;color:var(--text3);margin-left:auto;white-space:nowrap}
+  .badge{font-size:11px;line-height:18px;padding:0 7px;border-radius:var(--r-pill);
+         background:var(--blue-bg);color:var(--blue);border:1px solid #cfe0fd;white-space:nowrap}
+  .badge.add{background:#fff;border-color:var(--blue);color:var(--blue)}
+  .badge.ok{background:var(--green-bg);border-color:#c9ebd5;color:#137a37}
+  .badge.warn{background:var(--amber-bg);border-color:#f3ddba;color:var(--amber)}
+  .badge.mut{background:#f4f6f8;border-color:var(--line);color:var(--text2)}
+
+  /* 诊断列表 */
+  .list{margin-top:12px;border:1px solid var(--line2);border-radius:var(--r-md);overflow:hidden}
+  .tr{display:grid;grid-template-columns:1fr 84px 74px;gap:10px;align-items:center;
+      padding:10px 12px;border-bottom:1px solid var(--line2)}
+  .tr:last-child{border-bottom:0}
+  .tr.sel{background:#fbfdff;border-left:2px solid var(--blue)}
+  .sid{font:12px/1.4 ui-monospace,Consolas,monospace;color:var(--text)}
+  .meta{font-size:11.5px;color:var(--text3);margin-top:2px}
+  .sum{grid-column:1/-1;margin-top:8px;padding:10px 12px;border-radius:var(--r-sm);
+       background:#f7f9fb;border:1px solid var(--line2);font-size:12px;color:var(--text2)}
+  .ev{display:flex;gap:8px;margin-top:8px;font-size:11.5px;color:var(--text3)}
+  .ev b{font-weight:600;color:var(--text2)}
+  .filters{display:flex;gap:6px;align-items:center;margin-top:10px;font-size:11.5px;color:var(--text2)}
+  .filters .f{padding:3px 10px;border-radius:var(--r-pill);border:1px solid var(--line);background:#fff}
+  .filters .f.on{background:var(--blue-bg);border-color:#cfe0fd;color:var(--blue);font-weight:600}
+  .pan-foot{margin-top:10px;font-size:11.5px;color:var(--text3)}
+
+  /* 指标 */
+  .kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:12px}
+  .kpi{border:1px solid var(--line2);border-radius:var(--r-md);padding:10px 12px;background:#fcfdfe}
+  .kpi .v{font-size:19px;font-weight:700;letter-spacing:-.2px}
+  .kpi .l{font-size:11.5px;color:var(--text3);margin-top:2px}
+  .bars{display:flex;align-items:flex-end;gap:6px;height:64px;margin-top:14px;
+        padding:8px 10px 0;border:1px solid var(--line2);border-radius:var(--r-md);background:#fcfdfe}
+  .bar{flex:1;background:#cfe0fd;border-radius:3px 3px 0 0}
+  .bar.hi{background:var(--blue)}
+  .axis{display:flex;gap:6px;margin-top:6px;font-size:10.5px;color:var(--text3)}
+  .axis span{flex:1;text-align:center}
+
+  /* 自演进 */
+  .evs{margin-top:12px;display:flex;flex-direction:column;gap:8px}
+  .evrow{border:1px solid var(--line2);border-radius:var(--r-md);padding:9px 11px;background:#fcfdfe}
+  .evrow .t{font-size:12.5px;font-weight:600;display:flex;align-items:center;gap:8px}
+  .evrow .m{font:11px/1.5 ui-monospace,Consolas,monospace;color:var(--text2);margin-top:4px}
+  .evrow .m em{font-style:normal;color:var(--blue)}
+  .legend{display:flex;gap:18px;margin-top:18px;font-size:12px;color:var(--text2);align-items:center;flex-wrap:wrap}
+  .legend .k{display:flex;gap:6px;align-items:center}
+</style>
+</head>
+<body>
+<div class="sheet">
+
+  <!-- 诊断轨迹 -->
+  <div class="frame" style="width:720px">
+    <div class="tabs">
+      <div class="tab on">诊断轨迹</div>
+      <div class="tab">指标读数</div>
+      <div class="tab">自演进看板</div>
+      <div class="tab" style="margin-left:auto">只读</div>
+    </div>
+    <div class="pan">
+      <div class="head"><span class="h1">诊断轨迹</span>
+        <span class="sub">最近 7 天 · 12 条 · 状态目录 E:\ascend-state</span></div>
+
+      <div class="filters">
+        <span class="f on">全部性质</span><span class="f">中断</span><span class="f">精度</span>
+        <span class="f">性能</span><span class="f" style="margin-left:auto">按更新时间排</span>
+      </div>
+
+      <div class="list">
+        <div class="tr sel">
+          <div><div class="sid">2026-09-18-12430-a2-hccl</div>
+            <div class="meta">训练 · 中断 · 2 次工具调用后定位</div></div>
+          <div><span class="badge ok">已解决</span></div>
+          <div><span class="badge mut">反馈 ✓</span></div>
+          <div class="sum">
+            结论：HCCL 建链超时由跨节点端口被占用引起，建议先停训练并保留现场。
+            <div class="ev"><b>证据</b><span>日志 2 个 · 版本快照 1 个 · 候选命中 3 条</span></div>
+          </div>
+        </div>
+        <div class="tr">
+          <div><div class="sid">2026-09-18-09215-a3-precision</div>
+            <div class="meta">推理 · 精度 · 走先验补数据缺口</div></div>
+          <div><span class="badge warn">待确认</span></div>
+          <div><span class="badge mut">无反馈</span></div>
+        </div>
+        <div class="tr">
+          <div><div class="sid">2026-09-17-18302-a2-perf</div>
+            <div class="meta">训练 · 性能 · 3 条候选全未命中</div></div>
+          <div><span class="badge mut">已归档</span></div>
+          <div><span class="badge mut">反馈 ✓</span></div>
+        </div>
+        <div class="tr">
+          <div><div class="sid">2026-09-17-14118-a5-hccl</div>
+            <div class="meta">训练 · 中断 · 已升级给现场 owner</div></div>
+          <div><span class="badge warn">待确认</span></div>
+          <div><span class="badge mut">无反馈</span></div>
+        </div>
+      </div>
+
+      <div class="pan-foot">视图只读：不写状态目录，也不改打包里的内容。</div>
+    </div>
+  </div>
+
+  <div class="col">
+
+    <!-- 指标 -->
+    <div class="frame" style="width:580px">
+      <div class="tabs">
+        <div class="tab">诊断轨迹</div>
+        <div class="tab on">指标读数</div>
+        <div class="tab">自演进看板</div>
+      </div>
+      <div class="pan">
+        <div class="head"><span class="h1">指标读数</span>
+          <span class="badge add">按包版本切分</span>
+          <span class="sub">核心包 1.4.0</span></div>
+
+        <div class="kpis">
+          <div class="kpi"><div class="v">74%</div><div class="l">top-3 命中</div></div>
+          <div class="kpi"><div class="v">2</div><div class="l">回滚</div></div>
+          <div class="kpi"><div class="v">6.4</div><div class="l">平均步骤</div></div>
+          <div class="kpi"><div class="v">42K</div><div class="l">每单 token</div></div>
+        </div>
+
+        <div class="bars">
+          <div class="bar" style="height:38%"></div>
+          <div class="bar" style="height:52%"></div>
+          <div class="bar" style="height:46%"></div>
+          <div class="bar hi" style="height:88%"></div>
+          <div class="bar" style="height:64%"></div>
+          <div class="bar" style="height:70%"></div>
+          <div class="bar hi" style="height:96%"></div>
+        </div>
+        <div class="axis"><span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span><span>日</span></div>
+      </div>
+    </div>
+
+    <!-- 自演进 -->
+    <div class="frame" style="width:580px">
+      <div class="tabs">
+        <div class="tab">诊断轨迹</div>
+        <div class="tab">指标读数</div>
+        <div class="tab on">自演进看板</div>
+      </div>
+      <div class="pan">
+        <div class="head"><span class="h1">自演进看板</span>
+          <span class="badge add">本地分叉提示</span>
+          <span class="sub">攒批 1 个 PR</span></div>
+
+        <div class="evs">
+          <div class="evrow">
+            <div class="t">拆分训练知识包的容量线 <span class="badge ok">已落地</span></div>
+            <div class="m">实测 <em>python3 scripts/ev_measure.py --run</em></div>
+          </div>
+          <div class="evrow">
+            <div class="t">检索候选的签名匹配放宽一档 <span class="badge">已批准</span></div>
+            <div class="m">判据 期望 top-3 命中不回退</div>
+          </div>
+          <div class="evrow">
+            <div class="t">本地分支领先上游 12 个提交 <span class="badge warn">待收敛</span></div>
+            <div class="m">与上游最新版本比较 <em>git log --oneline</em></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<div class="legend">
+  <span class="k"><span class="badge">已批准</span> 卡片状态</span>
+  <span class="k"><span class="badge warn">待收敛</span> 本地分叉超过阈值</span>
+  <span class="k"><span class="badge add">新增</span> 目标态新增的读数与提示</span>
+  <span class="k"><span class="badge mut">只读</span> 三个视图都不写入</span>
+</div>
+</body>
+</html>
