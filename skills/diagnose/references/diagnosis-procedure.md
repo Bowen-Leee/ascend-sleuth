@@ -318,10 +318,11 @@ trace 记 `{action: tier3, keyword: <kw>, files_read: [...]}`——Tier 3 挽救
 
 ## 步骤 6：产出
 
-- `resolution: resolved | escalated | unknown`
-- 写 `traces/<session_id>.yaml`（每并发诊断一文件，含完整 trace），case resolved/escalated 后留在 `traces/`（gitignored）
+- `status: resolved`（**含义是"已收尾"，不是"已修好"**：根因定位明确、fix 或明确的下一步已给出）`| escalated | unknown`；fix 是否在用户环境生效不写 status，写 `feedback.outcome`（词表见 `trace-status.yaml`；命中单由给 fix 时挂的 `pending` 起，有人回报后再追加 `feedback` 事件改值）
+- 写 `traces/<session_id>.yaml`（每并发诊断一文件，含完整 trace），status 到收尾态后留在 `traces/`（gitignored）
 - **写人读定位报告 `traces/<session_id>.report.md`**（结构与行文见 `report-template.md`）：trace 管过程可回放，对话输出管现场能行动，报告管"结论可复述 + 证据可核对 + 沉淀可执行"。**一律按深度排查规格写**——读者要据此自行判断对错并从中学机制，不因已知根因而缩水。写完过一遍 `python3 scripts/report_lint.py <报告>`（结构自检，非 CI 门禁）。
 - **报告是活件，不是一次性交付物**：它必须跟着诊断走，否则第一次交付之后就开始说谎。同一份文件改到底（不另起 `report-v2`），每次修订更新元信息的"最后更新"、在第 10 节追加一行修订记录，旧结论被推翻时**降级标注而不是删掉**（读者要看到判断怎么变的）。触发点与各改哪节见 `report-template.md` 第 2 节；本步骤最常见的两处是 **用户回报 fix 结果**（改 1/6/7/8 节）与 **resume 续接**（改 7/3 节）。
+- **顶层写 `severity` 与 `fix_emitted`（收尾时各写一次）**：`severity` 取 `benign` / `service-affecting` / `data-loss-risk`（命中单取命中 case 的 `severity`；未命中按根因判——会丢数据的一律 `data-loss-risk`）；`fix_emitted` 写 `true` / `false`，表示本次是否给出了可执行的修复或规避方案（等上游修复、只定位到根因写 `false`）。两个字段是面板列表唯一能表达"这单该不该先停""有没有可执行修复"的地方；不写，列表上这类单与 benign 的单长得一样，读的人只能点开才发现要停训练。
 - **写 `sediment_candidates`**（顶层字段，与报告第 8 节同源）：把"这单能沉淀什么"结构化——报告给人读，trace 给机器与 resume 读；trace 记一条 `{action: report, report_file, sediment_candidates: N}` 事件。
 - **Tier-2 命中**：常规 postmortem 草稿
 - **Tier-2 未命中但最终解决**：postmortem 含一段 agent 起草的候选 case（初始分数由 `verification` × `investigation_quality` 决定的冷启动先验给出，通常偏低），交 groom 验证。人的角色从“结构化”上移到“验证草案”。

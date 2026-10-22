@@ -48,6 +48,10 @@ agent 读取文件，后续流程同内联。
 
 session id 解析到 `traces/<id>.yaml`（`traces/` 锚主检出，用 `python3 scripts/shared_dir.py traces` 取绝对路径）；每个 session 各成一条草稿，批量确认命名空间、每单各跑语义校验（同上面的批量模式）。来源 trace 的 `sedimented.state` 逐单回写 `submitted`。
 
+**谁该进这批，先问脚本，别凭记忆**：`python3 scripts/sediment_batch.py` 只读清点——按「已收尾 / 有报告 / 有候选」列出还没沉淀的单，同一问题的多条 session 并成一组，并打印直接可用的批量命令；`--json` 给起草时读（含每组的报告文件名与候选正文，不必重读全部事件）。它不改 `status`、不改 `feedback.outcome`（那两条是诊断侧的事），也不判断该不该入库。
+
+**回写一次做完**：草稿落 inbox 后 `python3 scripts/sediment_batch.py --mark-submitted <session...> --inbox-path <草稿路径> --apply`，一次把这几单的 `sedimented` 置 `submitted`（默认只打印，加 `--apply` 才写；只动 `sedimented` 那一处，不重排其余字段）。
+
 **二进制文档（`.docx`/`.doc`/`.pptx`/`.xlsx`/`.rtf`/`.epub`）预处理**：客户报告、排查记录、汇报材料常是这些格式，先取到文本再走上面四种输入。**约束是不变量，不是工具**——只要满足三条：①文本取自原文件（不凭标题或上下文编造）②出处可核验 ③材料不外传（客户/内部文档不上传第三方服务）。工具怎么选、能不能装，都是这三条之下的实现细节。
 
 省事的首选（装得上就用，装不上别卡死）：

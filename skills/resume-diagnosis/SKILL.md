@@ -29,7 +29,7 @@ description: >
 - **占位串 `pending-investigation`**（没命中 case，只给了建议）：**不念这个占位串**（它不是 case id），也**不要求记 feedback 结算**（没有 case 可结算，结算脚本只会跳过它）。这类单等的是**现场材料**：按 trace 里最近一条 `evidence.missing` 与顶层 `last_action` 追问“上次要求的那几项材料拿到了吗”，把新证据接回诊断主循环。它**不是终态**——`status` 仍是 `in_progress`；结论出来时结果记在 `status` 与 `summary`，并把遗留的 `feedback.outcome: pending` 清掉（无命中单不用反馈轴承载结果，否则会出现“状态已结、反馈轴仍挂着”的两轴打架）。
 - **空值/缺失**（写了 `outcome: pending` 却没填 `case`）：**一个字都别念**——照字面追问会问出“上次 的 fix 应用后解决了吗”，读者无从判断你在指哪一单。按占位串那一路处理（问现场材料、不记结算），并**顺手把这笔写清**：该单没命中就清掉 pending，确实在等材料就补成 `pending-investigation`。空值悬在那里，下次续接还得再猜一遍。
 
-状态与结局词表见仓库根的 `trace-status.yaml`（**不是** `feedback_pending` 那个旧说法）。
+状态与结局词表见仓库根的 `trace-status.yaml`（**不是** `feedback_pending` 那个旧说法）。两条轴各管一件事：`status: resolved` 表示**诊断已收尾**（根因定位明确），不表示 fix 生效；fix 行不行只由 `feedback.outcome` 记。命中单在给 fix 时挂 `pending`，这里追问后追加 `feedback` 事件改值——**改的是 outcome，不是给 status 补一句"修好了"**（status 早在收尾时就该落）。
 
 **这份债为什么由续接来清、而不是由新诊断开屏来问**：续接续的正是那一单，问得其所；新问题的第一屏只服务新问题——`/diagnose` 若在开屏逐单追问历史 pending（积压时可能十几单），那是审讯，不是诊断。其他 pending 挂面板待办面（谁欠、哪一单、欠多久），人到那儿清。
 

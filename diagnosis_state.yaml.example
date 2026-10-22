@@ -13,6 +13,8 @@
 # **状态与反馈词表在 `trace-status.yaml`**（数据文件，别在这里另抄一份）：
 #   status  ∈ in_progress | resolved | escalated | archived | unknown
 #   outcome ∈ pending | resolved | not_resolved | partial
+# 两条轴各管一件事，别混：status 说"这单还管不管"（`resolved` = 诊断已收尾、根因定位明确，
+# **不代表 fix 生效**）；outcome 说"给出去的那个 fix 到底行不行"（只对命中单成立）。
 # 注意：**`feedback_pending` 不是本 schema 的字段**——它是面板与 skill 口头沿用的旧说法。
 # 表示"fix 给出去了但结果还没回报"的正确写法是 `feedback.outcome: pending`（可选
 # `feedback_pending_since` 记给出 fix 的时间，用于算反馈债账龄）。2026-09 阶段一统一到此口径。
@@ -29,6 +31,10 @@ kb_rev: "a1b2c3d"                       # 建 session 时那份 knowledge/ 的�
                                         # 同一条 case 的 id 可能不存在、候选排序可能不同（见 docs/guide/handoff.md）；
                                         # ② 事后误诊归因——"当时为什么没命中"取决于当时库里有什么。
                                         # 拿不到 git 就如实写 unknown，别编值
+severity: ""                           # 收尾写一次：benign | service-affecting | data-loss-risk（命中单取命中 case 的
+                                        # 同名字段，未命中按根因判）。面板据此提示"先停"还是"打补丁"
+fix_emitted: null                       # 收尾写一次：true / false —— 本次是否给出可执行的修复或规避方案。
+                                        # false 常见于等上游修复、只定位到根因；与 feedback.outcome 不是一回事
 stop_reason: ""                         # 会话收尾写一次：这一单为什么停。取值见
                                         # `scripts/trace_metrics.py` 的 `KNOWN_STOP_REASONS`：
                                         # resolved_confirmed | halted_ask_user | budget_exhausted |

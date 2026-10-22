@@ -115,7 +115,7 @@ flowchart LR
 | `route.hit_case` | 字符串或空 | 案例 id | 阶段一命中的案例，与最终沉淀的案例可以不同 |
 | `touched.cases` | 列表 | 案例 id | 含命中、被加载、被排除三种触达方式 |
 | `touched.references` | 列表 | 先验词条 id | 来自 `reference_lookup` |
-| `outcome.status` | 枚举 | `in_progress`、`resolved`、`escalated`、`archived`、`unknown` | 词表在 `trace-status.yaml` 的 `status` 段。`abandoned` 不在这里，它是顶层 `stop_reason` 的取值 |
+| `outcome.status` | 枚举 | `in_progress`、`resolved`、`escalated`、`archived`、`unknown` | 词表在 `trace-status.yaml` 的 `status` 段。`resolved` 表示**诊断已收尾（根因定位明确、fix 或下一步已给出）**，不表示 fix 在用户环境生效——后者只在 `feedback.outcome` 里。`abandoned` 不在这里，它是顶层 `stop_reason` 的取值 |
 | `feedback.outcome` | 枚举 | `pending`、`resolved`、`not_resolved`、`partial` | 现场回报结果，`pending` 表示还没回报。`feedback` 与 `outcome` 同为顶层字段，不是 `outcome` 的子键 |
 | `sedimented.state` | 枚举 | `none`、`submitted`、`knowledge`、`archived` | 未沉淀、草稿待审、已进知识库、转历史资料兜底检索（Tier 3） |
 | `tool_calls[].tool` | 字符串 | 工具名，如 `Grep`、`Read`、`Bash` | harness 侧的工具标识 |
@@ -596,6 +596,7 @@ EOF
 | 历史累计值的搬运 | `scripts/migrate_confidence_baseline.py` |
 | 外部对照查证 | `scripts/verify_upstream_outcomes.py` |
 | 反馈与验证结算 | `scripts/settle_trace_feedback.py`、`scripts/settle_s2_feedback.py` |
+| 沉淀清点（哪些单有料还没沉淀） | `scripts/sediment_batch.py`（只读清点 + 回写 `sedimented.state`；不改 status、不改 feedback） |
 | 会话账单 | `scripts/session_cost.mjs` |
 | 本地件路径解析 | `scripts/exec_log_path.py:93`（`main_checkout`）、`scripts/shared_dir.py` |
 | 面板 | `dsh-plugins/ascend-panel/README.md`、`dsh-plugins/ev-panel/README.md` |

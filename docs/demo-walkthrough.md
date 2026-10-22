@@ -386,7 +386,7 @@ trace 记 {action: attribution, verdict: case_error|execution_error, evidence}
 | 参考层标注 | 2.5 层先验知识 | `reference_lookup` 步骤带"参考层"徽章 + 使用统计 |
 | 继续诊断（指令 copy → 对话触发） | resume | 未解决会话的续接入口，与 resume skill 闭环 |
 | 沉淀此案例（指令 copy → 对话触发） | 沉淀（第 2 节） | 已解决未沉淀会话触发 to-postmortem |
-| 未闭环 / 待沉淀 / 待升格筛选与批量入口 | 诊断收尾与沉淀 | 「未闭环」筛诊断没做完的单；「待沉淀」按筛选结果一次生成批量 to-postmortem 命令；「待升格」勾选后批量标已解决（只允许「已解决 · fix 生效」一种结局） |
+| 未闭环 / 待沉淀 / 待升格筛选与批量入口 | 诊断收尾与沉淀 | 「未收尾」筛还挂着、没有可沉淀结论的单；「待沉淀」收「有 case 类沉淀候选、还没沉淀」的单，按筛选结果一次生成批量 to-postmortem 命令；「待复核」收有报告或只有 reference 候选、根因可能还没定的单；连一轮对话都没有的记录不占筛选，列表上挂「空记录」徽标；「已交草稿」收全部草稿已交 inbox 的单，其中来源未收尾的可勾选后批量标已解决（只允许「已解决 · fix 生效」一种结局），并报出 inbox 里没回写沉淀状态的草稿 |
 | 沉淀状态（submitted/knowledge/archived） | groom 转正跟踪 | 零推断：动作发生时写，不反查 inbox |
 | 证据文件点击打开 | 跨 agent 自包含 | `traces/evidence/<session_id>/` 本地文件 |
 | 指标 tab（timeline 快照/kind 过滤/实时计算） | 自演进观测（第 3 节） | 展示 `metrics/timeline.yaml` 各期快照（live/replay/example 可过滤）+ 运行 trace_metrics.py 实时对照 |

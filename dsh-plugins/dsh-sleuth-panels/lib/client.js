@@ -1,6 +1,6 @@
 /* eslint-disable */
 // 生成物 —— 勿手改。由 `node scripts/build_panel_bundle.js` 从下列源文件拼出：
-//   dsh-plugins/ascend-panel/panel-client.js  (sha256:fd4865039df0)
+//   dsh-plugins/ascend-panel/panel-client.js  (sha256:4aa75ec4c6f3)
 //   dsh-plugins/ev-panel/panel-client.js  (sha256:9e836d4c1993)
 // 校验：`node scripts/build_panel_bundle.js --check`。
 //
@@ -63,7 +63,7 @@ window.__ModuleLoader__.load({
       id: 'ascend-panel',
       build(host, styles) {
         return (function () {
-// ---- dsh-plugins/ascend-panel/panel-client.js (sha256:fd4865039df0) 原文开始 ----
+// ---- dsh-plugins/ascend-panel/panel-client.js (sha256:4aa75ec4c6f3) 原文开始 ----
 return {
   apply(ctx) {
     const slots = ctx.get('slots')
@@ -228,12 +228,15 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
     const tokenSheet = styles.insert(PANEL_CSS)
 
     const statusMeta = {
-      resolved: { label: '已解决', color: 'var(--c-green)', acc: 'var(--acc-green)' },
+      // `resolved` 的含义是"已收尾（根因定位明确）"，不是"fix 生效"——后者由 feedback.outcome
+      // 单独记（词表见 trace-status.yaml）。徽标写「已定位」，与 trace-status.yaml 的 label 一致：
+      // 写「已解决」会让读者把"诊断结束"读成"这个客户已经好了"。
+      resolved: { label: '已定位', color: 'var(--c-green)', acc: 'var(--acc-green)' },
       in_progress: { label: '进行中', color: 'var(--c-blue)', acc: 'var(--acc-blue)' },
-      escalated: { label: '已升级', color: 'var(--c-amber)', acc: 'var(--acc-amber)' },
+      escalated: { label: '已转上游', color: 'var(--c-amber)', acc: 'var(--acc-amber)' },
       // 「不跟了」写的就是 archived（词表在仓库根 trace-status.yaml）。缺这一项，面板会把它显示成
       // 灰色的「未知」——用户自己标的结局看不出来，等于没记。
-      archived: { label: '已归档（不跟了）', color: 'var(--c-gray)', acc: 'var(--acc-gray)' },
+      archived: { label: '不再跟进', color: 'var(--c-gray)', acc: 'var(--acc-gray)' },
       unknown: { label: '未知', color: 'var(--c-gray)', acc: 'var(--acc-gray)' },
     }
     const RESUMEABLE = { in_progress: true, escalated: true }
@@ -274,7 +277,7 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
     // 构建时注入的面板包版本（`scripts/build_panel_bundle.js` 把占位符换成 package.json 的 version）。
     // 为什么要有：面板是「装进 profile 的常驻插件 + 浏览器按 rev 缓存」两层，改完看不到新版时
     // 无法区分"装的还是旧包"与"浏览器缓存了旧 bundle"。有这个串，一眼就能判。
-    const PANEL_VERSION = '0.6.8'
+    const PANEL_VERSION = '0.6.13'
 
     function shortUrl(u) {
       const s = String(u).replace(/^https?:\/\//i, '')
@@ -740,14 +743,47 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
       if (caseKindOf(s) === 'case') return false
       return s.status === 'resolved' && !outcome
     }
-    // 已闭环、还没沉淀、且本次命中的 case 不是库里已有的 → 值得沉淀（新形态或未命中单）。
-    // 命中的 case 已在库里（库中已有）的不进批量：再沉淀只会被 groom 判 covered_by。
-    function needSedOf(s) {
-      return isClosedOf(s) && sedStateOf(s) === 'none' && !(s && s.activeCaseInKb)
+    // 「根因已经形成可复用结论」只认一种证据：`sediment_candidates` 里至少有一条 `kind: case`。
+    // 为什么不是"有报告"：每一步深度诊断都会产出报告，报告里完全可以是"未定位、转上游"；
+    // 也不是"有候选"：`reference` / `triage` 候选记的是知识库覆盖缺口与路由词
+    // （实测 `2026-09-14-telechat-cq-alloc-dev5` 有 2 条候选、全是 reference，根因并未定）。
+    function hasCaseCandidateOf(s) {
+      return !!(s && (s.caseCandidates || 0) > 0)
     }
-    // 草稿已提交到 inbox、但来源诊断还没闭环 → 升格闸门会拦的债（「待升格」，不是「待闭环」）。
+    // 空记录：条目录到了，但没有任何内容——没有一轮对话、没有背景、没有报告、没有候选。
+    // 这类不是"待办"，它要么补一次诊断、要么直接标 archived，占着待办只会让人反复点开它。
+    function isSkeletonOf(s) {
+      if (!s) return false
+      if ((s.userSteps || 0) + (s.agentSteps || 0) > 0) return false
+      return !(s.summarySnippet || s.reportFile || s.sedimentCandidates || s.caseCandidates)
+    }
+    // 待沉淀：有 case 候选、还没沉淀，且命中的 case 不在库里（库中已有的再沉淀会被判 covered_by）。
+    function needSedOf(s) {
+      if (sedStateOf(s) !== 'none' || !s || s.activeCaseInKb) return false
+      return hasCaseCandidateOf(s)
+    }
+    // 待复核：手里有材料（报告，或只有 reference / triage 候选），但没有 case 候选。
+    // 动作是读一眼：根因定了就补一条 case 候选，没定就继续查或标收尾/转上游。
+    function needReviewOf(s) {
+      if (sedStateOf(s) !== 'none' || !s || s.activeCaseInKb) return false
+      if (hasCaseCandidateOf(s)) return false
+      return !!(s.reportFile || s.sedimentCandidates)
+    }
+    // 未收尾：诊断还挂着，且既没有可沉淀结论、也没有待复核材料、也不是空壳、草稿也还没交。
+    // 最后一条容易漏：草稿已交的单本身就"还挂着"，不排掉的话它会同时进「未收尾」与「已交草稿」，
+    // 两屏的数字就不能相加了。
+    function needWorkOf(s) {
+      if (!isOpenOf(s) || isSkeletonOf(s)) return false
+      return !needSedOf(s) && !needReviewOf(s) && !isSubmittedOf(s)
+    }
+    // 草稿已交到 inbox（等知识整理）。**这是全部 submitted**，含来源诊断已收尾的正常在途单——
+    // 只认"来源未收尾"的话，已收尾但还没整理的那批在界面上完全没有出口。
+    function isSubmittedOf(s) {
+      return sedStateOf(s) === 'submitted'
+    }
+    // 其中会被升格前的检查拦下的：草稿已交、但来源诊断还没收尾 → 需要人先补闭环证据或改状态。
     function needPromoteOf(s) {
-      return sedStateOf(s) === 'submitted' && !isClosedOf(s)
+      return isSubmittedOf(s) && !isClosedOf(s)
     }
 
     // 解析异常的一句话（host 的 `parseAnomaly`）。卡面只给"结论 + 行号"，成因与怎么办放 README——
@@ -1771,7 +1807,7 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
           : React.createElement('span', { title: '该 case 未入库（新形态待沉淀）', style: tinyBadge('var(--d-amber)') }, '新形态')
       }
 
-      // 状态左条：**扫列表时先看这一列**（进行中/已升级=要跟；已解决=可放过）
+      // 状态左条：**扫列表时先看这一列**（进行中/已转上游=要跟；已定位=可放过）
       const statusAccent = { resolved: 'var(--acc-green)', in_progress: 'var(--acc-blue)', escalated: 'var(--acc-amber)', unknown: 'var(--acc-gray)' }[s.status] || 'var(--acc-gray)'
       // 闭环指令：**4 种结局分开给**（2026-09 阶段一）。
       // 为什么（用户提的"完成最后一公里"）：旧面板只有「继续诊断」与「沉淀」，闭不了环——
@@ -1796,11 +1832,11 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
         })
       } else {
         closeCmds.push({
-          key: 'close-fix', label: '已解决', tone: 'success',
+          key: 'close-fix', label: '已定位（有结论）', tone: 'success',
           // 无命中单的结果**不走反馈轴**（没有 case 可回写 confidence）：结果记在 status 与 summary。
           // 同时要把遗留的 `feedback.outcome: pending` 清掉——否则"状态已结、反馈轴仍挂 pending"，
           // 面板与 resume 都会把它读成一个还在等的回报（实测这两轴就是这么打架的）。
-          cmd: '闭环诊断 ' + s.sessionId + '：问题已解决。未命中知识库 case，因此不写 feedback；'
+          cmd: '闭环诊断 ' + s.sessionId + '：诊断已收尾、根因定位明确。未命中知识库 case，因此不写 feedback；'
             + '标 status: resolved，并在 summary 里补一句最终怎么解决的；'
             + '若 trace 里还留着 feedback.outcome: pending（无命中单留下的占位），一并清掉。',
         })
@@ -1986,8 +2022,45 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
                   caseKindOf(s) === 'placeholder' ? React.createElement('span', { title: 'trace 里记的定位值（不是知识库里的 case）', className: 'sleu-mono', style: { maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', opacity: 0.8 } }, s.activeCase) : null),
             // 「待沉淀」「待升格」两条待办的徽标（判据与升格闸门同源）。
             // 它们此前只有展开卡片才看得见——会话一多就成了看不见的积压。
-            needSedOf(s) ? React.createElement('span', { title: '已闭环、还没沉淀——在「待沉淀」筛选里可一次生成批量沉淀命令', style: tinyBadge('var(--d-purple)') }, '已闭环 · 待沉淀') : null,
-            needPromoteOf(s) ? React.createElement('span', { title: '草稿已提交到 inbox，但来源诊断还没闭环——升格前的检查会拦；在「待升格」筛选里可勾选后批量标已解决', style: tinyBadge('var(--d-amber)') }, '未闭环 · 待升格') : null,
+            needSedOf(s) ? React.createElement('span', {
+              title: '有 case 类沉淀候选（= 根因已形成可复用结论）、还没沉淀'
+                + (isClosedOf(s) ? '' : '；诊断尚未标收尾')
+                + '——在「待沉淀」筛选里可一次生成批量沉淀命令',
+              style: tinyBadge('var(--d-purple)'),
+            }, (isClosedOf(s) ? '已收尾 · ' : '有结论 · ') + '待沉淀') : null,
+            needReviewOf(s) ? React.createElement('span', {
+              title: '有报告或只有 reference / triage 候选，没有 case 类候选：根因可能还没定。'
+                + '在「待复核」筛选里，读一眼报告——定了就补一条 case 候选，没定就继续查或标收尾/转上游',
+              style: tinyBadge('var(--d-amber)'),
+            }, '待复核') : null,
+            // 严重级：只有非 benign 才出徽标——benign 是常态，人人挂一个等于没有信号。
+            // data-loss-risk 的语义是"先停"，不是"打补丁"，所以文案直接写动作。
+            (s.severity === 'data-loss-risk')
+              ? React.createElement('span', { title: '根因属数据丢失风险：先停训练/推理、保留现场、通知 owner，不在这里打补丁',
+                  style: tinyBadge('var(--d-red)') }, '数据风险 · 先停') : null,
+            (s.severity === 'service-affecting')
+              ? React.createElement('span', { title: '修这条会中断服务或有副作用（例如需要重启）：给 fix 时要一并说明',
+                  style: tinyBadge('var(--d-amber)') }, '影响服务') : null,
+            // 有没有给出 fix：没给的单（等上游、只定位）与"给了规避方案"读起来是两件事。
+            (s.fixEmitted === true)
+              ? React.createElement('span', { title: '本次诊断给出了可执行的修复或规避方案', style: tinyBadge('var(--d-green)') }, '已给 fix') : null,
+            (s.fixEmitted === false)
+              ? React.createElement('span', { title: '本次诊断没有给出可执行的修复（常见于等上游修复、或只定位到根因）',
+                  style: tinyBadge('var(--d-gray)') }, '未给 fix') : null,
+            // fix 验证结果（现场回报）：pending 由「等回报」那条承载，这里只标已有结论的三种。
+            (String(s.feedback || '') === 'resolved')
+              ? React.createElement('span', { title: '工程师回报：这个 fix 在自己的环境里生效了', style: tinyBadge('var(--d-green)') }, 'fix 已验证') : null,
+            (String(s.feedback || '') === 'not_resolved')
+              ? React.createElement('span', { title: '工程师回报：fix 应用后没解决问题——按误诊归因处理', style: tinyBadge('var(--d-red)') }, 'fix 未生效') : null,
+            (String(s.feedback || '') === 'partial')
+              ? React.createElement('span', { title: '工程师回报：症状缓解但没根治', style: tinyBadge('var(--d-amber)') }, '部分生效') : null,
+            isSkeletonOf(s) ? React.createElement('span', {
+              title: '这条记录里没有任何内容：没有一轮对话、没有背景、没有报告，也没有沉淀候选。'
+                + '要么补一次诊断，要么直接标「不跟了」',
+              style: tinyBadge('var(--d-gray)'),
+            }, '空记录') : null,
+            needPromoteOf(s) ? React.createElement('span', { title: '草稿已交到 inbox，但来源诊断还没收尾——升格前的检查会拦；在「已交草稿」筛选里可勾选后批量标收尾', style: tinyBadge('var(--d-amber)') }, '未收尾 · 待升格') : null,
+            (isSubmittedOf(s) && !needPromoteOf(s)) ? React.createElement('span', { title: '草稿已交到 inbox，等知识整理排期升格；没有卡住的地方', style: tinyBadge('var(--d-purple)') }, '已交草稿 · 等整理') : null,
             // 外来单（从另一台机器接手来的）：标在收起来的卡片上，因为"这单不是本机开的"
             // 会影响怎么读它的状态——比如知识库版本不一致时，候选集可能与 trace 记的对不上。
             // 依据是 traces/handoff/<sid>.yaml（import_trace.py 落位时留档）；host 读不到就不给这个标记。
@@ -2148,11 +2221,17 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
       const nInKb = sessions.filter(s => caseKindOf(s) === 'case' && s.activeCaseInKb).length
       const nNew = sessions.filter(s => caseKindOf(s) === 'case' && !s.activeCaseInKb).length
       // 三条状态轴各自的待办（判据见 isOpenOf / isClosedOf / needSedOf / needPromoteOf）：
-      //   未闭环 = 诊断还没收尾（in_progress / 未知）——这就是"还没诊断完的单"；
-      //   待沉淀 = 已闭环、还没沉淀、命中的 case 不在库里（库中已有的再沉淀只会被 groom 判 covered_by）；
+      //   未收尾 = 诊断还挂着，且既没有可沉淀结论、也没有待复核材料、也不是空壳——动作是继续查；
+      //   待沉淀 = 有 kind=case 的沉淀候选（根因已形成可复用结论）、还没沉淀、命中的 case 不在库里
+      //            （库中已有的再沉淀只会被 groom 判 covered_by）；动作是生成沉淀命令；
+      //   待复核 = 有报告或只有 reference / triage 候选、没有 case 候选——动作是读一眼报告，
+      //            根因定了补一条 case 候选，没定就继续查或标收尾；
+      //   空记录 = 连一轮对话都没有——它不占筛选，只在列表上挂一个「空记录」徽标；
       //   待升格 = 草稿已提交、但来源诊断还没闭环——升格闸门会拦，与"诊断收尾"是两件事。
-      const nOpen = sessions.filter(isOpenOf).length
+      const nOpen = sessions.filter(needWorkOf).length
       const nNeedSed = sessions.filter(needSedOf).length
+      const nNeedReview = sessions.filter(needReviewOf).length
+      const nSubmitted = sessions.filter(isSubmittedOf).length
       const nNeedPromote = sessions.filter(needPromoteOf).length
       const q = query.trim().toLowerCase()
       if (q) {
@@ -2170,20 +2249,23 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
           (s.lastOutput || '').toLowerCase().includes(q) ||
           // 收尾与沉淀状态也要能搜：它们是列表上的一等状态，不是只写在展开卡里的一句话。
           ((isOpenOf(s) ? '未闭环 ' : '') +
-           (needSedOf(s) ? '待沉淀 已闭环 ' : '') +
-           (needPromoteOf(s) ? '待升格 已沉淀 ' : '') +
+           (needSedOf(s) ? '待沉淀 有结论 ' + (isClosedOf(s) ? '已闭环 已收尾' : '未收尾') + ' ' : '') +
+           (needReviewOf(s) ? '待复核 ' : '') +
+           (isSkeletonOf(s) ? '空记录 ' : '') +
+           (isSubmittedOf(s) ? '已交草稿 已沉淀 ' + (needPromoteOf(s) ? '待升格 未收尾 ' : '等整理 ') : '') +
            (sedStateOf(s) === 'submitted' ? '已沉淀' : '')).includes(q)
         )
       }
       if (kbFilter === 'kb') sessions = sessions.filter(s => caseKindOf(s) === 'case' && s.activeCaseInKb)
       if (kbFilter === 'new') sessions = sessions.filter(s => caseKindOf(s) === 'case' && !s.activeCaseInKb)
       if (kbFilter === 'miss') sessions = sessions.filter(s => caseKindOf(s) !== 'case')
-      if (kbFilter === 'open') sessions = sessions.filter(isOpenOf)
+      if (kbFilter === 'open') sessions = sessions.filter(needWorkOf)
+      if (kbFilter === 'need-review') sessions = sessions.filter(needReviewOf)
       if (kbFilter === 'running') sessions = sessions.filter(isLookingOf)
       if (kbFilter === 'awaiting') sessions = sessions.filter(isAwaitingOf)
       if (kbFilter === 'close-pending') sessions = sessions.filter(isClosedButOpen)
       if (kbFilter === 'need-sed') sessions = sessions.filter(needSedOf)
-      if (kbFilter === 'need-promote') sessions = sessions.filter(needPromoteOf)
+      if (kbFilter === 'need-promote') sessions = sessions.filter(isSubmittedOf)
       // 按诊断开始时间过滤（`created_at`）：只留窗口内的单；没记开始时间的单不猜，直接排除。
       if (timeRange !== 'all') {
         const cut = Date.now() - Number(timeRange) * 86400000
@@ -2201,7 +2283,8 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
         nAwaiting ? nAwaiting + ' 等回报' : null,
         nClose ? nClose + ' 待标收尾' : null,
         nNeedSed ? nNeedSed + ' 待沉淀' : null,
-        nNeedPromote ? nNeedPromote + ' 待升格' : null,
+        nNeedReview ? nNeedReview + ' 待复核' : null,
+        nSubmitted ? nSubmitted + ' 已交草稿' : null,
       ].filter(Boolean).join(' · ')
       // 说明放 title：这几个词只有在点开时才需要，常驻在筛选条上会把一行 chip 读成文档。
       const kbChips = [
@@ -2209,25 +2292,27 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
         { id: 'kb', label: '库中已有', title: '命中的 case 已在 knowledge/ 里' },
         { id: 'new', label: '新形态', title: '命中了某个 case，但库里还没有它' },
         { id: 'miss', label: '无对应案例', title: '知识库里没有这单对应的案例（未命中）' },
-        { id: 'open', label: '未闭环' + (nOpen ? ' ' + nOpen : ''), title: '诊断还没收尾（进行中，或状态未知）' },
-        { id: 'need-sed', label: '待沉淀' + (nNeedSed ? ' ' + nNeedSed : ''), title: '已闭环、还没沉淀，且命中的 case 不在库里——这类值得入库' },
-        { id: 'need-promote', label: '待升格' + (nNeedPromote ? ' ' + nNeedPromote : ''), title: '草稿已提交到 inbox，但来源诊断还没闭环；升格（把草稿转成正式 case 前的检查）会拦下' },
+        { id: 'open', label: '未收尾' + (nOpen ? ' ' + nOpen : ''), title: '诊断还挂着，且没有可沉淀结论、没有待复核材料、也不是空壳——动作是继续查' },
+        { id: 'need-sed', label: '待沉淀' + (nNeedSed ? ' ' + nNeedSed : ''), title: '有 case 类沉淀候选（= 根因已形成可复用结论）、还没沉淀，且命中的 case 不在库里——按这一屏一次生成批量沉淀命令' },
+        { id: 'need-review', label: '待复核' + (nNeedReview ? ' ' + nNeedReview : ''), title: '有报告或只有 reference / triage 候选，没有 case 类候选：根因可能还没定。读一眼报告，定了补一条 case 候选，没定就继续查或标收尾' },
+        { id: 'need-promote', label: '已交草稿' + (nSubmitted ? ' ' + nSubmitted : ''), title: '草稿已经交到 inbox、等知识整理（含来源诊断还没收尾的那批——它们在升格前会被检查拦下）' },
       ]
 
       // 空态：先说"这一屏为什么空"，再说下一步。筛选为空与"还没有任何诊断"是两件事——
       // 前者通常是这一类已经处理完，统一写"去跑一次 diagnose"会被读成数据没生成。
       const totalSessions = (r.sessions || []).length
-      const FILTER_LABEL = { all: '全部', kb: '库中已有', new: '新形态', miss: '无对应案例', open: '未闭环', running: '在查', awaiting: '等回报', 'close-pending': '待标收尾', 'need-sed': '待沉淀', 'need-promote': '待升格' }
+      const FILTER_LABEL = { all: '全部', kb: '库中已有', new: '新形态', miss: '无对应案例', open: '未收尾', running: '在查', awaiting: '等回报', 'close-pending': '待标收尾', 'need-sed': '待沉淀', 'need-review': '待复核', 'need-promote': '已交草稿' }
       const EMPTY_HINT = {
         kb: '没有命中过知识库 case 的诊断。',
         new: '没有"命中 case、但库里还没有"的诊断。',
         miss: '没有"知识库里找不到对应案例"的诊断。',
-        open: '没有进行中或状态未知的诊断。已收尾的单不在其中。',
+        open: '没有需要继续查的单：还挂着的诊断都已产出结论、待复核材料，或草稿已交。',
         running: '没有还在查的单。',
         awaiting: '没有等回报的单。',
         'close-pending': '没有回报已生效、状态还没更新的单。',
-        'need-sed': '没有"已闭环、尚未沉淀"的单。值得入库的诊断在闭环后会出现在这里，可一次生成批量沉淀命令。',
-        'need-promote': '没有"草稿已提交、来源诊断尚未闭环"的单。这类单升格时会被拦下；有强外部证据（上游修复已合入等）的可走 owner 双签。',
+        'need-sed': '没有可沉淀的单：有 case 类沉淀候选的诊断都已经沉淀过了。',
+        'need-review': '没有待复核的单：有报告或 reference 候选、但还没产出 case 候选的诊断都复核过了。',
+        'need-promote': '没有已交到 inbox 的草稿。做完沉淀（草稿进 inbox）后会出现在这里，等知识整理排期升格。',
       }
       const emptyTitle = q ? '没有匹配的会话'
         : (!totalSessions ? '还没有诊断记录'
@@ -2265,24 +2350,34 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
           )
         }
         if (kbFilter === 'need-promote') {
-          const list = sessions
-          if (!list.length) return null
+          // 这一屏收全部已交草稿；批量标收尾只对"来源诊断还没收尾"的那些有意义
+          // （已收尾的草稿没有要补的闭环证据，勾它们只会把状态再写一遍）。
+          const submitted = sessions
+          const list = submitted.filter(needPromoteOf)
+          const drafts = (r && r.inboxDrafts) || []
+          // 草稿在 inbox、但没有任何 trace 回写沉淀状态时，这一屏仍要说话——那正是"看不见的队列"。
+          if (!submitted.length && !drafts.length) return null
           const chosen = list.filter(s => sel[s.file])
           const ids = chosen.map(s => s.sessionId).filter(Boolean)
           const text = '批量闭环以下 ' + ids.length + ' 单，结局都是「已解决 · fix 生效」：' + ids.join('、')
             + '。逐单：有命中 case 的标 status: resolved + feedback{outcome: resolved} 并写一条 feedback 事件；'
             + '未命中 case 的只标 status: resolved，不写 feedback；若 trace 里还留着 feedback.outcome（旧数据），一并清掉。'
-          const allSelected = list.every(s => sel[s.file])
+          const allSelected = list.length > 0 && list.every(s => sel[s.file])
           return React.createElement('div', { style: { marginBottom: 8, padding: '8px 10px', border: '1px solid var(--hair)', borderRadius: 'var(--r-md)', background: T.bg2 } },
-            React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' } },
-              React.createElement('span', { style: { fontSize: 'var(--t-sm)', color: T.text2 } }, '已沉淀待升格 ' + list.length + ' 单'),
+            React.createElement('div', { style: { fontSize: 'var(--t-sm)', color: T.text2, marginBottom: list.length ? 8 : 0 } },
+              '已交草稿 ' + submitted.length + ' 单'
+              + (list.length ? '，其中 ' + list.length + ' 单来源诊断还没收尾（升格前的检查会拦）' : '，都不卡：等知识整理排期升格')),
+            drafts.length ? React.createElement('div', { style: { fontSize: 'var(--t-tiny)', color: T.text2, marginBottom: list.length ? 6 : 0 } },
+              'inbox 里另有 ' + drafts.length + ' 份草稿没有对应的诊断记录（不是从某次诊断沉淀来的，或 source_session 回写漏了）：'
+              + drafts.slice(0, 4).join('、') + (drafts.length > 4 ? ' 等' : '')) : null,
+            list.length ? React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' } },
               React.createElement('button', { type: 'button', style: btnGhost, onClick: () => { const n = {}; if (!allSelected) list.forEach(s => { n[s.file] = true }); setSel(n) } },
                 allSelected ? '取消全选' : '全选这 ' + list.length + ' 单'),
               React.createElement('button', { type: 'button', disabled: !ids.length, style: !ids.length ? { ...btnGhost, opacity: 0.5, cursor: 'default' } : btnGhost, onClick: () => { if (!ids.length) return; setBatchCmd(batchCmd === 'close' ? null : 'close'); setBatchCopied(null) } },
                 '批量标已解决' + (ids.length ? '（已选 ' + ids.length + ' 单）' : '')),
-            ),
-            React.createElement('div', { style: { marginTop: 4, fontSize: 'var(--t-tiny)', color: T.text2 } },
-              '只勾真的验证过 fix 生效的单——批量标 resolved 会写进置信度结算；没验证的留在待升格。'),
+            ) : null,
+            list.length ? React.createElement('div', { style: { marginTop: 4, fontSize: 'var(--t-tiny)', color: T.text2 } },
+              '只勾真的验证过 fix 生效的单——批量标 resolved 会写进条目使用记录；没验证的先别勾。') : null,
             batchCmd === 'close' && ids.length ? React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 6, marginTop: 8 } },
               React.createElement('code', { style: { flex: 1, userSelect: 'all', background: T.bg, border: '1px solid var(--hair)', borderRadius: 'var(--r-xs)', padding: '5px 8px', fontSize: 'var(--t-sm)', fontFamily: 'var(--font-mono)', color: T.text, wordBreak: 'break-word', lineHeight: 'var(--lh-base)' } }, text),
               React.createElement('button', { type: 'button', style: batchCopied === 'fail' ? btnRed : btnPurple, onClick: () => copyText(text).then(ok => setBatchCopied(ok ? 'close' : 'fail')) },
@@ -2356,7 +2451,7 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
                   } else setQuery(v)
                 },
                 onKeyDown: e => { if (e.key === 'Escape') { if (typeof queryTimerDispose === 'function') queryTimerDispose(); setQueryInput(''); setQuery('') } },
-                title: '可搜：会话号、状态、框架、平台、类别、定位到的 case、问题背景、待沉淀 / 待升格',
+                title: '可搜：会话号、状态、框架、平台、类别、定位到的 case、问题背景、待沉淀 / 待复核 / 已交草稿',
                 style: { width: '100%', boxSizing: 'border-box', padding: '8px 30px 8px 30px', fontSize: 'var(--t-sm)', borderRadius: 'var(--r-md)', border: '1px solid var(--hair)', background: T.bg, color: T.text, transition: 'border-color var(--m-fast) var(--e-out)' },
               }),
               query ? React.createElement('button', {
