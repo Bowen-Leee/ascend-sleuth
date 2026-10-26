@@ -86,7 +86,11 @@ flowchart LR
 
 会话日志按 `session_id` 关联。轨迹的 `session_id` 是诊断自己起的名字（如 `2026-09-16-12430-dsv4pro-mc2`），harness 侧的会话号是另一套；轨迹顶层可选写 `harness_session` 给出后者。关联不上时那次会话的成本与工具分布**缺席**（字段留空、在输出里说明），不补估值。
 
-关联上也不等于「这条账单就是这一单的」：会话日志记的是**整条会话**。同一段对话里先后做两单诊断时，两单会拿到同一份会话累计——耗时与 token 一模一样，读起来像「两次诊断一样贵」。所以单次成本另切一个窗口（`cost.window`）：`created_at` → `ended_at`（没写 `ended_at` 就退到 `updated_at` 并标 `bound_to: updated_at`），窗口外的调用单独计数。会话累计仍保留在 `cost.tokens`，只作对照。
+关联上也不等于「这条账单就是这一单的」：会话日志记的是**整条会话**。同一段对话里先后做两单诊断时，两单会拿到同一份本会话累计——耗时与 token 一模一样，读起来像「两次诊断一样贵」。
+
+所以单次成本另切一个窗口（`cost.window`）：`created_at` → `ended_at`；没写 `ended_at` 就退到 `updated_at`，并标 `bound_to: updated_at`。窗口外的调用单独计数。
+
+窗口边界来自轨迹里手写的两个时间，因此它是**下限**：这一单若在 `created_at` 之前已经开始动作，那部分不计入本单。`cost.tokens` 保留本会话累计，只作对照。
 
 这一行的字段如下。明细留本机，上仓只放聚合值；标「待接」的需要新增汇总代码。
 
@@ -103,7 +107,7 @@ flowchart LR
 | `feedback` | 现场回报：案例 id、结果、确认日期 | 反馈捕获、误诊率 | 顶层 `feedback`（`skills/diagnose/references/diagnosis-trace.md` 的反馈闭环词表） | 现成 |
 | `outcome.fix_emitted` | 是否给出了 fix | 沉淀漏斗的一格 | 顶层 `outcome.fix_emitted`，字段说明在 `diagnosis_state.yaml.example`；现有轨迹里不一定写，缺了就按「本次没记」显示 | 现成 |
 | `sedimented` | 沉淀状态与案例 id | 面板的沉淀漏斗（诊断数 → 沉淀数 → 转正数） | 顶层 `sedimented` | 现成 |
-| `cost.tokens` | 未缓存输入、缓存读、缓存写、输出——**整条会话**的累计 | 会话成本中位数与 P90、按动作占比 | 会话日志按 `(turn, step)` 去重、定稿优先 | 已落地 |
+| `cost.tokens` | 未缓存输入、缓存读、缓存写、输出——**本会话累计** | 会话成本中位数与 P90、按动作占比 | 会话日志按 `(turn, step)` 去重、定稿优先 | 已落地 |
 | `cost.window` | 诊断窗口内的调用次数、耗时、四类 token，加窗口外的调用数与超过 10 分钟的长调用（`from` / `to` / `bound_to` / `truncated` / `ms_complete` / `pending` / `outside_calls` / `outside_ms` / `long_calls` / `long_ms` / `long_threshold_ms`） | 单次诊断成本（跨会话比较哪类问题贵） | 轨迹的 `created_at` 与 `ended_at`（退到 `updated_at` 时标 `truncated`）切窗口，会话日志的调用与用量按窗口过滤；缺起止时间时整段为空，不拿会话累计顶替 | 已落地 |
 | `cost.step_cost` | 每个诊断步的调用次数、耗时、token、按工具拆开的分项，按步切窗口（收尾段没有 `ended_at` 时标 `window_truncated`） | 维护者裁最贵的步骤（合并、跳过、换更便宜的做法） | 轨迹事件的 `ts` 切窗口，窗口内的调用与用量归那一步；没有 `ts` 时整段为空 | 已落地 |
 | `cost.index_read_tok` | 一次诊断读进来的 token 账，四个分项 | 命名空间 × 类别格子（下文简称格子）的读入成本 | `scripts/index_read_cost.py` 按视图现算；按会话归属取**这次会话实际读了哪些面** | 已落地 |
@@ -124,7 +128,7 @@ flowchart LR
 | `tool_calls[].tool` | 字符串 | 工具名，如 `Grep`、`Read`、`Bash` | harness 侧的工具标识 |
 | `tool_calls[].ms` | 整数 | 毫秒 | 单次调用耗时 |
 | `tool_calls[].ok` | 布尔 | `true` / `false` | 失败或超时记 `false`，原因写 `error` |
-| `cost.tokens` | 映射 | `uncached`、`cache_read`、`cache_write`、`out` | 四类 token 数，按 `(turn, step)` 去重后统计；**整条会话**的累计 |
+| `cost.tokens` | 映射 | `uncached`、`cache_read`、`cache_write`、`out` | 四类 token 数，按 `(turn, step)` 去重后统计；**本会话累计** |
 | `cost.window.bound_to` | 枚举 | `ended_at`、`updated_at` | 窗口右边界从哪里来。`updated_at` 表示轨迹没写结束时刻，右边界是最后一次写 trace 的时间，之后可能还有诊断之外的活 |
 | `cost.window.truncated` | 布尔 | `true` / `false` | 为 `true` 即上面那种情形；读端要据此决定要不要用这一段 |
 | `cost.window.ms_complete` | 布尔 | `true` / `false` | 为 `false` 表示窗口内有调用没返回，耗时合计只是下限 |
@@ -176,7 +180,7 @@ touched:
 outcome: {status: resolved, fix_emitted: true}
 feedback: {case: VLLM-ASC-12430, outcome: resolved, confirmed_at: '2026-09-16'}
 sedimented: {state: knowledge, case_id: VLLM-ASC-12430}
-cost: {tokens: {uncached: -, cache_read: -, cache_write: -, out: -},   # 整条会话的累计
+cost: {tokens: {uncached: -, cache_read: -, cache_write: -, out: -},   # 本会话累计
        window: {from: -, to: -, bound_to: ended_at, truncated: false,    # 这一单的窗口
                 calls: -, ms: -, ms_complete: true, pending: 0,
                 tokens: {uncached: -, cache_read: -, cache_write: -, out: -},
@@ -439,7 +443,7 @@ flowchart LR
 | 漏检类别 | 维护者，补词法或挪类别 | 按类别补 triage 词 | 未路由命中的会话 | 确定性 | 蓝图：字段已有产出，指标无落点 |
 | 步数与动作分布 | skill 维护者，改哪一步的正文 | 出现最多又不推进的动作优先改 | 全部诊断会话 | 确定性 | 已落地 |
 | 分步成本 | 维护者，裁最贵的步骤 | 定位最贵步骤，看能否合并或跳过 | 有会话日志且轨迹带 `ts` 的会话 | 确定性 | 已落地（本机明细的 `cost.step_cost`；没有 `ts` 的会话为空，不按事件顺序估） |
-| 单次诊断成本 | 维护者，比较哪类问题贵 | 读窗口内的耗时与 token；两单读数一样时先查是不是同一段会话 | 有会话日志的会话 | 确定性（长调用含机器休眠的墙钟时长，已单列计数） | 已落地（本机明细的 `cost.window`） |
+| 单次诊断成本 | 维护者，比较哪类问题贵 | 读窗口内的耗时与 token；两单读数一样时先查是不是同一段会话 | 有会话日志的会话 | 确定性（下限：窗口边界取自轨迹手写的 `created_at` / `ended_at`；长调用含机器休眠的墙钟时长，已单列计数） | 已落地（本机明细的 `cost.window`） |
 | 工具耗时与失败分布 | 维护者，判哪个工具该设硬超时、哪种调用总失败 | 定位最贵或最常失败的调用形态 | 该工具的调用次数 | 次数与失败数确定性；跨运行分位是加权均值（代理） | 已落地（生成物的 `tools` 段） |
 | 一次诊断的读入账 | 维护者，治超预算的读路径 | 按四个分项定位该治哪条 | 全部诊断会话 | 确定性 | 已落地（本机明细的 `cost.index_read_tok`） |
 | 停止原因 | 维护者，判断该不该停在这里 | 未记录的会话先补记录 | 全部诊断会话 | 确定性 | 已落地（本机明细的 `outcome.stop_reason`） |

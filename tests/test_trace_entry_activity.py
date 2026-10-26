@@ -343,6 +343,13 @@ class WindowCostTest(Fixture):
         self.assertIsNone(tea.window_cost({"updated_at": "2026-10-16T13:00:00+08:00"}, self.log()))
         self.assertIsNone(tea.window_cost(self.trace_doc(), None))
 
+    def test_end_before_start_is_not_a_window(self):
+        """结束早于开始（或相等）时切不出区间：返回 None，不拿它去统计。"""
+        self.assertIsNone(tea.window_cost(self.trace_doc(ended_at="2026-10-16T11:00:00+08:00"),
+                                          self.log()))
+        self.assertIsNone(tea.window_cost(self.trace_doc(ended_at="2026-10-16T12:00:00+08:00"),
+                                          self.log()))
+
     def test_long_calls_are_counted_separately(self):
         """机器休眠会让一次调用的墙钟时长到小时级：合计里标出来，不从合计里扣。"""
         inside = self.ms("2026-10-16T12:30:00+08:00")
@@ -354,6 +361,10 @@ class WindowCostTest(Fixture):
         self.assertEqual((w["long_calls"], w["long_ms"]), (1, tea.LONG_CALL_MS + 1))
         self.assertEqual(w["long_threshold_ms"], tea.LONG_CALL_MS)
         self.assertEqual(w["ms"], tea.LONG_CALL_MS + 41, "长调用仍计入合计")
+        # 阈值口径：文案写「超过 10 分钟」，恰好 10 分钟不算
+        edge = {"tool_calls": [{"tool": "read", "t": inside, "ms": tea.LONG_CALL_MS, "step": 1}],
+                "usage_points": []}
+        self.assertEqual(tea.window_cost(self.trace_doc(), edge)["long_calls"], 0)
 
     def test_pending_calls_are_reported_not_counted_as_zero_ms(self):
         inside = self.ms("2026-10-16T12:30:00+08:00")
@@ -371,7 +382,21 @@ class WindowCostTest(Fixture):
         self.assertIsNotNone(w)
         self.assertEqual(w["calls"], 0, "夹具日志的时间戳在 1970 年，落在窗口外")
         self.assertEqual(w["outside_calls"], 2)
-        self.assertEqual(doc["cost"]["tokens"]["out"], 20, "会话累计仍原样保留")
+        self.assertEqual(doc["cost"]["tokens"]["out"], 20, "本会话累计仍原样保留")
+
+    def test_detail_record_counts_calls_inside_the_window(self):
+        """窗口内的调用与用量进 cost.window；与 cost.tokens（本会话累计）分开写。"""
+        doc = dict(TRACE)
+        doc["created_at"] = "1970-01-01T00:00:00+00:00"
+        doc["updated_at"] = "1970-01-01T00:00:10+00:00"
+        self.write_trace(doc)
+        self.run_summarize(apply=True)
+        rec = ea.read_local_record(self.local, TRACE["session_id"])
+        w = rec["cost"]["window"]
+        self.assertEqual((w["calls"], w["ms"]), (2, 400), "夹具里的两次调用都落在窗口内")
+        self.assertEqual(w["tokens"]["uncached"], 100)
+        self.assertEqual(w["outside_calls"], 0)
+        self.assertEqual(rec["cost"]["tokens"]["out"], 20, "本会话累计同时保留")
 
 
 class DeltaTest(Fixture):

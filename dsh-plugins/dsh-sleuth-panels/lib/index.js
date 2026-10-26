@@ -1,6 +1,6 @@
 /* eslint-disable */
 // 生成物 —— 勿手改。由 `node scripts/build_panel_bundle.js` 从下列源文件拼出：
-//   dsh-plugins/ascend-panel/panel-host.js  (sha256:d1c12ebb84cb)
+//   dsh-plugins/ascend-panel/panel-host.js  (sha256:368124b1c510)
 //   dsh-plugins/ev-panel/panel-host.js  (sha256:7cb53df00162)
 // 校验：`node scripts/build_panel_bundle.js --check`（源文件改了没重跑生成器即红）。
 //
@@ -81,7 +81,7 @@ const PANELS = [
     id: 'ascend-panel',
     build(harness) {
       return (function () {
-// ---- dsh-plugins/ascend-panel/panel-host.js (sha256:d1c12ebb84cb) 原文开始 ----
+// ---- dsh-plugins/ascend-panel/panel-host.js (sha256:368124b1c510) 原文开始 ----
 return {
   apply(ctx) {
     const fs = ctx.get('fs')
@@ -488,7 +488,7 @@ return {
     // 缓存是派生物：读不到/损坏/版本不一致就整份重建，删掉也不影响正确性。
     // 存量不需要迁移——第一次刷新全量解析一遍并写缓存，之后都是增量。
     const INDEX_CACHE_FILE = '.panel-index.json'
-    const INDEX_SCHEMA = 3   // v3: 列表条目多带 severity 与 fixEmitted（v2 加了 caseCandidates）
+    const INDEX_SCHEMA = 4   // v4: 列表成本带 scope（窗口内 / 旧格式只有会话累计）；v3: severity 与 fixEmitted（v2 加了 caseCandidates）
     // 改 `buildCoreItem` 的字段必须同步这份清单：形状不符的缓存条目会被丢弃并重解析，
     // 避免"旧缓存把新字段喂成 undefined"在列表上静默少一列。
     const INDEX_CORE_FIELDS = ['sessionId', 'file', 'status', 'framework', 'platform', 'category', 'activeCase',
@@ -556,12 +556,13 @@ return {
           const sc = Array.isArray(r.stepCost) ? r.stepCost : []
           const sumTok = (o) => o ? ((o.uncached || 0) + (o.cache_read || 0) + (o.cache_write || 0) + (o.out || 0)) : 0
           const w = r.costWindow
-          // 列表列只认诊断窗口内的数；只有旧口径（会话累计）时 `scope` 记成 `session`，
+          // 列表列只认诊断窗口内的数；只有旧格式（本会话累计）时 `scope` 记成 `session`，
           // 客户端据此写「—」并从本机明细的重建命令指路，不把整条会话的账当作这一单的。
           value = {
-            calls: w ? (w.calls || 0) : (r.toolCallCount || 0),
-            ms: w ? (w.ms || 0) : (r.toolTotalMs || 0),
-            tok: w && w.tokens ? sumTok(w.tokens) : sumTok(t),
+            // 窗口块里有值才用；缺的保持 null（0 次调用是真实读数，缺席才该写「—」）
+            calls: w ? w.calls : (r.toolCallCount === null ? null : (r.toolCallCount || 0)),
+            ms: w ? w.ms : (r.toolTotalMs === null ? null : (r.toolTotalMs || 0)),
+            tok: w ? (w.tokens ? sumTok(w.tokens) : null) : sumTok(t),
             scope: w ? 'window' : (r.tokens ? 'session' : null),
             stepms: sc.map(x => x.ms),
           }
@@ -1222,7 +1223,7 @@ return {
         toolTotalMs: totalMs,
         toolSlowest: slowest,
         toolFailures: failures,
-        // 本单在诊断窗口内的成本；旧口径的明细没有这一段（只有会话累计），值为 null
+        // 本单在诊断窗口内的成本；旧格式的明细没有这一段（只有本会话累计），值为 null
         costWindow: costWindow,
         touchedCases: asList(touched.cases),
         touchedReferences: asList(touched.references),
@@ -1263,10 +1264,10 @@ return {
       if (rec.outcome.stopReason === null) missing.push('停止原因（outcome.stop_reason）')
       if (rec.outcome.fixEmitted === null) missing.push('是否给出 fix（outcome.fix_emitted）')
       if (!rec.tokens) missing.push('四类 token（cost.tokens）：会话账单没有关联上')
-      // 有会话账单、却没有窗口那一段：说明这份明细是旧口径写的（只记整条会话的累计）。
+      // 有会话账单、却没有窗口那一段：说明这份明细是旧格式写的（只记本会话累计）。
       // 不静默按会话累计显示——同一段对话做过两单时，那样两单的读数会一模一样。
       if (rec.tokens && !rec.costWindow) {
-        missing.push('诊断窗口内的成本（cost.window）：本机明细是旧口径，重跑一次 ' + REBUILD_LOCAL + ' --session ' + sid + ' 即可补上')
+        missing.push('诊断窗口内的成本（cost.window）：本机明细是旧格式，重跑一次 ' + REBUILD_LOCAL + ' --session ' + sid + ' 即可补上（轨迹缺 created_at 时重跑也补不出来）')
       }
       if (!calls.length) missing.push('逐次工具调用与每步耗时（tool_calls）')
       if (!rec.indexRead) {

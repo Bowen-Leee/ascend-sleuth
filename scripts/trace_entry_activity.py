@@ -497,7 +497,7 @@ def window_cost(trace_doc, log):
     calls = [c for c in all_calls if inside(c.get("t"))]
     ups = [u for u in (log.get("usage_points") or []) if inside(u.get("t"))]
     tokens = {k: sum(u[k] for u in ups) for k in ("uncached", "cache_read", "cache_write", "out")}
-    long_calls = [c for c in calls if (c.get("ms") or 0) >= LONG_CALL_MS]
+    long_calls = [c for c in calls if (c.get("ms") or 0) > LONG_CALL_MS]
     outside = [c for c in all_calls if not inside(c.get("t"))]
     return {
         "from": lo,

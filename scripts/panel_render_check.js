@@ -1531,6 +1531,26 @@ _MS._run_no_pipe = no_fallback`)
       /@container \(max-width: 700px\)/.test(ascSrc) && /--row-cols/.test(ascSrc) && /sleu-expanded/.test(ascSrc))
     expect('诊断 tab：收起态不再只给环境标签（框架/平台/类别仍在展开态）',
       !/vllm-ascend · A2-910B · interrupt[\s\S]{0,40}背景/.test(dt))
+    // 成本两列只认诊断窗口：旧格式明细（只有本会话累计）写「—」，不把整条会话的账当这一单。
+    // 两单共用一段会话时，旧格式会让两行读数一模一样（实测 609945.7 s / 291,146,361 两次相同）。
+    {
+      const withCost = [
+        mkSession(1, { sessionId: 'sess-win', file: 'sess-win.yaml',
+          cost: { calls: 29, ms: 273676, tok: 7345761, scope: 'window', stepms: [] } }),
+        mkSession(2, { sessionId: 'sess-old', file: 'sess-old.yaml',
+          cost: { calls: 742, ms: 609945652, tok: 291146361, scope: 'session', stepms: [] } }),
+      ]
+      const cg = await renderAsync(ascSrc, { sessionId: 'sess-1' }, (m, a) => (
+        m === 'ascend-traces-list' ? { ok: true, sessions: withCost } : diagHost(m, a)
+      ))
+      expect('成本两列：窗口内的数照常显示（耗时与 token 合计）',
+        /273\.7 s/.test(cg.text) && /7,345,761/.test(cg.text), cg.text.slice(0, 200))
+      expect('成本两列：旧格式明细写「—」并在 title 给重跑命令，不拿本会话累计顶替',
+        !/609945\.7 s/.test(cg.text) && !/291,146,361/.test(cg.text)
+        && /旧格式/.test(cg.text) && /trace_entry_activity\.py --apply --session sess-old/.test(cg.text),
+        (cg.text.match(/«title:工具调用累计[^»]*»/g) || []).join(' '))
+    }
+
     // ④ 回到顶部：会话 > 20 才出现
     expect('诊断 tab：会话 >20 时出现「回到顶部」按钮（23 个会话）', /«title:回到顶部/.test(dt))
     // 闭环指令（阶段一）：四种结局分开给，且命令里带上正确的状态词与 feedback outcome

@@ -20,12 +20,12 @@ python3 scripts/build_entry_activity.py            # 重建生成物 metrics/ent
 
 这三条是周度知识整理的第 3.6 步（见 `skills/knowledge-groom/SKILL.md`），日常不跑也不影响诊断。
 
-两个前提，缺了那一格会写「本次没记」而不是数字：
+三个前提，缺了那一格会写「本次没记」而不是数字：
 
 - 轨迹顶层写了 `harness_session` —— 否则 token 与工具耗时关联不上会话账单；
 - 轨迹顶层有 `created_at` 与 `ended_at` —— 单次成本按 `created_at` → `ended_at` 切窗口；没写 `ended_at`
   就退到 `updated_at`，本机明细里标 `bound_to: updated_at`、面板上写明。同一段对话里做过两单时，
-  只有这个窗口能把两单的读数分开（会话累计会被两单各算一遍）；
+  只有这个窗口能把两单的读数分开（本会话累计会被两单各算一遍）。窗口边界是手写时间，读数是下限；
 - 每个诊断步至少一个事件带 `ts` —— 否则「每步成本」切不出窗口（见 `diagnosis-trace.md`）。
 
 ## 知识库健康的三个阈值（`metrics/gates.yaml` 的 `health:` 段）

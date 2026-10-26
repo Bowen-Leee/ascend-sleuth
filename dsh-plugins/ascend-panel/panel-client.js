@@ -781,12 +781,16 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
       if (ms >= 1000) return (ms / 1000).toFixed(1) + ' s'
       return ms + ' ms'
     }
-    // 两列读数的取值域说明：窗口内 / 旧口径（只有会话累计）/ 没有数据。三种情形分开写，
-    // 因为「两单的会话累计一样」正是读者会把它们读成一样贵的那种错。
-    function costScopeTitle(cost, base) {
+    // 两列读数的取值域说明：窗口内 / 旧格式（只有本会话累计）/ 没有数据。三种情形分开写，
+    // 因为「两单的本会话累计一样」正是读者会把它们读成一样贵的那种错。
+    function costScopeTitle(cost, base, sessionId) {
       if (!cost) return base + '：本机明细没有这一单的记录'
       if (cost.scope === 'window') return base
-      if (cost.scope === 'session') return base + '：本机明细是旧口径（只记整条会话的累计），看不出这一单；重跑一次 python3 scripts/trace_entry_activity.py --apply 即可补上'
+      if (cost.scope === 'session') {
+        return base + '：本机明细是旧格式（只记本会话累计），看不出这一单；重跑一次 '
+          + 'python3 scripts/trace_entry_activity.py --apply --session ' + (sessionId || '<会话>')
+          + ' 即可补上（轨迹缺 created_at 时补不出来）'
+      }
       return base + '：会话日志未关联'
     }
     // 数据格：值为 null 表示读端拿不到这一格 → 写「本次没记」，不写 0。
@@ -992,7 +996,7 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
           chip('命中', hit, hit ? 'var(--acc-green, ' + T.success + ')' : T.text2)),
         React.createElement('div', { style: { marginTop: 8, fontSize: 'var(--t-tiny)', color: T.text2, lineHeight: 'var(--lh-base)' } }, verdict))
 
-      // token 条与成本块的四个格同源：诊断窗口内为准；旧口径的明细退到会话累计并在标题里写明。
+      // token 条与成本块的四个格同源：诊断窗口内为准；旧格式的明细退到本会话累计并在标题里写明。
       const tkWin = (rec && rec.costWindow && rec.costWindow.tokens) ? rec.costWindow.tokens : null
       const tk = tkWin || ((rec && rec.tokens) ? rec.tokens : null)
       const sum = tk ? (tk.uncached || 0) + (tk.cache_read || 0) + (tk.cache_write || 0) + (tk.out || 0) : 0
@@ -1391,12 +1395,12 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
           '展开 = 筛选时看过的候选（considered_candidates）；载入正文 = load_full 取过全文的候选；'
           + '排除 = excluded_cases。三者是同一批候选的三个状态。'),
       )
-      // 成本：只报诊断窗口内的数。旧口径的明细只有整条会话的累计——同一段对话里做过两单时
+      // 成本：只报诊断窗口内的数。旧格式的明细只有本会话累计——同一段对话里做过两单时
       // 两份累计一模一样，把那种数当单次成本显示，读者会得出「两次诊断一样贵」的错结论。
       const d5Win = d5Rec && d5Rec.costWindow ? d5Rec.costWindow : null
       const d5TokSession = d5Rec && d5Rec.tokens ? d5Rec.tokens : null
       const d5Tok = d5Win && d5Win.tokens ? d5Win.tokens : null
-      // 旧口径的明细没有窗口：四格退到会话累计，并在下面一行写明这是整条会话的数
+      // 旧格式的明细没有窗口：四个 token 格退到本会话累计，并在下面一行写明
       const d5TokShown = d5Tok || d5TokSession
       const d5Acct = d5Rec && d5Rec.indexRead ? d5Rec.indexRead : null
       const d5Slowest = d5Win ? d5Win.slowest : (d5Rec && d5Rec.toolSlowest ? d5Rec.toolSlowest : null)
@@ -1417,10 +1421,14 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
         ),
         React.createElement('div', { style: { marginTop: 4, color: T.text2, fontSize: 'var(--t-tiny)', lineHeight: 'var(--lh-base)' } },
           d5Win
-            ? ('上面四个 token 数是诊断窗口' + (d5WinSpan ? ' ' + d5WinSpan + ' ' : ' ') + '内的用量'
-                + (d5Win.truncated ? '；右边界取轨迹的 updated_at（这单没写 ended_at），之后可能还有诊断之外的活' : ''))
+            ? ('上面四个 token 数是诊断窗口' + (d5WinSpan ? ' ' + d5WinSpan + ' ' : ' ') + '内的用量。'
+                + '左边界取轨迹的 created_at，这一单若在它之前已经开始动作，那部分不计入；'
+                + '右边界' + (d5Win.truncated ? '取 updated_at（这单没写 ended_at），之后可能还有诊断之外的活' : '取 ended_at')
+                + '。所以这是下限，不是完整成本。')
             : (d5TokSession
-                ? '上面四个 token 数是本会话累计：本机明细是旧口径，没有按诊断窗口切，看不出这一单花了多少（重跑一次汇总脚本可补上）'
+                ? '上面四个 token 数是本会话累计：本机明细是旧格式，没有按诊断窗口切，看不出这一单花了多少'
+                  + '（重跑一次 ' + 'python3 scripts/trace_entry_activity.py --apply --session '
+                  + ((d5Rec && d5Rec.sessionId) || '<会话>') + ' 即可补上；轨迹缺 created_at 时补不出来）'
                 : '')),
         React.createElement(LineRow, { label: '工具耗时' },
           d5Win
@@ -1430,24 +1438,24 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
                 + (d5Win.pending ? '，' + d5Win.pending + ' 次没返回' : '') + '）')
             : (d5Rec
                 ? (d5Rec.toolTotalMs !== null
-                    ? ('整条会话 ' + msText(d5Rec.toolTotalMs) + '（' + d5Rec.toolCallCount + ' 次调用）——不是这一单')
+                    ? ('本会话累计 ' + msText(d5Rec.toolTotalMs) + '（' + d5Rec.toolCallCount + ' 次调用）——不是这一单')
                     : NOT_RECORDED + '：会话日志未关联，逐次耗时不在轨迹里')
                 : NOT_RECORDED)),
         (d5Win && d5Win.outsideCalls)
           ? React.createElement(LineRow, { label: '窗口外' },
-              d5Win.outsideCalls + ' 次调用 / ' + d5Ms(d5Win.outsideMs || 0) + '，属于同一会话的其它工作，不计入本单')
+              d5Win.outsideCalls + ' 次调用 / ' + d5Ms(d5Win.outsideMs || 0) + '，不在本单窗口内，不计入本单')
           : null,
         (d5Win && d5Win.longCalls)
           ? React.createElement(LineRow, { label: '长调用' },
-              d5Win.longCalls + ' 次超过 ' + Math.round((d5Win.longThresholdMs || 600000) / 60000) + ' 分钟，合计 ' + d5Ms(d5Win.longMs || 0)
+              d5Win.longCalls + ' 次墙钟超过 ' + Math.round((d5Win.longThresholdMs || 600000) / 60000) + ' 分钟，合计 ' + d5Ms(d5Win.longMs || 0)
               + '——多半是机器休眠或应用关着，不是工具真跑了这么久')
           : null,
         d5Slowest ? React.createElement(LineRow, { label: '最慢一次' },
           msText(d5Slowest.ms) + ' · ' + (d5Slowest.tool || '工具名未记') + (d5Slowest.args ? ' · ' + d5Slowest.args : '')) : null,
         (d5Win && d5TokSession)
-          ? React.createElement(LineRow, { label: '本会话累计' },
+          ? React.createElement(LineRow, { label: '本会话累计（对照）' },
               '工具耗时 ' + d5Ms(d5Rec.toolTotalMs) + '（' + d5Rec.toolCallCount + ' 次调用）· 四类 token ' + thousands(d5TokTotal || 0)
-              + '——对照用，含同会话的其它工作')
+              + '，含同一会话里的其它工作')
           : null,
         React.createElement('div', { style: { marginTop: 6, color: T.text2, fontSize: 'var(--t-tiny)' } }, '一次诊断的读入账（按视图现算，四个分项）'),
         React.createElement('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '2px 14px' } },
@@ -1994,16 +2002,16 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
               [s.framework, s.platform].filter(Boolean).join(' · ') || '—'),
             React.createElement('span', { title: '用户事件 / Agent 事件', className: 'sleu-num sleu-c-events', style: { color: T.text2, fontSize: 'var(--t-tiny)', textAlign: 'right', whiteSpace: 'nowrap', minWidth: 0 } },
               s.userSteps + ' / ' + s.agentSteps),
-            // 两列只读诊断窗口内的数。旧口径的明细只有会话累计（同会话做过两单时两单一样），
+            // 两列只读诊断窗口内的数。旧格式的明细只有本会话累计（同会话做过两单时两单一样），
             // 那种明细不显示数字——写「—」并在 title 里给重跑命令，读数才不会把两单说成一样贵。
             React.createElement('span', {
-              title: costScopeTitle(s.cost, '工具调用累计耗时（诊断窗口内）'),
+              title: costScopeTitle(s.cost, '工具调用累计耗时（诊断窗口内）', s.sessionId),
               className: 'sleu-num sleu-c-ms', style: { color: T.text2, fontSize: 'var(--t-tiny)', textAlign: 'right', whiteSpace: 'nowrap', minWidth: 0 } },
-              (s.cost && s.cost.scope === 'window' && s.cost.ms) ? msText(s.cost.ms) : '—'),
+              (s.cost && s.cost.scope === 'window' && typeof s.cost.ms === 'number') ? msText(s.cost.ms) : '—'),
             React.createElement('span', {
-              title: costScopeTitle(s.cost, '工具调用累计 token（诊断窗口内）'),
+              title: costScopeTitle(s.cost, '工具调用累计 token（诊断窗口内）', s.sessionId),
               className: 'sleu-num sleu-c-tok', style: { color: T.text2, fontSize: 'var(--t-tiny)', textAlign: 'right', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 } },
-              (s.cost && s.cost.scope === 'window' && s.cost.tok) ? thousands(s.cost.tok) : '—'),
+              (s.cost && s.cost.scope === 'window' && typeof s.cost.tok === 'number') ? thousands(s.cost.tok) : '—'),
             React.createElement('span', { style: { display: 'flex', justifyContent: 'flex-end' } }, React.createElement(Chevron, { open: open })),
           ),
           // 第二行：一句"这单在查什么" + 外来标记 + 更新时间。收起态只留这些，其余细节在展开态。
