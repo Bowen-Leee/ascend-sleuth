@@ -1,6 +1,6 @@
 /* eslint-disable */
 // 生成物 —— 勿手改。由 `node scripts/build_panel_bundle.js` 从下列源文件拼出：
-//   dsh-plugins/ascend-panel/panel-host.js  (sha256:7e479789df8e)
+//   dsh-plugins/ascend-panel/panel-host.js  (sha256:d1c12ebb84cb)
 //   dsh-plugins/ev-panel/panel-host.js  (sha256:7cb53df00162)
 // 校验：`node scripts/build_panel_bundle.js --check`（源文件改了没重跑生成器即红）。
 //
@@ -81,7 +81,7 @@ const PANELS = [
     id: 'ascend-panel',
     build(harness) {
       return (function () {
-// ---- dsh-plugins/ascend-panel/panel-host.js (sha256:7e479789df8e) 原文开始 ----
+// ---- dsh-plugins/ascend-panel/panel-host.js (sha256:d1c12ebb84cb) 原文开始 ----
 return {
   apply(ctx) {
     const fs = ctx.get('fs')
@@ -554,10 +554,15 @@ return {
           const r = rec.record
           const t = r.tokens || {}
           const sc = Array.isArray(r.stepCost) ? r.stepCost : []
+          const sumTok = (o) => o ? ((o.uncached || 0) + (o.cache_read || 0) + (o.cache_write || 0) + (o.out || 0)) : 0
+          const w = r.costWindow
+          // 列表列只认诊断窗口内的数；只有旧口径（会话累计）时 `scope` 记成 `session`，
+          // 客户端据此写「—」并从本机明细的重建命令指路，不把整条会话的账当作这一单的。
           value = {
-            calls: r.toolCallCount || 0,
-            ms: r.toolTotalMs || 0,
-            tok: (t.uncached || 0) + (t.cache_read || 0) + (t.cache_write || 0) + (t.out || 0),
+            calls: w ? (w.calls || 0) : (r.toolCallCount || 0),
+            ms: w ? (w.ms || 0) : (r.toolTotalMs || 0),
+            tok: w && w.tokens ? sumTok(w.tokens) : sumTok(t),
+            scope: w ? 'window' : (r.tokens ? 'session' : null),
             stepms: sc.map(x => x.ms),
           }
         }
@@ -1116,6 +1121,29 @@ return {
       const tokens = asMap(cost.tokens)
       const acct = asMap(cost.index_read_tok)
       const calls = Array.isArray(doc.tool_calls) ? doc.tool_calls : []
+      // 诊断窗口内的成本（`cost.window`）：面板的「耗时 / token」两列读它。
+      // 会话累计（`cost.tokens` / 整份 `tool_calls`）在同一段对话里做过两单时会被两单各抄一遍，
+      // 两行读数一模一样——那正是这份窗口要防的事，所以它缺席时不拿会话累计顶替。
+      const cw = asMap(cost.window)
+      const costWindow = cw ? (function () {
+        const tk = asMap(cw.tokens) || {}
+        const toks = {}
+        for (const pair of TOKEN_LABELS) toks[pair[0]] = scalarNum(tk[pair[0]])
+        return {
+          from: scalarNum(cw.from), to: scalarNum(cw.to),
+          // 右边界从哪里来：`ended_at`（诊断自己写的结束时刻）或退到 `updated_at`（后段可能混入诊断之外的活）
+          boundTo: scalarStr(cw.bound_to),
+          truncated: cw.truncated === true || cw.truncated === 'true',
+          calls: scalarNum(cw.calls), ms: scalarNum(cw.ms),
+          msComplete: cw.ms_complete !== false && cw.ms_complete !== 'false',
+          pending: scalarNum(cw.pending),
+          tokens: toks,
+          longCalls: scalarNum(cw.long_calls), longMs: scalarNum(cw.long_ms),
+          longThresholdMs: scalarNum(cw.long_threshold_ms),
+          outsideCalls: scalarNum(cw.outside_calls), outsideMs: scalarNum(cw.outside_ms),
+          failures: null, slowest: null,
+        }
+      })() : null
       // 逐次工具调用 → 总耗时、最慢那一次与失败数。**不按 `step` 归并**：会话日志的 `step` 是
       // harness 的轮次编号，轨迹的 `step` 是诊断流程自己的编号，两者不同源；按它归并会把耗时
       // 挂到别的步骤上（面板据此显示了"每步耗时占比"这一格按本次没记处理）。
@@ -1130,6 +1158,16 @@ return {
           if (!slowest || ms > slowest.ms) slowest = { ms: ms, tool: scalarStr(m.tool), step: scalarNum(m.step), args: scalarStr(m.args) }
         }
         if (m.ok === false || m.ok === 'false') failures++
+        // 窗口内的最慢一次与失败数单独算：窗口外的调用不属于这一单
+        if (costWindow && costWindow.from !== null && costWindow.to !== null) {
+          const t = scalarNum(m.t)
+          if (t !== null && t >= costWindow.from && t < costWindow.to) {
+            if (ms !== null && (!costWindow.slowest || ms > costWindow.slowest.ms)) {
+              costWindow.slowest = { ms: ms, tool: scalarStr(m.tool), step: scalarNum(m.step), args: scalarStr(m.args) }
+            }
+            if (m.ok === false || m.ok === 'false') costWindow.failures = (costWindow.failures || 0) + 1
+          }
+        }
       }
       const logNote = scalarStr(doc.session_log)
       const rec = {
@@ -1184,6 +1222,8 @@ return {
         toolTotalMs: totalMs,
         toolSlowest: slowest,
         toolFailures: failures,
+        // 本单在诊断窗口内的成本；旧口径的明细没有这一段（只有会话累计），值为 null
+        costWindow: costWindow,
         touchedCases: asList(touched.cases),
         touchedReferences: asList(touched.references),
         // 诊断按平铺字段写（顶层 `stop_reason`、`fix_emitted`），老形状写 `outcome` 块。
@@ -1223,6 +1263,11 @@ return {
       if (rec.outcome.stopReason === null) missing.push('停止原因（outcome.stop_reason）')
       if (rec.outcome.fixEmitted === null) missing.push('是否给出 fix（outcome.fix_emitted）')
       if (!rec.tokens) missing.push('四类 token（cost.tokens）：会话账单没有关联上')
+      // 有会话账单、却没有窗口那一段：说明这份明细是旧口径写的（只记整条会话的累计）。
+      // 不静默按会话累计显示——同一段对话做过两单时，那样两单的读数会一模一样。
+      if (rec.tokens && !rec.costWindow) {
+        missing.push('诊断窗口内的成本（cost.window）：本机明细是旧口径，重跑一次 ' + REBUILD_LOCAL + ' --session ' + sid + ' 即可补上')
+      }
       if (!calls.length) missing.push('逐次工具调用与每步耗时（tool_calls）')
       if (!rec.indexRead) {
         missing.push('一次诊断的读入账（cost.index_read_tok）')

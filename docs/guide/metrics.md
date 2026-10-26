@@ -23,6 +23,9 @@ python3 scripts/build_entry_activity.py            # 重建生成物 metrics/ent
 两个前提，缺了那一格会写「本次没记」而不是数字：
 
 - 轨迹顶层写了 `harness_session` —— 否则 token 与工具耗时关联不上会话账单；
+- 轨迹顶层有 `created_at` 与 `ended_at` —— 单次成本按 `created_at` → `ended_at` 切窗口；没写 `ended_at`
+  就退到 `updated_at`，本机明细里标 `bound_to: updated_at`、面板上写明。同一段对话里做过两单时，
+  只有这个窗口能把两单的读数分开（会话累计会被两单各算一遍）；
 - 每个诊断步至少一个事件带 `ts` —— 否则「每步成本」切不出窗口（见 `diagnosis-trace.md`）。
 
 ## 知识库健康的三个阈值（`metrics/gates.yaml` 的 `health:` 段）

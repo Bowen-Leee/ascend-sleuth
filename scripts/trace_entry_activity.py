@@ -464,6 +464,60 @@ def step_cost(trace, log, trace_doc=None):
     return out
 
 
+#: 一次工具调用的墙钟时长超过它，多半不是工具真跑了这么久，而是中途机器休眠或应用关着。
+#: 只用来在读数旁标出「合计里含长间隔」，不从合计里扣——扣掉就成了猜。
+LONG_CALL_MS = 10 * 60 * 1000
+
+
+def window_cost(trace_doc, log):
+    """诊断窗口内的成本：调用次数、耗时、四类 token，以及窗口外的调用数。
+
+    窗口 = `created_at` → `ended_at`（没写 `ended_at` 就退到 `updated_at`，并标 `truncated`）。
+
+    **为什么单算这一份**：会话日志记的是整个 harness 会话的账。同一段对话里先后做两单诊断时，
+    会话累计会被两单各抄一遍——两行读数因此一模一样，读者会读成「两次诊断一样贵」。
+    窗口内的调用与用量才属于这一单；窗口外的单独计数（多半是同会话里的其它工作）。
+    边界取法与 `step_cost` 同一套：右边界优先 `ended_at`，退到 `updated_at` 时后段可能混进
+    诊断之外的活，标 `truncated` 让读端自己决定用不用。
+
+    拿不到日志、或轨迹缺起止时间时返回 None——不拿整份日志顶替，那正是要修的错。
+    """
+    if not log:
+        return None
+    lo = _epoch_ms(trace_doc.get("created_at"))
+    hi_marked = _epoch_ms(trace_doc.get("ended_at"))
+    hi = hi_marked or _epoch_ms(trace_doc.get("updated_at"))
+    if lo is None or hi is None or hi <= lo:
+        return None
+
+    def inside(t):
+        return lo <= int(t or 0) < hi
+
+    all_calls = log.get("tool_calls") or []
+    calls = [c for c in all_calls if inside(c.get("t"))]
+    ups = [u for u in (log.get("usage_points") or []) if inside(u.get("t"))]
+    tokens = {k: sum(u[k] for u in ups) for k in ("uncached", "cache_read", "cache_write", "out")}
+    long_calls = [c for c in calls if (c.get("ms") or 0) >= LONG_CALL_MS]
+    outside = [c for c in all_calls if not inside(c.get("t"))]
+    return {
+        "from": lo,
+        "to": hi,
+        # 右边界从哪里来：读端要能分辨「诊断自己写了结束时刻」与「退到 updated_at 估的」
+        "bound_to": "ended_at" if hi_marked else "updated_at",
+        "truncated": not bool(hi_marked),
+        "calls": len(calls),
+        "ms": sum((c.get("ms") or 0) for c in calls),
+        "ms_complete": all(c.get("ms") is not None for c in calls),
+        "pending": sum(1 for c in calls if c.get("ms") is None),
+        "tokens": tokens,
+        "long_calls": len(long_calls),
+        "long_ms": sum((c.get("ms") or 0) for c in long_calls),
+        "long_threshold_ms": LONG_CALL_MS,
+        "outside_calls": len(outside),
+        "outside_ms": sum((c.get("ms") or 0) for c in outside),
+    }
+
+
 def strength_of(facts, self_resolved: bool) -> str:
     """结论强度档：自证 → `self-report`；命中案例 → 该案例的 `verification.source`；否则 `investigation`。
 
@@ -874,6 +928,9 @@ def session_doc(st, sid, facts, log, log_note, case_files, root) -> dict:
         "feedback": facts["feedback"],
         "sedimented": facts["sedimented"],
         "cost": {"tokens": (log or {}).get("tokens") or None,
+                 # 诊断窗口内的成本：面板的「耗时 / token」两列读这一份。`tokens` 是**整条会话**
+                 # 的累计，同一段对话里做过两单时两单会拿到同一份——要分清单次成本就读 `window`。
+                 "window": window_cost(st, log),
                  # 每步成本：按 `ts` 切窗口把会话日志的调用与 token 折进诊断步。
                  # 轨迹没有 `ts` 时为 None（面板显示「本次没记」，不按顺序硬猜）。
                  "step_cost": step_cost(st.get("trace") or [], log, st),

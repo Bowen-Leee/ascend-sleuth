@@ -1,6 +1,6 @@
 /* eslint-disable */
 // 生成物 —— 勿手改。由 `node scripts/build_panel_bundle.js` 从下列源文件拼出：
-//   dsh-plugins/ascend-panel/panel-client.js  (sha256:4aa75ec4c6f3)
+//   dsh-plugins/ascend-panel/panel-client.js  (sha256:550fd7df7e62)
 //   dsh-plugins/ev-panel/panel-client.js  (sha256:9e836d4c1993)
 // 校验：`node scripts/build_panel_bundle.js --check`。
 //
@@ -63,7 +63,7 @@ window.__ModuleLoader__.load({
       id: 'ascend-panel',
       build(host, styles) {
         return (function () {
-// ---- dsh-plugins/ascend-panel/panel-client.js (sha256:4aa75ec4c6f3) 原文开始 ----
+// ---- dsh-plugins/ascend-panel/panel-client.js (sha256:550fd7df7e62) 原文开始 ----
 return {
   apply(ctx) {
     const slots = ctx.get('slots')
@@ -277,7 +277,7 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
     // 构建时注入的面板包版本（`scripts/build_panel_bundle.js` 把占位符换成 package.json 的 version）。
     // 为什么要有：面板是「装进 profile 的常驻插件 + 浏览器按 rev 缓存」两层，改完看不到新版时
     // 无法区分"装的还是旧包"与"浏览器缓存了旧 bundle"。有这个串，一眼就能判。
-    const PANEL_VERSION = '0.6.13'
+    const PANEL_VERSION = '0.6.14'
 
     function shortUrl(u) {
       const s = String(u).replace(/^https?:\/\//i, '')
@@ -340,6 +340,15 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
     function fmtTime(iso) {
       if (!iso) return null
       const d = new Date(iso)
+      if (isNaN(d.getTime())) return null
+      const p = n => String(n).padStart(2, '0')
+      return (d.getMonth() + 1) + '-' + p(d.getDate()) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes())
+    }
+    // 诊断窗口的起止是 epoch 毫秒（轨迹的 created_at 归一成毫秒后的值），这里单独给一个入口，
+    // 不把毫秒转成 ISO 字符串再解析一遍。
+    function fmtEpoch(ms) {
+      if (typeof ms !== 'number' || !isFinite(ms)) return null
+      const d = new Date(ms)
       if (isNaN(d.getTime())) return null
       const p = n => String(n).padStart(2, '0')
       return (d.getMonth() + 1) + '-' + p(d.getDate()) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes())
@@ -838,6 +847,14 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
       if (ms >= 1000) return (ms / 1000).toFixed(1) + ' s'
       return ms + ' ms'
     }
+    // 两列读数的取值域说明：窗口内 / 旧口径（只有会话累计）/ 没有数据。三种情形分开写，
+    // 因为「两单的会话累计一样」正是读者会把它们读成一样贵的那种错。
+    function costScopeTitle(cost, base) {
+      if (!cost) return base + '：本机明细没有这一单的记录'
+      if (cost.scope === 'window') return base
+      if (cost.scope === 'session') return base + '：本机明细是旧口径（只记整条会话的累计），看不出这一单；重跑一次 python3 scripts/trace_entry_activity.py --apply 即可补上'
+      return base + '：会话日志未关联'
+    }
     // 数据格：值为 null 表示读端拿不到这一格 → 写「本次没记」，不写 0。
     // `missingText` 分两档：没有数据（默认「本次没记」）与**读数有值但读端算不出来**
     // （「不可解读」）。两者不能同形，也不能都写成 0。
@@ -1041,7 +1058,9 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
           chip('命中', hit, hit ? 'var(--acc-green, ' + T.success + ')' : T.text2)),
         React.createElement('div', { style: { marginTop: 8, fontSize: 'var(--t-tiny)', color: T.text2, lineHeight: 'var(--lh-base)' } }, verdict))
 
-      const tk = (rec && rec.tokens) ? rec.tokens : null
+      // token 条与成本块的四个格同源：诊断窗口内为准；旧口径的明细退到会话累计并在标题里写明。
+      const tkWin = (rec && rec.costWindow && rec.costWindow.tokens) ? rec.costWindow.tokens : null
+      const tk = tkWin || ((rec && rec.tokens) ? rec.tokens : null)
       const sum = tk ? (tk.uncached || 0) + (tk.cache_read || 0) + (tk.cache_write || 0) + (tk.out || 0) : 0
       const seg = (v, c) => React.createElement('i', { style: { display: 'block', height: '100%', width: (sum ? v / sum * 100 : 0) + '%', background: c } })
       const tokCell = (label, v, c) => React.createElement('div', { key: label, style: { display: 'flex', alignItems: 'center', gap: 5, minWidth: 0 } },
@@ -1074,7 +1093,7 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
           })()),
         React.createElement('div', { style: { minWidth: 0 } }, head('检索路径', ''), funnel),
         React.createElement('div', { style: { minWidth: 0 } },
-          head('token', sum ? thousands(sum) : ''),
+          head(tkWin ? 'token（诊断窗口内）' : (tk ? 'token（整条会话）' : 'token'), sum ? thousands(sum) : ''),
           React.createElement('div', { style: { display: 'flex', height: 14, borderRadius: 2, overflow: 'hidden', background: 'var(--hair)' } },
             seg(tk ? tk.cache_read : 0, 'var(--acc-amber, ' + T.warn + ')'),
             seg(tk ? tk.uncached : 0, T.brand),
@@ -1438,26 +1457,64 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
           '展开 = 筛选时看过的候选（considered_candidates）；载入正文 = load_full 取过全文的候选；'
           + '排除 = excluded_cases。三者是同一批候选的三个状态。'),
       )
-      const d5Tok = d5Rec && d5Rec.tokens ? d5Rec.tokens : null
+      // 成本：只报诊断窗口内的数。旧口径的明细只有整条会话的累计——同一段对话里做过两单时
+      // 两份累计一模一样，把那种数当单次成本显示，读者会得出「两次诊断一样贵」的错结论。
+      const d5Win = d5Rec && d5Rec.costWindow ? d5Rec.costWindow : null
+      const d5TokSession = d5Rec && d5Rec.tokens ? d5Rec.tokens : null
+      const d5Tok = d5Win && d5Win.tokens ? d5Win.tokens : null
+      // 旧口径的明细没有窗口：四格退到会话累计，并在下面一行写明这是整条会话的数
+      const d5TokShown = d5Tok || d5TokSession
       const d5Acct = d5Rec && d5Rec.indexRead ? d5Rec.indexRead : null
-      const d5Slowest = d5Rec && d5Rec.toolSlowest ? d5Rec.toolSlowest : null
+      const d5Slowest = d5Win ? d5Win.slowest : (d5Rec && d5Rec.toolSlowest ? d5Rec.toolSlowest : null)
+      const d5WinSpan = (d5Win && typeof d5Win.from === 'number' && typeof d5Win.to === 'number')
+        ? (fmtEpoch(d5Win.from) + ' → ' + fmtEpoch(d5Win.to)) : null
+      const d5Ms = (v) => (typeof v === 'number' ? msText(v) : NOT_RECORDED)
+      const d5TokTotal = (d5TokSession || d5Tok)
+        ? ((d5TokSession || d5Tok).uncached || 0) + ((d5TokSession || d5Tok).cache_read || 0)
+          + ((d5TokSession || d5Tok).cache_write || 0) + ((d5TokSession || d5Tok).out || 0)
+        : null
       const d5Cost = React.createElement(React.Fragment, null,
         React.createElement('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '2px 14px' } },
           TOKEN_LABELS.map(pair => React.createElement(Cell, {
             key: pair[0], label: pair[1],
-            value: d5Tok && d5Tok[pair[0]] !== null && d5Tok[pair[0]] !== undefined ? thousands(d5Tok[pair[0]]) : null,
+            value: d5TokShown && d5TokShown[pair[0]] !== null && d5TokShown[pair[0]] !== undefined ? thousands(d5TokShown[pair[0]]) : null,
             mono: true,
           })),
         ),
+        React.createElement('div', { style: { marginTop: 4, color: T.text2, fontSize: 'var(--t-tiny)', lineHeight: 'var(--lh-base)' } },
+          d5Win
+            ? ('上面四个 token 数是诊断窗口' + (d5WinSpan ? ' ' + d5WinSpan + ' ' : ' ') + '内的用量'
+                + (d5Win.truncated ? '；右边界取轨迹的 updated_at（这单没写 ended_at），之后可能还有诊断之外的活' : ''))
+            : (d5TokSession
+                ? '上面四个 token 数是本会话累计：本机明细是旧口径，没有按诊断窗口切，看不出这一单花了多少（重跑一次汇总脚本可补上）'
+                : '')),
         React.createElement(LineRow, { label: '工具耗时' },
-          d5Rec
-            ? (d5Rec.toolTotalMs !== null
-                ? ('总计 ' + msText(d5Rec.toolTotalMs) + '（' + d5Rec.toolCallCount + ' 次调用'
-                    + (d5Rec.toolFailures ? '，失败 ' + d5Rec.toolFailures + ' 次' : '') + '）')
-                : NOT_RECORDED + '：会话日志未关联，逐次耗时不在轨迹里')
-            : NOT_RECORDED),
+          d5Win
+            ? ('总计 ' + (d5Win.msComplete === false ? '≥ ' : '') + d5Ms(d5Win.ms)
+                + '（' + (d5Win.calls === null ? '?' : d5Win.calls) + ' 次调用'
+                + (d5Win.failures ? '，失败 ' + d5Win.failures + ' 次' : '')
+                + (d5Win.pending ? '，' + d5Win.pending + ' 次没返回' : '') + '）')
+            : (d5Rec
+                ? (d5Rec.toolTotalMs !== null
+                    ? ('整条会话 ' + msText(d5Rec.toolTotalMs) + '（' + d5Rec.toolCallCount + ' 次调用）——不是这一单')
+                    : NOT_RECORDED + '：会话日志未关联，逐次耗时不在轨迹里')
+                : NOT_RECORDED)),
+        (d5Win && d5Win.outsideCalls)
+          ? React.createElement(LineRow, { label: '窗口外' },
+              d5Win.outsideCalls + ' 次调用 / ' + d5Ms(d5Win.outsideMs || 0) + '，属于同一会话的其它工作，不计入本单')
+          : null,
+        (d5Win && d5Win.longCalls)
+          ? React.createElement(LineRow, { label: '长调用' },
+              d5Win.longCalls + ' 次超过 ' + Math.round((d5Win.longThresholdMs || 600000) / 60000) + ' 分钟，合计 ' + d5Ms(d5Win.longMs || 0)
+              + '——多半是机器休眠或应用关着，不是工具真跑了这么久')
+          : null,
         d5Slowest ? React.createElement(LineRow, { label: '最慢一次' },
           msText(d5Slowest.ms) + ' · ' + (d5Slowest.tool || '工具名未记') + (d5Slowest.args ? ' · ' + d5Slowest.args : '')) : null,
+        (d5Win && d5TokSession)
+          ? React.createElement(LineRow, { label: '本会话累计' },
+              '工具耗时 ' + d5Ms(d5Rec.toolTotalMs) + '（' + d5Rec.toolCallCount + ' 次调用）· 四类 token ' + thousands(d5TokTotal || 0)
+              + '——对照用，含同会话的其它工作')
+          : null,
         React.createElement('div', { style: { marginTop: 6, color: T.text2, fontSize: 'var(--t-tiny)' } }, '一次诊断的读入账（按视图现算，四个分项）'),
         React.createElement('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '2px 14px' } },
           ACCT_LABELS.map(pair => React.createElement(Cell, {
@@ -2003,10 +2060,16 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
               [s.framework, s.platform].filter(Boolean).join(' · ') || '—'),
             React.createElement('span', { title: '用户事件 / Agent 事件', className: 'sleu-num sleu-c-events', style: { color: T.text2, fontSize: 'var(--t-tiny)', textAlign: 'right', whiteSpace: 'nowrap', minWidth: 0 } },
               s.userSteps + ' / ' + s.agentSteps),
-            React.createElement('span', { title: '工具调用累计耗时', className: 'sleu-num sleu-c-ms', style: { color: T.text2, fontSize: 'var(--t-tiny)', textAlign: 'right', whiteSpace: 'nowrap', minWidth: 0 } },
-              (s.cost && s.cost.ms) ? msText(s.cost.ms) : '—'),
-            React.createElement('span', { title: '工具调用累计 token', className: 'sleu-num sleu-c-tok', style: { color: T.text2, fontSize: 'var(--t-tiny)', textAlign: 'right', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 } },
-              (s.cost && s.cost.tok) ? thousands(s.cost.tok) : '—'),
+            // 两列只读诊断窗口内的数。旧口径的明细只有会话累计（同会话做过两单时两单一样），
+            // 那种明细不显示数字——写「—」并在 title 里给重跑命令，读数才不会把两单说成一样贵。
+            React.createElement('span', {
+              title: costScopeTitle(s.cost, '工具调用累计耗时（诊断窗口内）'),
+              className: 'sleu-num sleu-c-ms', style: { color: T.text2, fontSize: 'var(--t-tiny)', textAlign: 'right', whiteSpace: 'nowrap', minWidth: 0 } },
+              (s.cost && s.cost.scope === 'window' && s.cost.ms) ? msText(s.cost.ms) : '—'),
+            React.createElement('span', {
+              title: costScopeTitle(s.cost, '工具调用累计 token（诊断窗口内）'),
+              className: 'sleu-num sleu-c-tok', style: { color: T.text2, fontSize: 'var(--t-tiny)', textAlign: 'right', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 } },
+              (s.cost && s.cost.scope === 'window' && s.cost.tok) ? thousands(s.cost.tok) : '—'),
             React.createElement('span', { style: { display: 'flex', justifyContent: 'flex-end' } }, React.createElement(Chevron, { open: open })),
           ),
           // 第二行：一句"这单在查什么" + 外来标记 + 更新时间。收起态只留这些，其余细节在展开态。
@@ -2142,8 +2205,10 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
                     kv('开始时间', fmtTimeFull(s.createdAt) || NOT_RECORDED),
                     kv('harness 会话', rec.harnessSession || NOT_RECORDED),
                     kv('知识库版本', rec.kbRev || NOT_RECORDED),
-                    kv('工具耗时', rec.toolTotalMs ? msText(rec.toolTotalMs) : NOT_RECORDED),
-                    kv('调用次数', rec.toolCallCount ? String(rec.toolCallCount) : NOT_RECORDED),
+                    // 这两行是**整条会话**的账（成本块报的是诊断窗口内的那一份）：同会话做过两单时
+                    // 两单在这里一样，是对照用的量，不是这一单的成本。
+                    kv('本会话工具耗时', rec.toolTotalMs ? msText(rec.toolTotalMs) : NOT_RECORDED),
+                    kv('本会话调用次数', rec.toolCallCount ? String(rec.toolCallCount) : NOT_RECORDED),
                     kv('停止原因', rec.outcome && rec.outcome.stopReason ? String(rec.outcome.stopReason) : NOT_RECORDED))
                 })(),
                 // 数据缺口：给维护者判断"这份记录能不能进聚合"。读者不该被它挡一屏——
