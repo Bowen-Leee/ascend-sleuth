@@ -1,6 +1,6 @@
 /* eslint-disable */
 // 生成物 —— 勿手改。由 `node scripts/build_panel_bundle.js` 从下列源文件拼出：
-//   dsh-plugins/ascend-panel/panel-host.js  (sha256:47ece0de62c5)
+//   dsh-plugins/ascend-panel/panel-host.js  (sha256:cdbd75d2a7cd)
 //   dsh-plugins/ev-panel/panel-host.js  (sha256:7cb53df00162)
 // 校验：`node scripts/build_panel_bundle.js --check`（源文件改了没重跑生成器即红）。
 //
@@ -81,7 +81,7 @@ const PANELS = [
     id: 'ascend-panel',
     build(harness) {
       return (function () {
-// ---- dsh-plugins/ascend-panel/panel-host.js (sha256:47ece0de62c5) 原文开始 ----
+// ---- dsh-plugins/ascend-panel/panel-host.js (sha256:cdbd75d2a7cd) 原文开始 ----
 return {
   apply(ctx) {
     const fs = ctx.get('fs')
@@ -2155,8 +2155,10 @@ return {
           const rec = await readLocalRecord(cwd, sessionId)
           if (!rec.ok || !rec.record || !rec.record.costWindow) {
             return { ok: false, manual: manual,
+              // 不往这里写「原明细已保留」：这条分支也可能由「日志在、轨迹缺 created_at」进来，
+              // 那种情形脚本照常覆盖写。保留与否由脚本侧的 stderr 说明，面板不替它下结论。
               error: '重建跑完了，但这一单仍然没有诊断窗口：这台机器上找不到这一单的会话日志，'
-                + '或轨迹缺 created_at。这两样补不出来，重跑结果一样。原明细已保留，没有被空记录覆盖。' }
+                + '或轨迹缺 created_at。这两样补不出来，重跑结果一样。' }
           }
         } catch (e) {
           // 读回失败不推翻脚本结果：下一次列表刷新会重新判定

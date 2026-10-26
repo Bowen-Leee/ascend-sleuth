@@ -2071,8 +2071,10 @@ return {
           const rec = await readLocalRecord(cwd, sessionId)
           if (!rec.ok || !rec.record || !rec.record.costWindow) {
             return { ok: false, manual: manual,
+              // 不往这里写「原明细已保留」：这条分支也可能由「日志在、轨迹缺 created_at」进来，
+              // 那种情形脚本照常覆盖写。保留与否由脚本侧的 stderr 说明，面板不替它下结论。
               error: '重建跑完了，但这一单仍然没有诊断窗口：这台机器上找不到这一单的会话日志，'
-                + '或轨迹缺 created_at。这两样补不出来，重跑结果一样。原明细已保留，没有被空记录覆盖。' }
+                + '或轨迹缺 created_at。这两样补不出来，重跑结果一样。' }
           }
         } catch (e) {
           // 读回失败不推翻脚本结果：下一次列表刷新会重新判定

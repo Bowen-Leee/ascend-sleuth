@@ -318,12 +318,43 @@ class SessionLogDiscoveryTest(unittest.TestCase):
         old = os.environ.get("DSH_HOME")
         os.environ["DSH_HOME"] = "/tmp/dsh-home-x"
         try:
-            self.assertEqual(tea.harness_home(), Path("/tmp/dsh-home-x"))
+            self.assertEqual(tea.harness_homes()[0], Path("/tmp/dsh-home-x"))
         finally:
             if old is None:
                 os.environ.pop("DSH_HOME", None)
             else:
                 os.environ["DSH_HOME"] = old
+
+    def test_default_lookup_walks_harness_homes(self):
+        """不传 sessions_root 时真的按 harness_homes() 逐个找（面板调子进程的路径）。"""
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            home = Path(tmp) / "dsh-home"
+            d = home / "sessions" / "ws" / "sid-env"
+            d.mkdir(parents=True)
+            (d / "session.v4.jsonl.zstd").write_text("x", encoding="utf-8")
+            old = os.environ.get("DSH_HOME")
+            os.environ["DSH_HOME"] = str(home)
+            try:
+                path, why = tea.find_session_log("sid-env")
+            finally:
+                if old is None:
+                    os.environ.pop("DSH_HOME", None)
+                else:
+                    os.environ["DSH_HOME"] = old
+            self.assertIsNone(why)
+            self.assertEqual(path.parent, d)
+
+    def test_desktop_app_dirs_are_scanned_one_level(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            good = base / "dsh-desktop" / "harness" / "sessions"
+            good.mkdir(parents=True)
+            (base / "other-app" / "harness").mkdir(parents=True)
+            homes = tea.app_harness_roots(base)
+            self.assertEqual([h.parent.name for h in homes], ["dsh-desktop"],
+                             "只收 sessions/ 存在的应用目录")
 
 
 class WindowCostTest(Fixture):
@@ -497,6 +528,23 @@ class NoDegradationTest(Fixture):
         after = ea.read_local_record(self.local, TRACE["session_id"])
         self.assertEqual(after["cost"]["tokens"], good["cost"]["tokens"], "旧明细不被空记录覆盖")
         self.assertIn("保留已有明细", buf.getvalue())
+
+    def test_offline_mode_is_not_treated_as_degraded(self):
+        """`--no-session-log` 是文档化的离线模式：不读日志不是"日志缺席"，不该拦。"""
+        self.write_trace()
+        self.run_summarize(apply=True)
+        good = ea.read_local_record(self.local, TRACE["session_id"])
+        import contextlib
+        import io
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):
+            rc = tea.build_records(self.root, self.traces, self.sessions, None, True,
+                                   "2026-10-16-1700", self.state, use_log=False,
+                                   local_dir=self.local, local_only=True)
+        self.assertEqual(rc, 0, "离线模式不该按失败退出")
+        after = ea.read_local_record(self.local, TRACE["session_id"])
+        self.assertIsNone(after["cost"]["tokens"], "离线那一轮本来就该写空的成本字段")
+        self.assertNotIn("保留已有明细", buf.getvalue())
 
 
 class DeltaTest(Fixture):
