@@ -27,7 +27,8 @@ return {
     //
     // 两类调用点，判据是"它要不要写仓库里的文件"：
     //
-    // ① 写操作（只此一处：交接包导出写 `<检出>/traces/exports/`）→ 显式写死
+    // ① 写操作（两处：交接包导出写 `<检出>/traces/exports/`、重建本机明细写
+    //    `<检出>/metrics/entry-activity.local/`）→ 显式写死
     //    `{ mode: 'workspace-write', workspaceRoot: cwd }`。理由（实测）：`shell.resolve` 不给
     //    策略时，shell 自己的默认根是 **DSH 自己的检出**（实测 workspaceRoot = …/deepseek-harness），
     //    子进程写仓库里任何路径都被拒，报出来只有一句 `[Errno 1] Operation not permitted`——
@@ -404,7 +405,7 @@ return {
     // 缓存是派生物：读不到/损坏/版本不一致就整份重建，删掉也不影响正确性。
     // 存量不需要迁移——第一次刷新全量解析一遍并写缓存，之后都是增量。
     const INDEX_CACHE_FILE = '.panel-index.json'
-    const INDEX_SCHEMA = 3   // v3: 列表条目多带 severity 与 fixEmitted（v2 加了 caseCandidates）
+    const INDEX_SCHEMA = 4   // v4: 列表成本带 scope（窗口内 / 旧格式只有会话累计）；v3: severity 与 fixEmitted（v2 加了 caseCandidates）
     // 改 `buildCoreItem` 的字段必须同步这份清单：形状不符的缓存条目会被丢弃并重解析，
     // 避免"旧缓存把新字段喂成 undefined"在列表上静默少一列。
     const INDEX_CORE_FIELDS = ['sessionId', 'file', 'status', 'framework', 'platform', 'category', 'activeCase',
@@ -470,10 +471,16 @@ return {
           const r = rec.record
           const t = r.tokens || {}
           const sc = Array.isArray(r.stepCost) ? r.stepCost : []
+          const sumTok = (o) => o ? ((o.uncached || 0) + (o.cache_read || 0) + (o.cache_write || 0) + (o.out || 0)) : 0
+          const w = r.costWindow
+          // 列表列只认诊断窗口内的数；只有旧格式（本会话累计）时 `scope` 记成 `session`，
+          // 客户端据此写「—」并从本机明细的重建命令指路，不把整条会话的账当作这一单的。
           value = {
-            calls: r.toolCallCount || 0,
-            ms: r.toolTotalMs || 0,
-            tok: (t.uncached || 0) + (t.cache_read || 0) + (t.cache_write || 0) + (t.out || 0),
+            // 窗口块里有值才用；缺的保持 null（0 次调用是真实读数，缺席才该写「—」）
+            calls: w ? w.calls : (r.toolCallCount === null ? null : (r.toolCallCount || 0)),
+            ms: w ? w.ms : (r.toolTotalMs === null ? null : (r.toolTotalMs || 0)),
+            tok: w ? (w.tokens ? sumTok(w.tokens) : null) : sumTok(t),
+            scope: w ? 'window' : (r.tokens ? 'session' : null),
             stepms: sc.map(x => x.ms),
           }
         }
@@ -912,7 +919,9 @@ return {
     const ENTRY_GEN_DIR = 'metrics/entry-activity'
     const ENTRY_LOCAL_DIR = 'metrics/entry-activity.local'
     const REBUILD_ENTRY = 'python3 scripts/build_entry_activity.py'
-    const REBUILD_LOCAL = 'python3 scripts/trace_entry_activity.py --apply'
+    // 面板给的重建命令一律 --local-only：`--apply` 会写进 git 的周增量行并更新共享游标，
+    // 那是周批的入口，不该出现在面板的「重建」入口里（用户照做会改到仓库状态）。
+    const REBUILD_LOCAL = 'python3 scripts/trace_entry_activity.py --local-only'
     // 读入账的四个分项（与 scripts/index_read_cost.py 的分项同名）
     const ACCT_LABELS = [
       ['class_view', '类视图'],
@@ -1032,6 +1041,29 @@ return {
       const tokens = asMap(cost.tokens)
       const acct = asMap(cost.index_read_tok)
       const calls = Array.isArray(doc.tool_calls) ? doc.tool_calls : []
+      // 诊断窗口内的成本（`cost.window`）：面板的「耗时 / token」两列读它。
+      // 会话累计（`cost.tokens` / 整份 `tool_calls`）在同一段对话里做过两单时会被两单各抄一遍，
+      // 两行读数一模一样——那正是这份窗口要防的事，所以它缺席时不拿会话累计顶替。
+      const cw = asMap(cost.window)
+      const costWindow = cw ? (function () {
+        const tk = asMap(cw.tokens) || {}
+        const toks = {}
+        for (const pair of TOKEN_LABELS) toks[pair[0]] = scalarNum(tk[pair[0]])
+        return {
+          from: scalarNum(cw.from), to: scalarNum(cw.to),
+          // 右边界从哪里来：`ended_at`（诊断自己写的结束时刻）或退到 `updated_at`（后段可能混入诊断之外的活）
+          boundTo: scalarStr(cw.bound_to),
+          truncated: cw.truncated === true || cw.truncated === 'true',
+          calls: scalarNum(cw.calls), ms: scalarNum(cw.ms),
+          msComplete: cw.ms_complete !== false && cw.ms_complete !== 'false',
+          pending: scalarNum(cw.pending),
+          tokens: toks,
+          longCalls: scalarNum(cw.long_calls), longMs: scalarNum(cw.long_ms),
+          longThresholdMs: scalarNum(cw.long_threshold_ms),
+          outsideCalls: scalarNum(cw.outside_calls), outsideMs: scalarNum(cw.outside_ms),
+          failures: null, slowest: null,
+        }
+      })() : null
       // 逐次工具调用 → 总耗时、最慢那一次与失败数。**不按 `step` 归并**：会话日志的 `step` 是
       // harness 的轮次编号，轨迹的 `step` 是诊断流程自己的编号，两者不同源；按它归并会把耗时
       // 挂到别的步骤上（面板据此显示了"每步耗时占比"这一格按本次没记处理）。
@@ -1046,6 +1078,16 @@ return {
           if (!slowest || ms > slowest.ms) slowest = { ms: ms, tool: scalarStr(m.tool), step: scalarNum(m.step), args: scalarStr(m.args) }
         }
         if (m.ok === false || m.ok === 'false') failures++
+        // 窗口内的最慢一次与失败数单独算：窗口外的调用不属于这一单
+        if (costWindow && costWindow.from !== null && costWindow.to !== null) {
+          const t = scalarNum(m.t)
+          if (t !== null && t >= costWindow.from && t < costWindow.to) {
+            if (ms !== null && (!costWindow.slowest || ms > costWindow.slowest.ms)) {
+              costWindow.slowest = { ms: ms, tool: scalarStr(m.tool), step: scalarNum(m.step), args: scalarStr(m.args) }
+            }
+            if (m.ok === false || m.ok === 'false') costWindow.failures = (costWindow.failures || 0) + 1
+          }
+        }
       }
       const logNote = scalarStr(doc.session_log)
       const rec = {
@@ -1100,6 +1142,8 @@ return {
         toolTotalMs: totalMs,
         toolSlowest: slowest,
         toolFailures: failures,
+        // 本单在诊断窗口内的成本；旧格式的明细没有这一段（只有本会话累计），值为 null
+        costWindow: costWindow,
         touchedCases: asList(touched.cases),
         touchedReferences: asList(touched.references),
         // 诊断按平铺字段写（顶层 `stop_reason`、`fix_emitted`），老形状写 `outcome` 块。
@@ -1139,6 +1183,11 @@ return {
       if (rec.outcome.stopReason === null) missing.push('停止原因（outcome.stop_reason）')
       if (rec.outcome.fixEmitted === null) missing.push('是否给出 fix（outcome.fix_emitted）')
       if (!rec.tokens) missing.push('四类 token（cost.tokens）：会话账单没有关联上')
+      // 有会话账单、却没有窗口那一段：说明这份明细是旧格式写的（只记本会话累计）。
+      // 不静默按会话累计显示——同一段对话做过两单时，那样两单的读数会一模一样。
+      if (rec.tokens && !rec.costWindow) {
+        missing.push('诊断窗口内的成本（cost.window）：本机明细是旧格式——打开这一单时面板会自动重建一次；也可点「重建这一单的本机明细」（轨迹缺 created_at 时重建也补不出来）')
+      }
       if (!calls.length) missing.push('逐次工具调用与每步耗时（tool_calls）')
       if (!rec.indexRead) {
         missing.push('一次诊断的读入账（cost.index_read_tok）')
@@ -1958,6 +2007,76 @@ return {
       })
     }
 
+    // 重建一单的本机明细（成本块的「重建」按钮；打开旧格式卡片时也自动走这里一次）。
+    //
+    // **为什么走 `--local-only` 而不是 `--apply`**：后者除了写本机明细，还会往
+    // `metrics/entry-activity.d/` 追加周增量行、更新共享游标。自动跑它等于把用户当次聊天里的
+    // 工具调用记进诊断指标（实测：一次 dry-run 就计划写 164 次 bash），而游标更新没有锁。
+    // `--local-only` 只写 `metrics/entry-activity.local/`（gitignored 运行时件），可以安全自动调用。
+    //
+    // 工作目录用 `resolveCwd`（主检出）：本机明细锚主检出的共享侧，worktree 里那份是空的。
+    // 写操作 → 沙箱策略按上面「跑子进程的沙箱策略」①钉 `workspace-write`，根就是主检出。
+    async function rebuildLocalCost(cwd, sessionId) {
+      const manual = 'python3 scripts/trace_entry_activity.py --local-only --session ' + String(sessionId || '<会话>')
+      if (!shell) return { ok: false, error: '重建本机明细需要执行命令的能力（当前会话不可用）。手工复现：' + manual }
+      if (!cwd) return { ok: false, error: '拿不到会话工作区，定位不到 scripts/trace_entry_activity.py。手工复现：' + manual }
+      if (!/^[A-Za-z0-9._-]+$/.test(String(sessionId || ''))) {
+        return { ok: false, error: '会话号不合法（拒绝拼命令）：' + String(sessionId || '（空）') }
+      }
+      // 只读档的会话不写：下面钉的是 workspace-write，对只读会话就是放宽——面板不做这种升级。
+      const pol = readPolicy(sessionId)
+      if (pol && pol.mode === 'read-only') {
+        return { ok: false, error: '本会话是只读档，面板不能写本机明细。切到「工作区写」后重试，或手工跑：' + manual, manual: manual }
+      }
+      const py = await resolvePython(cwd, pol)
+      if (!py) {
+        return { ok: false, error: '未找到可用的 Python 3 解释器（已试 python3 / python / py -3）。手工复现：' + manual }
+      }
+      let r = null
+      try {
+        r = await shell.run(shell.resolve({
+          command: py + ' scripts/trace_entry_activity.py --local-only --session ' + sessionId,
+          workdir: cwd,
+          timeoutMs: 120000,
+          stdoutMaxBytes: 65536,
+          env: { PYTHONIOENCODING: 'utf-8' },
+          sandboxPolicy: { mode: 'workspace-write', workspaceRoot: cwd },   // 写操作：见上面「跑子进程的沙箱策略」①
+        }))
+      } catch (e) {
+        return { ok: false, error: '重建脚本执行失败: ' + String(e && e.message || e), manual: manual }
+      }
+      if (r && r.timedOut) return { ok: false, error: '重建超时（120s）——会话日志很大时会偏慢。手工复现：' + manual, manual: manual }
+      if (r && r.sandbox && r.sandbox.denied) {
+        return {
+          ok: false, manual: manual,
+          error: '重建被沙箱拒绝（可写目录不是运行时数据所在目录）：把本机明细写进 ' + cwd + '/metrics/entry-activity.local/ 需要该目录可写。'
+            + '手工复现（不受面板沙箱限制）：' + manual,
+        }
+      }
+      const out = [r && r.stdout && r.stdout.text, r && r.stderr && r.stderr.text]
+        .filter(t => typeof t === 'string' && t.trim()).join('\n').trim()
+      if (!r || r.exitCode !== 0) {
+        const tail = out.split(/\r?\n/).filter(Boolean).slice(-6).join('\n')
+        return { ok: false, error: '重建脚本退出码 ' + String(r && r.exitCode) + (tail ? '：\n' + tail : '（无输出）'), manual: manual }
+      }
+      // 退出码 0 不等于「窗口补上了」：会话日志不在这台机器上时，明细照样写出，只是
+      // `cost.window` 为 null——这类单重跑多少次结果都一样。读回明细确认，补不出来就如实报失败，
+      // 不写成「已重建」让人反复点重试。
+      if (fs) {
+        try {
+          const rec = await readLocalRecord(cwd, sessionId)
+          if (!rec.ok || !rec.record || !rec.record.costWindow) {
+            return { ok: false, manual: manual,
+              error: '重建跑完了，但这一单仍然没有诊断窗口：会话日志不在这台机器上，或轨迹缺 created_at。'
+                + '这两样补不出来，重跑结果一样。' }
+          }
+        } catch (e) {
+          // 读回失败不推翻脚本结果：下一次列表刷新会重新判定
+        }
+      }
+      return { ok: true, manual: manual, output: out.slice(-2000) }
+    }
+
     // 读取沉淀状态——兼容三种写法：块映射（doc.sedimented 为对象，schema 默认）、
     // 内联流映射字符串（面板写入形态 sedimented: {state:…, caseId:…}）、纯字符串。
     function readSedimented(doc) {
@@ -2410,6 +2529,12 @@ return {
       return openEvidence(sessionId, path)
     })
 
+    const rebuildDisposer = harness.handle('ascend-rebuild-local', async (args) => {
+      const sessionId = args && args.sessionId ? String(args.sessionId) : null
+      if (!sessionId) return { ok: false, error: '缺 sessionId' }
+      return rebuildLocalCost(await resolveCwd(sessionId), sessionId)
+    })
+
     const sedDisposer = harness.handle('ascend-update-sedimented', async (args) => {
       if (!fs) return needFs()
       const sessionId = args && args.sessionId ? String(args.sessionId) : null
@@ -2477,6 +2602,7 @@ return {
     return () => {
       if (disposer) disposer()
       if (handleDisposer) handleDisposer()
+      if (rebuildDisposer) rebuildDisposer()
       if (detailDisposer) detailDisposer()
       if (openDisposer) openDisposer()
       if (sedDisposer) sedDisposer()

@@ -30,6 +30,8 @@
   python3 scripts/trace_entry_activity.py                 # dry-run：只打印将要写的行
   python3 scripts/trace_entry_activity.py --apply         # 追加进源文件 + 更新游标 + 写本机明细
   python3 scripts/trace_entry_activity.py --session <id>  # 只处理某个会话（调试用）
+  python3 scripts/trace_entry_activity.py --local-only     # 只重建本机明细（面板可自动调用）
+
 
 退出码：0 = 成功（含「本轮没有新数据」）；2 = 参数或环境不可用。
 """
@@ -464,6 +466,60 @@ def step_cost(trace, log, trace_doc=None):
     return out
 
 
+#: 一次工具调用的墙钟时长超过它，多半不是工具真跑了这么久，而是中途机器休眠或应用关着。
+#: 只用来在读数旁标出「合计里含长间隔」，不从合计里扣——扣掉就成了猜。
+LONG_CALL_MS = 10 * 60 * 1000
+
+
+def window_cost(trace_doc, log):
+    """诊断窗口内的成本：调用次数、耗时、四类 token，以及窗口外的调用数。
+
+    窗口 = `created_at` → `ended_at`（没写 `ended_at` 就退到 `updated_at`，并标 `truncated`）。
+
+    **为什么单算这一份**：会话日志记的是整个 harness 会话的账。同一段对话里先后做两单诊断时，
+    会话累计会被两单各抄一遍——两行读数因此一模一样，读者会读成「两次诊断一样贵」。
+    窗口内的调用与用量才属于这一单；窗口外的单独计数（多半是同会话里的其它工作）。
+    边界取法与 `step_cost` 同一套：右边界优先 `ended_at`，退到 `updated_at` 时后段可能混进
+    诊断之外的活，标 `truncated` 让读端自己决定用不用。
+
+    拿不到日志、或轨迹缺起止时间时返回 None——不拿整份日志顶替，那正是要修的错。
+    """
+    if not log:
+        return None
+    lo = _epoch_ms(trace_doc.get("created_at"))
+    hi_marked = _epoch_ms(trace_doc.get("ended_at"))
+    hi = hi_marked or _epoch_ms(trace_doc.get("updated_at"))
+    if lo is None or hi is None or hi <= lo:
+        return None
+
+    def inside(t):
+        return lo <= int(t or 0) < hi
+
+    all_calls = log.get("tool_calls") or []
+    calls = [c for c in all_calls if inside(c.get("t"))]
+    ups = [u for u in (log.get("usage_points") or []) if inside(u.get("t"))]
+    tokens = {k: sum(u[k] for u in ups) for k in ("uncached", "cache_read", "cache_write", "out")}
+    long_calls = [c for c in calls if (c.get("ms") or 0) > LONG_CALL_MS]
+    outside = [c for c in all_calls if not inside(c.get("t"))]
+    return {
+        "from": lo,
+        "to": hi,
+        # 右边界从哪里来：读端要能分辨「诊断自己写了结束时刻」与「退到 updated_at 估的」
+        "bound_to": "ended_at" if hi_marked else "updated_at",
+        "truncated": not bool(hi_marked),
+        "calls": len(calls),
+        "ms": sum((c.get("ms") or 0) for c in calls),
+        "ms_complete": all(c.get("ms") is not None for c in calls),
+        "pending": sum(1 for c in calls if c.get("ms") is None),
+        "tokens": tokens,
+        "long_calls": len(long_calls),
+        "long_ms": sum((c.get("ms") or 0) for c in long_calls),
+        "long_threshold_ms": LONG_CALL_MS,
+        "outside_calls": len(outside),
+        "outside_ms": sum((c.get("ms") or 0) for c in outside),
+    }
+
+
 def strength_of(facts, self_resolved: bool) -> str:
     """结论强度档：自证 → `self-report`；命中案例 → 该案例的 `verification.source`；否则 `investigation`。
 
@@ -683,7 +739,8 @@ def _delta_purpose(new: dict, old: dict):
 
 
 def build_records(root: Path, traces_dir: Path, sessions_root, session_ids, apply: bool,
-                  run: str, state_path: Path, use_log: bool = True, local_dir: Path | None = None):
+                  run: str, state_path: Path, use_log: bool = True, local_dir: Path | None = None,
+                  local_only: bool = False):
     if local_dir is None:
         local_dir = ea.local_dir(root)
     state = load_state(state_path)
@@ -692,6 +749,11 @@ def build_records(root: Path, traces_dir: Path, sessions_root, session_ids, appl
     if session_ids:
         traces = [t for t in traces if t.stem in set(session_ids)]
     if not traces:
+        if session_ids:
+            # 显式指定了会话却一个都对不上：这是参数错，不是"本轮没有新诊断"。
+            # 面板按退出码判成功——这里必须非零，否则"没找到这一单"会被显示成"重建成功"。
+            print(f"指定的会话在 {traces_dir} 下没有对应 trace：{', '.join(session_ids)}", file=sys.stderr)
+            return 2
         print(f"未找到任何 traces/*.yaml（读的是 {traces_dir}）——本轮没有要汇总的诊断。")
         return 0
 
@@ -831,6 +893,16 @@ def build_records(root: Path, traces_dir: Path, sessions_root, session_ids, appl
         print("以下 reference_lookup 值归不到任何词条 id（未计入记录，仍留在轨迹里）：")
         for u, n in sorted(unattributed.items()):
             print(f"  · {u}（{n} 次）")
+    if local_only:
+        # 只重建本机明细：面板可以安全地自动调用（写的是 gitignored 运行时件）。
+        # 不写 `metrics/entry-activity.d/` 的周增量行、不动共享游标——那两件归周批：游标更新
+        # 没有锁、且按"上次游标之后"计增量，面板自动跑会把用户聊天里的工具调用记进诊断指标。
+        # 放在「没有新行就返回」之前：明细已经写了，不能打印成"不写任何行"。
+        if not apply:
+            print("\n--dry-run（默认）：未写任何文件。")
+            return 0
+        print(f"\n只写本机明细 {detail_written} 份 → {local_dir}（不写源行、不更新游标）")
+        return 0
     if not rows:
         print("本轮没有新的条目使用增量（记录已是最新）——不写任何行。")
         return 0
@@ -874,6 +946,9 @@ def session_doc(st, sid, facts, log, log_note, case_files, root) -> dict:
         "feedback": facts["feedback"],
         "sedimented": facts["sedimented"],
         "cost": {"tokens": (log or {}).get("tokens") or None,
+                 # 诊断窗口内的成本：面板的「耗时 / token」两列读这一份。`tokens` 是**整条会话**
+                 # 的累计，同一段对话里做过两单时两单会拿到同一份——要分清单次成本就读 `window`。
+                 "window": window_cost(st, log),
                  # 每步成本：按 `ts` 切窗口把会话日志的调用与 token 折进诊断步。
                  # 轨迹没有 `ts` 时为 None（面板显示「本次没记」，不按顺序硬猜）。
                  "step_cost": step_cost(st.get("trace") or [], log, st),
@@ -892,7 +967,10 @@ def _workload_type(st):
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("--apply", action="store_true", help="写源行、本机明细与游标（默认 dry-run）")
+    mode = ap.add_mutually_exclusive_group()
+    mode.add_argument("--apply", action="store_true", help="写源行、本机明细与游标（默认 dry-run）")
+    mode.add_argument("--local-only", action="store_true",
+                      help="只重建本机明细（gitignored），不写源行、不更新游标——面板可安全自动调用")
     ap.add_argument("--run", default=None, help="本次运行的标识（默认取当前时间 YYYY-MM-DD-HHMM）")
     ap.add_argument("--root", default=None, help="检出根（默认：脚本上两级）")
     ap.add_argument("--traces-dir", default=None,
@@ -914,10 +992,14 @@ def main() -> int:
     else:
         state_path, _where = resolve_rel(root, STATE_REL)
     run = args.run or ea.now_run()
+    if args.local_only and not args.apply:
+        # `--local-only` 本身就是"要写"的声明；不必再加 --apply，少记一个组合
+        args.apply = True
     return build_records(root, traces, Path(args.sessions_root) if args.sessions_root else None,
                          args.session, args.apply, run, state_path,
                          use_log=not args.no_session_log,
-                         local_dir=Path(args.local_dir).resolve() if args.local_dir else None)
+                         local_dir=Path(args.local_dir).resolve() if args.local_dir else None,
+                         local_only=args.local_only)
 
 
 if __name__ == "__main__":

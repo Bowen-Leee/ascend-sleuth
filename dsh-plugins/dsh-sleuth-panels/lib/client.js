@@ -1,6 +1,6 @@
 /* eslint-disable */
 // 生成物 —— 勿手改。由 `node scripts/build_panel_bundle.js` 从下列源文件拼出：
-//   dsh-plugins/ascend-panel/panel-client.js  (sha256:4aa75ec4c6f3)
+//   dsh-plugins/ascend-panel/panel-client.js  (sha256:b9a43cefaa41)
 //   dsh-plugins/ev-panel/panel-client.js  (sha256:9e836d4c1993)
 // 校验：`node scripts/build_panel_bundle.js --check`。
 //
@@ -63,7 +63,7 @@ window.__ModuleLoader__.load({
       id: 'ascend-panel',
       build(host, styles) {
         return (function () {
-// ---- dsh-plugins/ascend-panel/panel-client.js (sha256:4aa75ec4c6f3) 原文开始 ----
+// ---- dsh-plugins/ascend-panel/panel-client.js (sha256:b9a43cefaa41) 原文开始 ----
 return {
   apply(ctx) {
     const slots = ctx.get('slots')
@@ -277,7 +277,7 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
     // 构建时注入的面板包版本（`scripts/build_panel_bundle.js` 把占位符换成 package.json 的 version）。
     // 为什么要有：面板是「装进 profile 的常驻插件 + 浏览器按 rev 缓存」两层，改完看不到新版时
     // 无法区分"装的还是旧包"与"浏览器缓存了旧 bundle"。有这个串，一眼就能判。
-    const PANEL_VERSION = '0.6.13'
+    const PANEL_VERSION = '0.6.15'
 
     function shortUrl(u) {
       const s = String(u).replace(/^https?:\/\//i, '')
@@ -340,6 +340,15 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
     function fmtTime(iso) {
       if (!iso) return null
       const d = new Date(iso)
+      if (isNaN(d.getTime())) return null
+      const p = n => String(n).padStart(2, '0')
+      return (d.getMonth() + 1) + '-' + p(d.getDate()) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes())
+    }
+    // 诊断窗口的起止是 epoch 毫秒（轨迹的 created_at 归一成毫秒后的值），这里单独给一个入口，
+    // 不把毫秒转成 ISO 字符串再解析一遍。
+    function fmtEpoch(ms) {
+      if (typeof ms !== 'number' || !isFinite(ms)) return null
+      const d = new Date(ms)
       if (isNaN(d.getTime())) return null
       const p = n => String(n).padStart(2, '0')
       return (d.getMonth() + 1) + '-' + p(d.getDate()) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes())
@@ -838,6 +847,17 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
       if (ms >= 1000) return (ms / 1000).toFixed(1) + ' s'
       return ms + ' ms'
     }
+    // 两列读数的取值域说明：窗口内 / 旧格式（只有本会话累计）/ 没有数据。三种情形分开写，
+    // 因为「两单的本会话累计一样」正是读者会把它们读成一样贵的那种错。
+    function costScopeTitle(cost, base) {
+      if (!cost) return base + '：本机明细没有这一单的记录'
+      if (cost.scope === 'window') return base
+      if (cost.scope === 'session') {
+        return base + '：本机明细是旧格式（只记本会话累计），看不出这一单；打开这一单会自动重建'
+          + '（轨迹缺 created_at 时补不出来）'
+      }
+      return base + '：会话日志未关联'
+    }
     // 数据格：值为 null 表示读端拿不到这一格 → 写「本次没记」，不写 0。
     // `missingText` 分两档：没有数据（默认「本次没记」）与**读数有值但读端算不出来**
     // （「不可解读」）。两者不能同形，也不能都写成 0。
@@ -1041,7 +1061,9 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
           chip('命中', hit, hit ? 'var(--acc-green, ' + T.success + ')' : T.text2)),
         React.createElement('div', { style: { marginTop: 8, fontSize: 'var(--t-tiny)', color: T.text2, lineHeight: 'var(--lh-base)' } }, verdict))
 
-      const tk = (rec && rec.tokens) ? rec.tokens : null
+      // token 条与成本块的四个格同源：诊断窗口内为准；旧格式的明细退到本会话累计并在标题里写明。
+      const tkWin = (rec && rec.costWindow && rec.costWindow.tokens) ? rec.costWindow.tokens : null
+      const tk = tkWin || ((rec && rec.tokens) ? rec.tokens : null)
       const sum = tk ? (tk.uncached || 0) + (tk.cache_read || 0) + (tk.cache_write || 0) + (tk.out || 0) : 0
       const seg = (v, c) => React.createElement('i', { style: { display: 'block', height: '100%', width: (sum ? v / sum * 100 : 0) + '%', background: c } })
       const tokCell = (label, v, c) => React.createElement('div', { key: label, style: { display: 'flex', alignItems: 'center', gap: 5, minWidth: 0 } },
@@ -1074,7 +1096,7 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
           })()),
         React.createElement('div', { style: { minWidth: 0 } }, head('检索路径', ''), funnel),
         React.createElement('div', { style: { minWidth: 0 } },
-          head('token', sum ? thousands(sum) : ''),
+          head(tkWin ? 'token（诊断窗口内）' : (tk ? 'token（整条会话）' : 'token'), sum ? thousands(sum) : ''),
           React.createElement('div', { style: { display: 'flex', height: 14, borderRadius: 2, overflow: 'hidden', background: 'var(--hair)' } },
             seg(tk ? tk.cache_read : 0, 'var(--acc-amber, ' + T.warn + ')'),
             seg(tk ? tk.uncached : 0, T.brand),
@@ -1090,6 +1112,7 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
     const SessionCard = React.memo(function SessionCardInner(props) {
       const s = props.session
       const ownerSessionId = props.sessionId
+      const onRebuilt = props.onRebuilt
       // 批量闭环多选：只在「待升格」筛选下出现（勾选只在那一屏有意义）。
       const selectable = !!props.selectable
       const selected = !!props.selected
@@ -1122,6 +1145,10 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
       // 意图默认"继续定位"：得先选一下才导出，是为了让接收侧第一屏就知道上家期待什么。
       const [handoffIntent, setHandoffIntent] = React.useState('continue')
       const [handoff, setHandoff] = React.useState(null)   // {busy} | {ok, …} | {error}
+      // 本机明细重建（成本窗口）：旧格式明细没有 cost.window，打开卡片时自动重建一次；
+      // 按钮可手动重试。`rebuildTried` 记「这一单已经自动试过」，防止失败后无限重试。
+      const [rebuild, setRebuild] = React.useState(null)       // {state:'running'|'done'|'error', msg}
+      const [rebuildTried, setRebuildTried] = React.useState(null)
       const meta = statusMeta[s.status] || statusMeta.unknown
       const canResume = RESUMEABLE[s.status]
       // 定位结论：host 标 `isConclusion`（显式 `conclusion: true`，或"人读视图可见末条是 hit"这条约定）。
@@ -1156,8 +1183,35 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
       function loadDetail(quiet) {
         if (!quiet) setSteps({ loading: true })
         host.call('ascend-traces-detail', { sessionId: ownerSessionId || null, traceFile: s.file })
-          .then(r => { setDetailAt(Date.now()); setSteps({ loading: false, list: r && r.ok ? r.steps : [], summary: r && r.summary, refCount: r && r.refCount, sedimented: r && r.sedimented, sedimentCandidates: r && r.sedimentCandidates, conclusionIndex: r && typeof r.conclusionIndex === 'number' ? r.conclusionIndex : -1, parseAnomaly: r && r.parseAnomaly, record: r && r.record, recordPath: r && r.recordPath, recordRebuild: r && r.recordRebuild, recordMissing: r && r.recordMissing, recordError: r && r.recordError, recordMissingProduct: r && r.recordMissingProduct, caseMeta: r && r.caseMeta, sedimentMeta: r && r.sedimentMeta, stopReason: r && r.stopReason, error: r && r.error }) })
+          .then(r => {
+            setDetailAt(Date.now())
+            setSteps({ loading: false, list: r && r.ok ? r.steps : [], summary: r && r.summary, refCount: r && r.refCount, sedimented: r && r.sedimented, sedimentCandidates: r && r.sedimentCandidates, conclusionIndex: r && typeof r.conclusionIndex === 'number' ? r.conclusionIndex : -1, parseAnomaly: r && r.parseAnomaly, record: r && r.record, recordPath: r && r.recordPath, recordRebuild: r && r.recordRebuild, recordMissing: r && r.recordMissing, recordError: r && r.recordError, recordMissingProduct: r && r.recordMissingProduct, caseMeta: r && r.caseMeta, sedimentMeta: r && r.sedimentMeta, stopReason: r && r.stopReason, error: r && r.error })
+            // 旧格式明细（有本会话累计、没有 cost.window）→ 自动重建一次，读者不必记命令。
+            // 只重建「打开的这一单」：全量重建要跑几十秒（单会话实测 ≈4 s），不适合在加载时做。
+            const rec = r && r.ok ? r.record : null
+            if (rec && rec.tokens && !rec.costWindow && rebuildTried !== s.sessionId) {
+              setRebuildTried(s.sessionId)
+              doRebuild(true)
+            }
+          })
           .catch(e => setSteps({ loading: false, list: [], error: 'RPC 失败: ' + String(e && e.message || e) }))
+      }
+      // 重建本机明细：只写 gitignored 的 metrics/entry-activity.local/（host 侧走 --local-only），
+      // 不写周增量行、不动共享游标。成功后重新取详情——窗口那一栏就齐了。
+      function doRebuild(auto) {
+        setRebuild({ state: 'running', msg: auto ? '正在自动重建本机明细…' : '正在重建本机明细…' })
+        host.call('ascend-rebuild-local', { sessionId: s.sessionId })
+          .then(r => {
+            if (r && r.ok) {
+              setRebuild({ state: 'done', msg: '本机明细已重建' })
+              loadDetail(true)
+              // 列表的耗时 / token 两列也读这份明细：重建后重取，别让它们停在上一次的值
+              if (typeof onRebuilt === 'function') onRebuilt()
+            } else {
+              setRebuild({ state: 'error', msg: (r && r.error) ? String(r.error) : '重建失败（无返回）', manual: r && r.manual })
+            }
+          })
+          .catch(e => setRebuild({ state: 'error', msg: 'RPC 失败: ' + String(e && e.message || e) }))
       }
       function toggle() {
         // 收起时**保留** steps：下次展开直接用缓存渲染，再后台刷新（见 loadDetail 的 quiet）。
@@ -1438,26 +1492,85 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
           '展开 = 筛选时看过的候选（considered_candidates）；载入正文 = load_full 取过全文的候选；'
           + '排除 = excluded_cases。三者是同一批候选的三个状态。'),
       )
-      const d5Tok = d5Rec && d5Rec.tokens ? d5Rec.tokens : null
+      // 成本：只报诊断窗口内的数。旧格式的明细只有本会话累计——同一段对话里做过两单时
+      // 两份累计一模一样，把那种数当单次成本显示，读者会得出「两次诊断一样贵」的错结论。
+      const d5Win = d5Rec && d5Rec.costWindow ? d5Rec.costWindow : null
+      const d5TokSession = d5Rec && d5Rec.tokens ? d5Rec.tokens : null
+      const d5Tok = d5Win && d5Win.tokens ? d5Win.tokens : null
+      // 旧格式的明细没有窗口：四个 token 格退到本会话累计，并在下面一行写明
+      const d5TokShown = d5Tok || d5TokSession
       const d5Acct = d5Rec && d5Rec.indexRead ? d5Rec.indexRead : null
-      const d5Slowest = d5Rec && d5Rec.toolSlowest ? d5Rec.toolSlowest : null
+      const d5Slowest = d5Win ? d5Win.slowest : (d5Rec && d5Rec.toolSlowest ? d5Rec.toolSlowest : null)
+      const d5WinSpan = (d5Win && typeof d5Win.from === 'number' && typeof d5Win.to === 'number')
+        ? (fmtEpoch(d5Win.from) + ' → ' + fmtEpoch(d5Win.to)) : null
+      const d5Ms = (v) => (typeof v === 'number' ? msText(v) : NOT_RECORDED)
+      const d5TokTotal = (d5TokSession || d5Tok)
+        ? ((d5TokSession || d5Tok).uncached || 0) + ((d5TokSession || d5Tok).cache_read || 0)
+          + ((d5TokSession || d5Tok).cache_write || 0) + ((d5TokSession || d5Tok).out || 0)
+        : null
       const d5Cost = React.createElement(React.Fragment, null,
         React.createElement('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '2px 14px' } },
           TOKEN_LABELS.map(pair => React.createElement(Cell, {
             key: pair[0], label: pair[1],
-            value: d5Tok && d5Tok[pair[0]] !== null && d5Tok[pair[0]] !== undefined ? thousands(d5Tok[pair[0]]) : null,
+            value: d5TokShown && d5TokShown[pair[0]] !== null && d5TokShown[pair[0]] !== undefined ? thousands(d5TokShown[pair[0]]) : null,
             mono: true,
           })),
         ),
+        React.createElement('div', { style: { marginTop: 4, color: T.text2, fontSize: 'var(--t-tiny)', lineHeight: 'var(--lh-base)' } },
+          d5Win
+            ? ('上面四个 token 数是诊断窗口' + (d5WinSpan ? ' ' + d5WinSpan + ' ' : ' ') + '内的用量。'
+                + '左边界取轨迹的 created_at，这一单若在它之前已经开始动作，那部分不计入；'
+                + '右边界' + (d5Win.truncated ? '取 updated_at（这单没写 ended_at），之后可能还有诊断之外的活' : '取 ended_at')
+                + '。所以这是下限，不是完整成本。')
+            : (d5TokSession
+                ? '上面四个 token 数是本会话累计：本机明细是旧格式，没有按诊断窗口切，看不出这一单花了多少。'
+                  + '打开这一单会自动重建一次；仍失败时见下面「本机明细」一行给出的原因。'
+                : '')),
         React.createElement(LineRow, { label: '工具耗时' },
-          d5Rec
-            ? (d5Rec.toolTotalMs !== null
-                ? ('总计 ' + msText(d5Rec.toolTotalMs) + '（' + d5Rec.toolCallCount + ' 次调用'
-                    + (d5Rec.toolFailures ? '，失败 ' + d5Rec.toolFailures + ' 次' : '') + '）')
-                : NOT_RECORDED + '：会话日志未关联，逐次耗时不在轨迹里')
-            : NOT_RECORDED),
+          d5Win
+            ? ('总计 ' + (d5Win.msComplete === false ? '≥ ' : '') + d5Ms(d5Win.ms)
+                + '（' + (d5Win.calls === null ? '?' : d5Win.calls) + ' 次调用'
+                + (d5Win.failures ? '，失败 ' + d5Win.failures + ' 次' : '')
+                + (d5Win.pending ? '，' + d5Win.pending + ' 次没返回' : '') + '）')
+            : (d5Rec
+                ? (d5Rec.toolTotalMs !== null
+                    ? ('本会话累计 ' + msText(d5Rec.toolTotalMs) + '（' + d5Rec.toolCallCount + ' 次调用）——不是这一单')
+                    : NOT_RECORDED + '：会话日志未关联，逐次耗时不在轨迹里')
+                : NOT_RECORDED)),
+        (d5Win && d5Win.outsideCalls)
+          ? React.createElement(LineRow, { label: '窗口外' },
+              d5Win.outsideCalls + ' 次调用 / ' + d5Ms(d5Win.outsideMs || 0) + '，不在本单窗口内，不计入本单')
+          : null,
+        (d5Win && d5Win.longCalls)
+          ? React.createElement(LineRow, { label: '长调用' },
+              d5Win.longCalls + ' 次墙钟超过 ' + Math.round((d5Win.longThresholdMs || 600000) / 60000) + ' 分钟，合计 ' + d5Ms(d5Win.longMs || 0)
+              + '——多半是机器休眠或应用关着，不是工具真跑了这么久')
+          : null,
         d5Slowest ? React.createElement(LineRow, { label: '最慢一次' },
           msText(d5Slowest.ms) + ' · ' + (d5Slowest.tool || '工具名未记') + (d5Slowest.args ? ' · ' + d5Slowest.args : '')) : null,
+        (d5Win && d5TokSession)
+          ? React.createElement(LineRow, { label: '本会话累计（对照）' },
+              '工具耗时 ' + d5Ms(d5Rec.toolTotalMs) + '（' + d5Rec.toolCallCount + ' 次调用）· 四类 token ' + thousands(d5TokTotal || 0)
+              + '，含同一会话里的其它工作')
+          : null,
+        // 旧格式明细：打开卡片时已自动重建一次；这里给按钮重试，并把失败原因就地显示。
+        ((d5Rec && d5TokSession && !d5Win) || rebuild)
+          ? React.createElement(LineRow, { label: '本机明细' },
+              React.createElement('span', { style: { display: 'inline-flex', gap: 8, alignItems: 'baseline', flexWrap: 'wrap' } },
+                React.createElement('span', { style: { color: rebuild && rebuild.state === 'error' ? T.error : T.text2 } },
+                  rebuild ? rebuild.msg : '旧格式（没有诊断窗口），打开时会自动重建一次'),
+                (rebuild && rebuild.state === 'running') ? null
+                  : React.createElement('button', {
+                      onClick: () => doRebuild(false),
+                      style: btnGhost,
+                      title: '只重建本机明细（运行时数据，不入 git；不写周增量行、不动游标）',
+                    }, rebuild && rebuild.state === 'error' ? '重试'
+                      : (rebuild && rebuild.state === 'done' ? '再重建一次' : '重建这一单的本机明细')),
+                (rebuild && rebuild.state === 'error' && rebuild.manual
+                  && String(rebuild.msg || '').indexOf(rebuild.manual) < 0)
+                  ? React.createElement('code', { className: 'sleu-mono', style: { fontSize: 'var(--t-tiny)', color: T.text2 } }, rebuild.manual)
+                  : null))
+          : null,
         React.createElement('div', { style: { marginTop: 6, color: T.text2, fontSize: 'var(--t-tiny)' } }, '一次诊断的读入账（按视图现算，四个分项）'),
         React.createElement('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '2px 14px' } },
           ACCT_LABELS.map(pair => React.createElement(Cell, {
@@ -2003,10 +2116,16 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
               [s.framework, s.platform].filter(Boolean).join(' · ') || '—'),
             React.createElement('span', { title: '用户事件 / Agent 事件', className: 'sleu-num sleu-c-events', style: { color: T.text2, fontSize: 'var(--t-tiny)', textAlign: 'right', whiteSpace: 'nowrap', minWidth: 0 } },
               s.userSteps + ' / ' + s.agentSteps),
-            React.createElement('span', { title: '工具调用累计耗时', className: 'sleu-num sleu-c-ms', style: { color: T.text2, fontSize: 'var(--t-tiny)', textAlign: 'right', whiteSpace: 'nowrap', minWidth: 0 } },
-              (s.cost && s.cost.ms) ? msText(s.cost.ms) : '—'),
-            React.createElement('span', { title: '工具调用累计 token', className: 'sleu-num sleu-c-tok', style: { color: T.text2, fontSize: 'var(--t-tiny)', textAlign: 'right', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 } },
-              (s.cost && s.cost.tok) ? thousands(s.cost.tok) : '—'),
+            // 两列只读诊断窗口内的数。旧格式的明细只有本会话累计（同会话做过两单时两单一样），
+            // 那种明细不显示数字——写「—」并在 title 里给重跑命令，读数才不会把两单说成一样贵。
+            React.createElement('span', {
+              title: costScopeTitle(s.cost, '工具调用累计耗时（诊断窗口内）'),
+              className: 'sleu-num sleu-c-ms', style: { color: T.text2, fontSize: 'var(--t-tiny)', textAlign: 'right', whiteSpace: 'nowrap', minWidth: 0 } },
+              (s.cost && s.cost.scope === 'window' && typeof s.cost.ms === 'number') ? msText(s.cost.ms) : '—'),
+            React.createElement('span', {
+              title: costScopeTitle(s.cost, '工具调用累计 token（诊断窗口内）'),
+              className: 'sleu-num sleu-c-tok', style: { color: T.text2, fontSize: 'var(--t-tiny)', textAlign: 'right', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 } },
+              (s.cost && s.cost.scope === 'window' && typeof s.cost.tok === 'number') ? thousands(s.cost.tok) : '—'),
             React.createElement('span', { style: { display: 'flex', justifyContent: 'flex-end' } }, React.createElement(Chevron, { open: open })),
           ),
           // 第二行：一句"这单在查什么" + 外来标记 + 更新时间。收起态只留这些，其余细节在展开态。
@@ -2142,8 +2261,10 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
                     kv('开始时间', fmtTimeFull(s.createdAt) || NOT_RECORDED),
                     kv('harness 会话', rec.harnessSession || NOT_RECORDED),
                     kv('知识库版本', rec.kbRev || NOT_RECORDED),
-                    kv('工具耗时', rec.toolTotalMs ? msText(rec.toolTotalMs) : NOT_RECORDED),
-                    kv('调用次数', rec.toolCallCount ? String(rec.toolCallCount) : NOT_RECORDED),
+                    // 这两行是**整条会话**的账（成本块报的是诊断窗口内的那一份）：同会话做过两单时
+                    // 两单在这里一样，是对照用的量，不是这一单的成本。
+                    kv('本会话工具耗时', rec.toolTotalMs ? msText(rec.toolTotalMs) : NOT_RECORDED),
+                    kv('本会话调用次数', rec.toolCallCount ? String(rec.toolCallCount) : NOT_RECORDED),
                     kv('停止原因', rec.outcome && rec.outcome.stopReason ? String(rec.outcome.stopReason) : NOT_RECORDED))
                 })(),
                 // 数据缺口：给维护者判断"这份记录能不能进聚合"。读者不该被它挡一屏——
@@ -2508,6 +2629,8 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
                 selectable: kbFilter === 'need-promote',
                 selected: !!sel[s.file],
                 onToggleFile: toggleSel,
+                // 重建本机明细之后重取列表：否则列表两列还停在「—」，要等用户手动刷新才变
+                onRebuilt: () => setReloadAt(n => n + 1),
               })),
             ),
       )

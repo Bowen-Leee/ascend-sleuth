@@ -286,6 +286,156 @@ class StepCostTest(Fixture):
         self.assertTrue(all("t" in c for c in log["tool_calls"]))
 
 
+class WindowCostTest(Fixture):
+    """诊断窗口内的成本：同一条会话里做过两单时，两单的读数必须分开。
+
+    会话日志记的是整条会话的账。窗口切错时不会报错：两行读数一模一样，读者会读成
+    「两次诊断一样贵」——这正是这组用例要钉住的那类失效。
+    """
+
+    def trace_doc(self, **kw):
+        d = {"created_at": "2026-10-16T12:00:00+08:00",
+             "updated_at": "2026-10-16T13:00:00+08:00"}
+        d.update(kw)
+        return d
+
+    def ms(self, iso):
+        return tea._epoch_ms(iso)
+
+    def log(self):
+        inside = self.ms("2026-10-16T12:30:00+08:00")
+        before = self.ms("2026-10-16T11:00:00+08:00")
+        after = self.ms("2026-10-16T14:00:00+08:00")
+        return {
+            "tool_calls": [
+                {"tool": "read", "t": before, "ms": 1000, "step": 1},
+                {"tool": "read", "t": inside, "ms": 120, "step": 1},
+                {"tool": "grep", "t": inside + 500, "ms": 300, "step": 2},
+                {"tool": "bash", "t": after, "ms": 5000, "step": 9},
+            ],
+            "usage_points": [
+                {"t": before, "uncached": 999, "cache_read": 0, "cache_write": 0, "out": 0},
+                {"t": inside, "uncached": 100, "cache_read": 10, "cache_write": 5, "out": 20},
+                {"t": after, "uncached": 777, "cache_read": 0, "cache_write": 0, "out": 0},
+            ],
+        }
+
+    def test_calls_and_tokens_outside_the_window_are_not_counted(self):
+        w = tea.window_cost(self.trace_doc(), self.log())
+        self.assertEqual(w["calls"], 2)
+        self.assertEqual(w["ms"], 420)
+        self.assertEqual(w["tokens"], {"uncached": 100, "cache_read": 10,
+                                       "cache_write": 5, "out": 20})
+        self.assertEqual((w["outside_calls"], w["outside_ms"]), (2, 6000),
+                         "窗口外的调用只计数，不进这一单的成本")
+
+    def test_updated_at_marks_the_window_truncated(self):
+        w = tea.window_cost(self.trace_doc(), self.log())
+        self.assertEqual(w["bound_to"], "updated_at")
+        self.assertTrue(w["truncated"], "没有 ended_at 时后段可能混进诊断之外的活，要标出来")
+        w2 = tea.window_cost(self.trace_doc(ended_at="2026-10-16T12:45:00+08:00"), self.log())
+        self.assertEqual(w2["bound_to"], "ended_at")
+        self.assertFalse(w2["truncated"])
+
+    def test_missing_endpoints_are_not_guessed(self):
+        self.assertIsNone(tea.window_cost({"created_at": "2026-10-16T12:00:00+08:00"}, self.log()),
+                          "缺右边界时不给数，不拿整份日志顶替")
+        self.assertIsNone(tea.window_cost({"updated_at": "2026-10-16T13:00:00+08:00"}, self.log()))
+        self.assertIsNone(tea.window_cost(self.trace_doc(), None))
+
+    def test_end_before_start_is_not_a_window(self):
+        """结束早于开始（或相等）时切不出区间：返回 None，不拿它去统计。"""
+        self.assertIsNone(tea.window_cost(self.trace_doc(ended_at="2026-10-16T11:00:00+08:00"),
+                                          self.log()))
+        self.assertIsNone(tea.window_cost(self.trace_doc(ended_at="2026-10-16T12:00:00+08:00"),
+                                          self.log()))
+
+    def test_long_calls_are_counted_separately(self):
+        """机器休眠会让一次调用的墙钟时长到小时级：合计里标出来，不从合计里扣。"""
+        inside = self.ms("2026-10-16T12:30:00+08:00")
+        log = {"tool_calls": [
+            {"tool": "read", "t": inside, "ms": tea.LONG_CALL_MS + 1, "step": 1},
+            {"tool": "bash", "t": inside + 10, "ms": 40, "step": 1},
+        ], "usage_points": []}
+        w = tea.window_cost(self.trace_doc(), log)
+        self.assertEqual((w["long_calls"], w["long_ms"]), (1, tea.LONG_CALL_MS + 1))
+        self.assertEqual(w["long_threshold_ms"], tea.LONG_CALL_MS)
+        self.assertEqual(w["ms"], tea.LONG_CALL_MS + 41, "长调用仍计入合计")
+        # 阈值口径：文案写「超过 10 分钟」，恰好 10 分钟不算
+        edge = {"tool_calls": [{"tool": "read", "t": inside, "ms": tea.LONG_CALL_MS, "step": 1}],
+                "usage_points": []}
+        self.assertEqual(tea.window_cost(self.trace_doc(), edge)["long_calls"], 0)
+
+    def test_pending_calls_are_reported_not_counted_as_zero_ms(self):
+        inside = self.ms("2026-10-16T12:30:00+08:00")
+        log = {"tool_calls": [{"tool": "bash", "t": inside, "ms": None, "step": 1}],
+               "usage_points": []}
+        w = tea.window_cost(self.trace_doc(), log)
+        self.assertEqual((w["calls"], w["pending"], w["ms_complete"]), (1, 1, False))
+
+    def test_detail_record_carries_the_window(self):
+        """本机明细里必须有 cost.window：面板的耗时与 token 两列读它。"""
+        self.write_trace()
+        self.run_summarize(apply=True)
+        doc = ea.read_local_record(self.local, TRACE["session_id"])
+        w = doc["cost"]["window"]
+        self.assertIsNotNone(w)
+        self.assertEqual(w["calls"], 0, "夹具日志的时间戳在 1970 年，落在窗口外")
+        self.assertEqual(w["outside_calls"], 2)
+        self.assertEqual(doc["cost"]["tokens"]["out"], 20, "本会话累计仍原样保留")
+
+    def test_local_only_writes_detail_without_rows_or_cursor(self):
+        """面板自动重建走这一档：只写 gitignored 的本机明细，不写源行、不动游标。
+
+        为什么单钉：游标更新没有锁、且按「上次游标之后」计增量；面板若走 --apply 自动重建，
+        会把用户聊天里的工具调用记进诊断指标，并与其他 session 抢游标。
+        """
+        self.write_trace()
+        import contextlib
+        import io
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            rc = tea.build_records(self.root, self.traces, self.sessions, None, True,
+                                   "2026-10-16-1500", self.state, use_log=True,
+                                   local_dir=self.local, local_only=True)
+        self.assertEqual(rc, 0)
+        self.assertIn("只写本机明细", buf.getvalue())
+        doc = ea.read_local_record(self.local, TRACE["session_id"])
+        self.assertIsNotNone(doc, "本机明细要写出来")
+        self.assertIn("window", doc["cost"])
+        self.assertEqual(self.rows(), [], "不得写 metrics/entry-activity.d/ 的增量行")
+        self.assertFalse(self.state.exists(), "不得落下共享游标")
+
+    def test_local_only_reports_even_when_no_new_rows(self):
+        """第二轮没有新行时也要打印「只写本机明细」，不能打印成「不写任何行」——明细确实写了。"""
+        self.write_trace()
+        self.run_summarize(apply=True)          # 第一轮把增量行与游标写掉
+        import contextlib
+        import io
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            rc = tea.build_records(self.root, self.traces, self.sessions, None, True,
+                                   "2026-10-17-0900", self.state, use_log=True,
+                                   local_dir=self.local, local_only=True)
+        self.assertEqual(rc, 0)
+        self.assertIn("只写本机明细", buf.getvalue())
+        self.assertNotIn("不写任何行", buf.getvalue())
+
+    def test_detail_record_counts_calls_inside_the_window(self):
+        """窗口内的调用与用量进 cost.window；与 cost.tokens（本会话累计）分开写。"""
+        doc = dict(TRACE)
+        doc["created_at"] = "1970-01-01T00:00:00+00:00"
+        doc["updated_at"] = "1970-01-01T00:00:10+00:00"
+        self.write_trace(doc)
+        self.run_summarize(apply=True)
+        rec = ea.read_local_record(self.local, TRACE["session_id"])
+        w = rec["cost"]["window"]
+        self.assertEqual((w["calls"], w["ms"]), (2, 400), "夹具里的两次调用都落在窗口内")
+        self.assertEqual(w["tokens"]["uncached"], 100)
+        self.assertEqual(w["outside_calls"], 0)
+        self.assertEqual(rec["cost"]["tokens"]["out"], 20, "本会话累计同时保留")
+
+
 class DeltaTest(Fixture):
     def test_first_run_writes_rows_for_every_touched_entry(self):
         self.write_trace()
