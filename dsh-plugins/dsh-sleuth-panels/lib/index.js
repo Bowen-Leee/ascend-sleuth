@@ -1,6 +1,6 @@
 /* eslint-disable */
 // 生成物 —— 勿手改。由 `node scripts/build_panel_bundle.js` 从下列源文件拼出：
-//   dsh-plugins/ascend-panel/panel-host.js  (sha256:1248ef6dbc4a)
+//   dsh-plugins/ascend-panel/panel-host.js  (sha256:cdbd75d2a7cd)
 //   dsh-plugins/ev-panel/panel-host.js  (sha256:7cb53df00162)
 // 校验：`node scripts/build_panel_bundle.js --check`（源文件改了没重跑生成器即红）。
 //
@@ -81,7 +81,7 @@ const PANELS = [
     id: 'ascend-panel',
     build(harness) {
       return (function () {
-// ---- dsh-plugins/ascend-panel/panel-host.js (sha256:1248ef6dbc4a) 原文开始 ----
+// ---- dsh-plugins/ascend-panel/panel-host.js (sha256:cdbd75d2a7cd) 原文开始 ----
 return {
   apply(ctx) {
     const fs = ctx.get('fs')
@@ -2123,7 +2123,11 @@ return {
           workdir: cwd,
           timeoutMs: 120000,
           stdoutMaxBytes: 65536,
-          env: { PYTHONIOENCODING: 'utf-8' },
+          // 子进程环境不一定继承宿主变量：把 DSH_HOME 显式带上（脚本侧另有多根兜底）。
+          // 不带的话会话日志会按 `~/.dsh` 找，成本与工具调用整段缺席（实测踩过）。
+          env: Object.assign({ PYTHONIOENCODING: 'utf-8' },
+            (typeof process !== 'undefined' && process.env && process.env.DSH_HOME)
+              ? { DSH_HOME: String(process.env.DSH_HOME) } : {}),
           sandboxPolicy: { mode: 'workspace-write', workspaceRoot: cwd },   // 写操作：见上面「跑子进程的沙箱策略」①
         }))
       } catch (e) {
@@ -2151,8 +2155,10 @@ return {
           const rec = await readLocalRecord(cwd, sessionId)
           if (!rec.ok || !rec.record || !rec.record.costWindow) {
             return { ok: false, manual: manual,
-              error: '重建跑完了，但这一单仍然没有诊断窗口：会话日志不在这台机器上，或轨迹缺 created_at。'
-                + '这两样补不出来，重跑结果一样。' }
+              // 不往这里写「原明细已保留」：这条分支也可能由「日志在、轨迹缺 created_at」进来，
+              // 那种情形脚本照常覆盖写。保留与否由脚本侧的 stderr 说明，面板不替它下结论。
+              error: '重建跑完了，但这一单仍然没有诊断窗口：这台机器上找不到这一单的会话日志，'
+                + '或轨迹缺 created_at。这两样补不出来，重跑结果一样。' }
           }
         } catch (e) {
           // 读回失败不推翻脚本结果：下一次列表刷新会重新判定

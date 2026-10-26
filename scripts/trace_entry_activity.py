@@ -75,26 +75,93 @@ HARNESS_LOG_PATTERNS = ("session*.jsonl.zstd", "session.jsonl")
 # ---------------------------------------------------------------- 会话日志
 
 
-def harness_home() -> Path:
-    return Path(os.environ.get("DSH_HOME") or (Path.home() / ".dsh"))
-
-
-def find_session_log(sid: str, sessions_root: Path | None = None):
-    """会话 id → 会话日志路径；找不到返回 (None, 原因)。"""
-    if sessions_root is None:
-        sessions_root = harness_home() / "sessions"
-    if not sessions_root.is_dir():
-        return None, f"会话日志根目录不存在（{sessions_root}）"
-    for ws in sorted(sessions_root.iterdir()):
-        d = ws / sid
-        if not d.is_dir():
+def app_harness_roots(base: Path) -> list[Path]:
+    """平台数据根下的 `<应用>/harness`（只收 `sessions/` 确实存在的）。读不了就当没有。"""
+    out = []
+    try:
+        entries = sorted(Path(base).iterdir())
+    except OSError:
+        return out
+    for app in entries:
+        try:
+            if app.is_dir() and (app / "harness" / "sessions").is_dir():
+                out.append(app / "harness")
+        except OSError:
             continue
-        found = []
-        for pat in HARNESS_LOG_PATTERNS:
-            found += [p for p in d.glob(pat) if p.is_file()]
-        if found:
-            return max(found, key=lambda p: p.stat().st_mtime), None
-    return None, f"{sessions_root} 下没有 {sid} 的会话日志"
+    return out
+
+
+def harness_homes() -> list[Path]:
+    """候选的 harness 数据根（按优先级），只返回有可能装会话日志的那些。
+
+    **为什么不止一个**：面板调子进程时环境里不一定带着 `DSH_HOME`。实测过：面板自动重建跑出来
+    的明细把 `session_log` 记成 `~/.dsh/sessions 下没有 …`——成本与工具调用整段变空，还覆盖了
+    原明细。所以按「环境变量 → 历史默认 → 桌面版放数据的目录」逐个试，不靠一个变量定生死。
+
+    桌面版的目录名按平台是固定位置、但**应用目录名可能变**（`dsh-desktop`、改名后的发行版）：
+    这里扫一层 `<平台数据根>/*/harness`，只收 `sessions/` 确实存在的。
+    """
+    cands: list[Path] = []
+    env = os.environ.get("DSH_HOME")
+    if env:
+        cands.append(Path(env))
+    cands.append(Path.home() / ".dsh")
+    if sys.platform == "darwin":
+        base = Path.home() / "Library" / "Application Support"
+    elif sys.platform.startswith("win"):
+        appdata = os.environ.get("APPDATA")
+        base = Path(appdata) if appdata else None
+    else:
+        xdg = os.environ.get("XDG_DATA_HOME")
+        base = Path(xdg) if xdg else (Path.home() / ".local" / "share")
+    if base is not None:
+        cands.extend(app_harness_roots(base))
+    out, seen = [], set()
+    for c in cands:
+        try:
+            key = str(c.resolve())
+        except OSError:
+            key = str(c)
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(c)
+    return out
+
+
+def find_session_log(sid: str, sessions_root: Path | list[Path] | None = None):
+    """会话 id → 会话日志路径；找不到返回 (None, 原因)。
+
+    `sessions_root` 可以是单个根（测试用）或一组根；不传就按 `harness_homes()` 逐个找，
+    取第一个真有这一单的——面板调子进程时环境里常常没有 `DSH_HOME`。
+    """
+    if sessions_root is None:
+        roots = [h / "sessions" for h in harness_homes()]
+    elif isinstance(sessions_root, (list, tuple)):
+        roots = [Path(r) for r in sessions_root]
+    else:
+        roots = [Path(sessions_root)]
+    tried = []
+    for root in roots:
+        if not root.is_dir():
+            tried.append(f"{root}（不存在）")
+            continue
+        try:
+            workspaces = sorted(root.iterdir())
+        except OSError:
+            tried.append(f"{root}（读不了）")
+            continue
+        for ws in workspaces:
+            d = ws / sid
+            if not d.is_dir():
+                continue
+            found = []
+            for pat in HARNESS_LOG_PATTERNS:
+                found += [p for p in d.glob(pat) if p.is_file()]
+            if found:
+                return max(found, key=lambda p: p.stat().st_mtime), None
+        tried.append(str(root))
+    return None, "试过这些会话日志根都没有 " + sid + "：" + "；".join(tried)
 
 
 def read_log_text(path: Path):
@@ -761,6 +828,7 @@ def build_records(root: Path, traces_dir: Path, sessions_root, session_ids, appl
     ref_files, ref_alias = ref_index(root)
     case_rows, ref_rows, tool_rows = {}, {}, {}
     covered, notes, detail_written = set(), [], 0
+    degraded: list[str] = []      # 这次没找到会话日志、但已有明细里本来有数据的会话
     unattributed = {}
 
     for tf in traces:
@@ -850,8 +918,22 @@ def build_records(root: Path, traces_dir: Path, sessions_root, session_ids, appl
 
         if apply:
             doc = session_doc(st, sid, facts, log, log_note, case_files, root)
-            ea.write_local_record(local_dir, sid, doc)
-            detail_written += 1
+            # **不拿缺席覆盖已有的数据**：会话日志没找到时新记录的成本与工具调用是空的，而旧明细
+            # 可能有完整的一份（实测：面板调子进程时环境里没有 DSH_HOME，一次自动重建就把两单的
+            # tool_calls 与 token 整段写空，旧文件被覆盖）。旧的有、新的没有 → 保留旧的并报出来。
+            # 只有「这次确实尝试读、却没读到会话日志」才按降级处理：`--no-session-log` 是
+            # 文档化的离线模式，那不是日志缺席，不该拦也不该按失败退出。
+            try:
+                prev_doc = ea.read_local_record(local_dir, sid)
+            except Exception:
+                prev_doc = None      # 旧明细读不出来就没得比，照常重写
+            prev_tokens = ((prev_doc or {}).get("cost") or {}).get("tokens") if prev_doc else None
+            if use_log and log is None and prev_tokens and not doc["cost"]["tokens"]:
+                degraded.append(sid)
+                notes.append(f"  · {sid}: 这次没读到会话日志，成本与工具调用会整段变空——保留已有明细，不覆盖")
+            else:
+                ea.write_local_record(local_dir, sid, doc)
+                detail_written += 1
             new_prev = dict(prev) if log is None else {}
             new_prev.update({
                 "cases": {cid: {k: int(v.get(k, 0) or 0) for k in ea.COUNT_KEYS["case"]}
@@ -902,6 +984,9 @@ def build_records(root: Path, traces_dir: Path, sessions_root, session_ids, appl
             print("\n--dry-run（默认）：未写任何文件。")
             return 0
         print(f"\n只写本机明细 {detail_written} 份 → {local_dir}（不写源行、不更新游标）")
+        if degraded:
+            print("以下会话没找到会话日志，已保留原明细（不覆盖）：" + "、".join(degraded), file=sys.stderr)
+            return 2
         return 0
     if not rows:
         print("本轮没有新的条目使用增量（记录已是最新）——不写任何行。")
@@ -976,7 +1061,7 @@ def main() -> int:
     ap.add_argument("--traces-dir", default=None,
                     help="显式指定 traces/（默认解析到主检出共享侧）")
     ap.add_argument("--sessions-root", default=None,
-                    help="harness 会话日志根（默认 $DSH_HOME/sessions；测试用）")
+                    help="harness 会话日志根（默认按 DSH_HOME / ~/.dsh / 桌面版数据目录逐个找；测试用）")
     ap.add_argument("--state", default=None, help="本机幂等游标（默认登记在共享运行件里）")
     ap.add_argument("--session", action="append", default=None, help="只处理指定会话（可多次）")
     ap.add_argument("--local-dir", default=None,

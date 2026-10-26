@@ -3351,6 +3351,22 @@ print(json.dumps([{'role': s(t.get('role')), 'step': s(t.get('step')), 'action':
         && seen[0].sandboxPolicy.workspaceRoot === CWD,
         JSON.stringify(seen[0] && { workdir: seen[0].workdir, policy: seen[0].sandboxPolicy }))
       expect('本机明细重建 · 成功时如实返回', r1 && r1.ok === true, JSON.stringify(r1).slice(0, 90))
+      // 子进程环境里要带 DSH_HOME：不带时脚本按 `~/.dsh` 找会话日志，成本与工具调用会整段缺席
+      {
+        const oldHome = process.env.DSH_HOME
+        process.env.DSH_HOME = '/tmp/dsh-home-test'
+        try {
+          const regs2 = boot({ exitCode: 0, timedOut: false, stdout: { text: 'ok' }, stderr: { text: '' } })
+          await regs2['ascend-rebuild-local']({ sessionId: 'sess-env' })
+        } finally {
+          if (oldHome === undefined) delete process.env.DSH_HOME
+          else process.env.DSH_HOME = oldHome
+        }
+        const last = seen[seen.length - 1]
+        expect('本机明细重建 · 子进程环境带上 DSH_HOME（会话日志才找得到）',
+          last && last.env && last.env.PYTHONIOENCODING === 'utf-8' && last.env.DSH_HOME === '/tmp/dsh-home-test',
+          JSON.stringify(last && last.env))
+      }
 
       const badId = await okRegs['ascend-rebuild-local']({ sessionId: 'x; rm -rf /' })
       expect('本机明细重建 · 会话号只允许白名单字符（拒绝拼命令）',

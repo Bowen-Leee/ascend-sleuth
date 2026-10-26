@@ -27,6 +27,9 @@ python3 scripts/build_entry_activity.py             # 重建生成物 metrics/en
 三个前提，缺了那一格会写「本次没记」而不是数字：
 
 - 轨迹顶层写了 `harness_session` —— 否则 token 与工具耗时关联不上会话账单；
+  会话日志按几个候选目录逐个找：`DSH_HOME`、`~/.dsh`、桌面版放数据的目录，找到第一份为止。
+  都找不到时不会覆盖已有的本机明细：`--local-only` 以非零退出（面板据此报失败），`--apply`
+  仍照写增量行、退出 0；
 - 轨迹顶层有 `created_at` 与 `ended_at` —— 单次成本按 `created_at` → `ended_at` 切窗口；没写 `ended_at`
   就退到 `updated_at`，本机明细里标 `bound_to: updated_at`、面板上写明。同一段对话里做过两单时，
   只有这个窗口能把两单的读数分开（本会话累计会被两单各算一遍）。窗口边界是手写时间，读数是下限；

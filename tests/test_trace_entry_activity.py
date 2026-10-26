@@ -11,6 +11,7 @@
 
 import json
 import os
+import shutil
 import sys
 import tempfile
 import unittest
@@ -286,6 +287,76 @@ class StepCostTest(Fixture):
         self.assertTrue(all("t" in c for c in log["tool_calls"]))
 
 
+class SessionLogDiscoveryTest(unittest.TestCase):
+    """会话日志根不止一个：面板调子进程时环境里不一定有 DSH_HOME。"""
+
+    def test_finds_the_session_under_any_candidate_root(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            empty = Path(tmp) / "empty" / "sessions"
+            empty.mkdir(parents=True)
+            real = Path(tmp) / "real" / "sessions"
+            d = real / "ws" / "sid-x"
+            d.mkdir(parents=True)
+            (d / "session.v4.jsonl.zstd").write_text("x", encoding="utf-8")
+            path, why = tea.find_session_log("sid-x", [empty, real])
+            self.assertIsNone(why)
+            self.assertEqual(path.parent, d, "第二个候选根里有这一单，也要找得到")
+
+    def test_miss_lists_the_roots_it_tried(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            a = Path(tmp) / "a"
+            b = Path(tmp) / "b"
+            a.mkdir(); b.mkdir()
+            path, why = tea.find_session_log("nope", [a, b])
+            self.assertIsNone(path)
+            self.assertIn(str(a), why)
+            self.assertIn(str(b), why)
+
+    def test_env_root_comes_first(self):
+        old = os.environ.get("DSH_HOME")
+        os.environ["DSH_HOME"] = "/tmp/dsh-home-x"
+        try:
+            self.assertEqual(tea.harness_homes()[0], Path("/tmp/dsh-home-x"))
+        finally:
+            if old is None:
+                os.environ.pop("DSH_HOME", None)
+            else:
+                os.environ["DSH_HOME"] = old
+
+    def test_default_lookup_walks_harness_homes(self):
+        """不传 sessions_root 时真的按 harness_homes() 逐个找（面板调子进程的路径）。"""
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            home = Path(tmp) / "dsh-home"
+            d = home / "sessions" / "ws" / "sid-env"
+            d.mkdir(parents=True)
+            (d / "session.v4.jsonl.zstd").write_text("x", encoding="utf-8")
+            old = os.environ.get("DSH_HOME")
+            os.environ["DSH_HOME"] = str(home)
+            try:
+                path, why = tea.find_session_log("sid-env")
+            finally:
+                if old is None:
+                    os.environ.pop("DSH_HOME", None)
+                else:
+                    os.environ["DSH_HOME"] = old
+            self.assertIsNone(why)
+            self.assertEqual(path.parent, d)
+
+    def test_desktop_app_dirs_are_scanned_one_level(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            good = base / "dsh-desktop" / "harness" / "sessions"
+            good.mkdir(parents=True)
+            (base / "other-app" / "harness").mkdir(parents=True)
+            homes = tea.app_harness_roots(base)
+            self.assertEqual([h.parent.name for h in homes], ["dsh-desktop"],
+                             "只收 sessions/ 存在的应用目录")
+
+
 class WindowCostTest(Fixture):
     """诊断窗口内的成本：同一条会话里做过两单时，两单的读数必须分开。
 
@@ -434,6 +505,46 @@ class WindowCostTest(Fixture):
         self.assertEqual(w["tokens"]["uncached"], 100)
         self.assertEqual(w["outside_calls"], 0)
         self.assertEqual(rec["cost"]["tokens"]["out"], 20, "本会话累计同时保留")
+
+
+class NoDegradationTest(Fixture):
+    """会话日志没了的那一轮，不得把已有的好明细覆盖成空。"""
+
+    def test_existing_detail_is_kept_when_session_log_disappears(self):
+        self.write_trace()
+        self.run_summarize(apply=True)          # 第一轮：日志在，明细里成本齐全
+        good = ea.read_local_record(self.local, TRACE["session_id"])
+        self.assertTrue(good["cost"]["tokens"], "前置：第一轮明细里有四类 token")
+        # 模拟面板子进程拿不到 DSH_HOME：日志目录找不到
+        shutil.rmtree(self.sessions / "ws" / "demo-sid")
+        import contextlib
+        import io
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):
+            rc = tea.build_records(self.root, self.traces, self.sessions, None, True,
+                                   "2026-10-16-1600", self.state, use_log=True,
+                                   local_dir=self.local, local_only=True)
+        self.assertEqual(rc, 2, "没找到日志时要非零退出，面板据此报失败")
+        after = ea.read_local_record(self.local, TRACE["session_id"])
+        self.assertEqual(after["cost"]["tokens"], good["cost"]["tokens"], "旧明细不被空记录覆盖")
+        self.assertIn("保留已有明细", buf.getvalue())
+
+    def test_offline_mode_is_not_treated_as_degraded(self):
+        """`--no-session-log` 是文档化的离线模式：不读日志不是"日志缺席"，不该拦。"""
+        self.write_trace()
+        self.run_summarize(apply=True)
+        good = ea.read_local_record(self.local, TRACE["session_id"])
+        import contextlib
+        import io
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):
+            rc = tea.build_records(self.root, self.traces, self.sessions, None, True,
+                                   "2026-10-16-1700", self.state, use_log=False,
+                                   local_dir=self.local, local_only=True)
+        self.assertEqual(rc, 0, "离线模式不该按失败退出")
+        after = ea.read_local_record(self.local, TRACE["session_id"])
+        self.assertIsNone(after["cost"]["tokens"], "离线那一轮本来就该写空的成本字段")
+        self.assertNotIn("保留已有明细", buf.getvalue())
 
 
 class DeltaTest(Fixture):
