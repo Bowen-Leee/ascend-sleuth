@@ -1798,6 +1798,7 @@ _MS._run_no_pipe = no_fallback`)
       {
         const rpc = []
         let detailHits = 0
+        let listHits = 0
         const oldRec = {
           sessionId: 'sess-cost', tokens: { uncached: 1, cache_read: 2, cache_write: 0, out: 3 },
           toolCallCount: 742, toolTotalMs: 609945652, toolSlowest: null, toolFailures: 0,
@@ -1818,6 +1819,7 @@ _MS._run_no_pipe = no_fallback`)
             return Object.assign({}, stepsPayload, { record: detailHits === 1 ? oldRec : newRec })
           }
           if (m === 'ascend-traces-list') {
+            listHits++
             return { ok: true, sessions: [mkSession(1, { sessionId: 'sess-cost', file: 'sess-cost.yaml' })] }
           }
           return diagHost(m, a)
@@ -1854,6 +1856,7 @@ _MS._run_no_pipe = no_fallback`)
           expect('成本：重建后按诊断窗口显示（不是本会话累计）',
             /上面四个 token 数是诊断窗口/.test(texts) && /不在本单窗口内/.test(texts), texts.slice(0, 160))
           expect('成本：重建入口留在卡片上（可再重建一次）', /再重建一次/.test(texts))
+          expect('成本：重建成功后重取列表（两列不必等手动刷新）', listHits >= 2, 'list=' + listHits)
         }
       }
 

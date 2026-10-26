@@ -1,6 +1,6 @@
 /* eslint-disable */
 // 生成物 —— 勿手改。由 `node scripts/build_panel_bundle.js` 从下列源文件拼出：
-//   dsh-plugins/ascend-panel/panel-client.js  (sha256:d2f0ffc63976)
+//   dsh-plugins/ascend-panel/panel-client.js  (sha256:b9a43cefaa41)
 //   dsh-plugins/ev-panel/panel-client.js  (sha256:9e836d4c1993)
 // 校验：`node scripts/build_panel_bundle.js --check`。
 //
@@ -63,7 +63,7 @@ window.__ModuleLoader__.load({
       id: 'ascend-panel',
       build(host, styles) {
         return (function () {
-// ---- dsh-plugins/ascend-panel/panel-client.js (sha256:d2f0ffc63976) 原文开始 ----
+// ---- dsh-plugins/ascend-panel/panel-client.js (sha256:b9a43cefaa41) 原文开始 ----
 return {
   apply(ctx) {
     const slots = ctx.get('slots')
@@ -1112,6 +1112,7 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
     const SessionCard = React.memo(function SessionCardInner(props) {
       const s = props.session
       const ownerSessionId = props.sessionId
+      const onRebuilt = props.onRebuilt
       // 批量闭环多选：只在「待升格」筛选下出现（勾选只在那一屏有意义）。
       const selectable = !!props.selectable
       const selected = !!props.selected
@@ -1204,6 +1205,8 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
             if (r && r.ok) {
               setRebuild({ state: 'done', msg: '本机明细已重建' })
               loadDetail(true)
+              // 列表的耗时 / token 两列也读这份明细：重建后重取，别让它们停在上一次的值
+              if (typeof onRebuilt === 'function') onRebuilt()
             } else {
               setRebuild({ state: 'error', msg: (r && r.error) ? String(r.error) : '重建失败（无返回）', manual: r && r.manual })
             }
@@ -2626,6 +2629,8 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
                 selectable: kbFilter === 'need-promote',
                 selected: !!sel[s.file],
                 onToggleFile: toggleSel,
+                // 重建本机明细之后重取列表：否则列表两列还停在「—」，要等用户手动刷新才变
+                onRebuilt: () => setReloadAt(n => n + 1),
               })),
             ),
       )
