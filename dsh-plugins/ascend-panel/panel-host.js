@@ -2021,7 +2021,12 @@ return {
       if (!/^[A-Za-z0-9._-]+$/.test(String(sessionId || ''))) {
         return { ok: false, error: '会话号不合法（拒绝拼命令）：' + String(sessionId || '（空）') }
       }
-      const py = await resolvePython(cwd, readPolicy(sessionId))
+      // 只读档的会话不写：下面钉的是 workspace-write，对只读会话就是放宽——面板不做这种升级。
+      const pol = readPolicy(sessionId)
+      if (pol && pol.mode === 'read-only') {
+        return { ok: false, error: '本会话是只读档，面板不能写本机明细。切到「工作区写」后重试，或手工跑：' + manual, manual: manual }
+      }
+      const py = await resolvePython(cwd, pol)
       if (!py) {
         return { ok: false, error: '未找到可用的 Python 3 解释器（已试 python3 / python / py -3）。手工复现：' + manual }
       }

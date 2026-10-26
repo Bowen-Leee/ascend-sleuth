@@ -3302,7 +3302,7 @@ print(json.dumps([{'role': s(t.get('role')), 'step': s(t.get('step')), 'action':
     // 走 `--apply` 会把用户当次聊天里的工具调用记进诊断指标，并把检出弄脏。
     {
       const seen = []
-      const boot = (reply) => {
+      const boot = (reply, policyMode) => {
         const regs = {}
         const shell = {
           resolve: (x) => x,
@@ -3315,7 +3315,8 @@ print(json.dumps([{'role': s(t.get('role')), 'step': s(t.get('step')), 'action':
         }
         const ctx = {
           get: (n) => n === 'fs' ? undefined : n === 'shell' ? shell
-            : n === 'sessions' ? { get: () => ({ header: { cwd: CWD } }), list: () => [{ header: { cwd: CWD } }] } : undefined,
+            : n === 'sessions' ? { get: () => ({ header: { cwd: CWD } }), list: () => [{ header: { cwd: CWD } }] }
+              : n === 'sandboxPolicy' && policyMode ? { resolve: () => ({ mode: policyMode, workspaceRoot: CWD }) } : undefined,
         }
         const harness = { handle: (name, fn) => { regs[name] = fn; return () => {} }, defineTool: (o) => o, registerTool: () => () => {} }
         const plugin = new Function('harness', 'console', fs.readFileSync(path.join(repo, 'dsh-plugins/ascend-panel/panel-host.js'), 'utf8'))(harness, { error: () => {}, log: () => {} })
@@ -3338,6 +3339,15 @@ print(json.dumps([{'role': s(t.get('role')), 'step': s(t.get('step')), 'action':
       const badId = await okRegs['ascend-rebuild-local']({ sessionId: 'x; rm -rf /' })
       expect('本机明细重建 · 会话号只允许白名单字符（拒绝拼命令）',
         badId && badId.ok === false && /不合法/.test(badId.error), String(badId && badId.error).slice(0, 90))
+
+      // 只读会话：不写（钉的 workspace-write 对只读档就是放宽），且不发起命令
+      const roSeen = []
+      const before = seen.length
+      const roRegs = boot({ exitCode: 0, timedOut: false, stdout: { text: 'x' }, stderr: { text: '' } }, 'read-only')
+      const r3 = await roRegs['ascend-rebuild-local']({ sessionId: 'sess-ro' })
+      expect('本机明细重建 · 只读会话不升级权限（直接拒绝并给手工命令）',
+        r3 && r3.ok === false && /只读档/.test(r3.error) && /--local-only/.test(String(r3.manual))
+        && seen.length === before, String(r3 && r3.error).slice(0, 110))
 
       const failRegs = boot({ exitCode: 1, timedOut: false, stdout: { text: '' }, stderr: { text: 'Traceback: boom' } })
       const r2 = await failRegs['ascend-rebuild-local']({ sessionId: 'sess-x' })
