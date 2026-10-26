@@ -406,6 +406,21 @@ class WindowCostTest(Fixture):
         self.assertEqual(self.rows(), [], "不得写 metrics/entry-activity.d/ 的增量行")
         self.assertFalse(self.state.exists(), "不得落下共享游标")
 
+    def test_local_only_reports_even_when_no_new_rows(self):
+        """第二轮没有新行时也要打印「只写本机明细」，不能打印成「不写任何行」——明细确实写了。"""
+        self.write_trace()
+        self.run_summarize(apply=True)          # 第一轮把增量行与游标写掉
+        import contextlib
+        import io
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            rc = tea.build_records(self.root, self.traces, self.sessions, None, True,
+                                   "2026-10-17-0900", self.state, use_log=True,
+                                   local_dir=self.local, local_only=True)
+        self.assertEqual(rc, 0)
+        self.assertIn("只写本机明细", buf.getvalue())
+        self.assertNotIn("不写任何行", buf.getvalue())
+
     def test_detail_record_counts_calls_inside_the_window(self):
         """窗口内的调用与用量进 cost.window；与 cost.tokens（本会话累计）分开写。"""
         doc = dict(TRACE)

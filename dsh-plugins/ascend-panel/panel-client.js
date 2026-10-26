@@ -1454,9 +1454,8 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
                 + '右边界' + (d5Win.truncated ? '取 updated_at（这单没写 ended_at），之后可能还有诊断之外的活' : '取 ended_at')
                 + '。所以这是下限，不是完整成本。')
             : (d5TokSession
-                ? '上面四个 token 数是本会话累计：本机明细是旧格式，没有按诊断窗口切，看不出这一单花了多少'
-                  + '（重跑一次 ' + 'python3 scripts/trace_entry_activity.py --apply --session '
-                  + ((d5Rec && d5Rec.sessionId) || '<会话>') + ' 即可补上；轨迹缺 created_at 时补不出来）'
+                ? '上面四个 token 数是本会话累计：本机明细是旧格式，没有按诊断窗口切，看不出这一单花了多少。'
+                  + '打开这一单会自动重建一次；仍失败时见下面「本机明细」一行给出的原因。'
                 : '')),
         React.createElement(LineRow, { label: '工具耗时' },
           d5Win
@@ -1495,10 +1494,11 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
                   : React.createElement('button', {
                       onClick: () => doRebuild(false),
                       style: btnGhost,
-                      title: '只重建本机明细（gitignored 运行时件），不写周增量行、不动游标',
+                      title: '只重建本机明细（运行时数据，不入 git；不写周增量行、不动游标）',
                     }, rebuild && rebuild.state === 'error' ? '重试'
                       : (rebuild && rebuild.state === 'done' ? '再重建一次' : '重建这一单的本机明细')),
-                (rebuild && rebuild.state === 'error' && rebuild.manual)
+                (rebuild && rebuild.state === 'error' && rebuild.manual
+                  && String(rebuild.msg || '').indexOf(rebuild.manual) < 0)
                   ? React.createElement('code', { className: 'sleu-mono', style: { fontSize: 'var(--t-tiny)', color: T.text2 } }, rebuild.manual)
                   : null))
           : null,

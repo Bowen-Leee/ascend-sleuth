@@ -2056,6 +2056,9 @@ _MS._run_no_pipe = no_fallback`)
         // 写操作两处：交接包导出（traces/exports/）与重建本机明细（metrics/entry-activity.local/）。
         // 两处都写死在主检出上——写入面必须显式，不能滑成"跟随会话档位"。
         expect('沙箱策略：写死 workspace-write 的只有两处写操作（导出 / 重建本机明细）', pinned(ascSrcFile) === 2, 'pinned=' + pinned(ascSrcFile))
+        expect('重建命令：面板只给 --local-only（--apply 会写周增量行、抢游标）',
+          /trace_entry_activity\.py --local-only/.test(ascSrcFile)
+          && !/trace_entry_activity\.py --apply/.test(ascSrcFile))
         expect('沙箱策略：重建本机明细的写根是运行时工作目录（主检出）',
           /async function rebuildLocalCost\(cwd, sessionId\)[\s\S]{0,1600}sandboxPolicy: \{ mode: 'workspace-write', workspaceRoot: cwd \}/.test(ascSrcFile))
         expect('沙箱策略：自演进面板不再写死档位（两个调用点都跟随会话）', pinned(evSrcFile) === 0, 'pinned=' + pinned(evSrcFile))
@@ -3302,19 +3305,26 @@ print(json.dumps([{'role': s(t.get('role')), 'step': s(t.get('step')), 'action':
     // 走 `--apply` 会把用户当次聊天里的工具调用记进诊断指标，并把检出弄脏。
     {
       const seen = []
-      const boot = (reply, policyMode) => {
+      const allSeen = []
+      const boot = (reply, policyMode, recordYaml) => {
         const regs = {}
         const shell = {
           resolve: (x) => x,
           run: async (spec) => {
             const cmd = String(spec && spec.command || '')
+            allSeen.push(cmd)
             if (/--version$/.test(cmd)) return { exitCode: 0, timedOut: false, stdout: { text: 'Python 3.11.0' }, stderr: { text: '' } }
             seen.push(spec)
             return reply
           },
         }
+        const fakeFs = recordYaml === undefined ? undefined : {
+          resolve: async (p) => '/repo/' + p,
+          readText: async () => recordYaml,
+          listDir: async () => [],
+        }
         const ctx = {
-          get: (n) => n === 'fs' ? undefined : n === 'shell' ? shell
+          get: (n) => n === 'fs' ? fakeFs : n === 'shell' ? shell
             : n === 'sessions' ? { get: () => ({ header: { cwd: CWD } }), list: () => [{ header: { cwd: CWD } }] }
               : n === 'sandboxPolicy' && policyMode ? { resolve: () => ({ mode: policyMode, workspaceRoot: CWD }) } : undefined,
         }
@@ -3323,13 +3333,14 @@ print(json.dumps([{'role': s(t.get('role')), 'step': s(t.get('step')), 'action':
         plugin.apply(ctx)
         return regs
       }
+      // 兼容两种 boot：给了 recordYaml 就带一个假 fs，让 host 读回明细判「窗口补出来没有」
       const okRegs = boot({ exitCode: 0, timedOut: false, stdout: { text: '只写本机明细 1 份 → /repo/metrics/entry-activity.local' }, stderr: { text: '' } })
       const r1 = await okRegs['ascend-rebuild-local']({ sessionId: '2026-10-18-18178-eplb-hixl-103900' })
       const cmd = seen.length ? String(seen[0].command) : ''
       expect('本机明细重建 · 只跑 --local-only（不写周增量行、不动游标）',
         /scripts\/trace_entry_activity\.py --local-only --session 2026-10-18-18178-eplb-hixl-103900/.test(cmd)
         && !/--apply/.test(cmd), cmd)
-      expect('本机明细重建 · 工作目录是运行时主检出、写根钉在它上面',
+      expect('本机明细重建 · 以运行时 cwd 为工作目录、写根钉在它上面（worktree→主检出的解析不在本 harness 覆盖）',
         seen[0] && seen[0].workdir === CWD
         && seen[0].sandboxPolicy && seen[0].sandboxPolicy.mode === 'workspace-write'
         && seen[0].sandboxPolicy.workspaceRoot === CWD,
@@ -3340,14 +3351,27 @@ print(json.dumps([{'role': s(t.get('role')), 'step': s(t.get('step')), 'action':
       expect('本机明细重建 · 会话号只允许白名单字符（拒绝拼命令）',
         badId && badId.ok === false && /不合法/.test(badId.error), String(badId && badId.error).slice(0, 90))
 
+      // 退出码 0 但明细里没有窗口（会话日志不在本机）→ 不能报成功
+      const noWinYaml = ['session_id: sess-nw', 'cost:', '  tokens: {uncached: 1}', '  window: null', ''].join('\n')
+      const nwRegs = boot({ exitCode: 0, timedOut: false, stdout: { text: '只写本机明细 1 份' }, stderr: { text: '' } }, undefined, noWinYaml)
+      const r4 = await nwRegs['ascend-rebuild-local']({ sessionId: 'sess-nw' })
+      expect('本机明细重建 · 退出码 0 但明细里没有窗口时如实报失败（不显示「已重建」）',
+        r4 && r4.ok === false && /仍然没有诊断窗口/.test(r4.error), String(r4 && r4.error).slice(0, 110))
+
+      const winYaml = ['session_id: sess-w', 'cost:',
+        '  tokens: {uncached: 1}', '  window: {from: 1, to: 2, calls: 1, ms: 5, tokens: {out: 1}}', ''].join('\n')
+      const wRegs = boot({ exitCode: 0, timedOut: false, stdout: { text: '只写本机明细 1 份' }, stderr: { text: '' } }, undefined, winYaml)
+      const r5 = await wRegs['ascend-rebuild-local']({ sessionId: 'sess-w' })
+      expect('本机明细重建 · 读回明细确有窗口时才报成功',
+        r5 && r5.ok === true, JSON.stringify(r5).slice(0, 110))
+
       // 只读会话：不写（钉的 workspace-write 对只读档就是放宽），且不发起命令
-      const roSeen = []
-      const before = seen.length
+      const before = allSeen.length
       const roRegs = boot({ exitCode: 0, timedOut: false, stdout: { text: 'x' }, stderr: { text: '' } }, 'read-only')
       const r3 = await roRegs['ascend-rebuild-local']({ sessionId: 'sess-ro' })
       expect('本机明细重建 · 只读会话不升级权限（直接拒绝并给手工命令）',
         r3 && r3.ok === false && /只读档/.test(r3.error) && /--local-only/.test(String(r3.manual))
-        && seen.length === before, String(r3 && r3.error).slice(0, 110))
+        && allSeen.length === before, String(r3 && r3.error).slice(0, 110))
 
       const failRegs = boot({ exitCode: 1, timedOut: false, stdout: { text: '' }, stderr: { text: 'Traceback: boom' } })
       const r2 = await failRegs['ascend-rebuild-local']({ sessionId: 'sess-x' })

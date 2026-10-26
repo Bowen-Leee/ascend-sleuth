@@ -35,12 +35,13 @@ python3 scripts/trace_entry_activity.py --apply --session <session_id>
 python3 scripts/trace_entry_activity.py --local-only       # 只写本机明细（面板自动走这一档）
 ```
 
-**成本明细是旧格式时不用手工跑命令。** 明细里没有 `cost.window` 的（旧口径只有本会话累计）单一经
-展开，面板会自己跑一次 `--local-only` 重建这一单，然后按诊断窗口重画；失败时卡片里就地给原因和
+**成本明细是旧格式时不用手工跑命令。** 明细里没有 `cost.window` 的（旧格式只有本会话累计）单一经
+展开，面板会自己跑一次 `--local-only` 重建这一单，然后按诊断窗口重画。重建完会读回明细核对窗口
+真的补出来了：会话日志不在这台机器上、或轨迹缺 `created_at` 时补不出来，卡片会如实说失败并给
 手工命令，另留「重试」。只重建打开的这一单（单会话约 4 秒），不做列表级全量重建：全量要几十秒。
 
 `--local-only` 与 `--apply` 的分界不是方便与否，而是写什么：前者只写 `metrics/entry-activity.local/`
-（gitignored 运行时件）；后者还会往 `metrics/entry-activity.d/<周>.yaml` 追加增量行、更新共享游标。
+（运行时数据，不进 git）；后者还会往 `metrics/entry-activity.d/<周>.yaml` 追加增量行、更新共享游标。
 面板自动跑只能走前者——用后者会把用户当次聊天里的工具调用记进诊断指标，并与其他 session 抢游标。
 
 **每步耗时与 token 还要求轨迹里有 `ts`**：没有 `ts` 切不出步窗口，明细里 `cost.step_cost` 就只能是空。
@@ -54,7 +55,7 @@ python3 scripts/trace_entry_activity.py --local-only       # 只写本机明细�
 
 窗口边界来自轨迹里手写的两个时间，所以读数是**下限**：这一单若在 `created_at` 之前已经开始动作，
 那部分不计入。明细是旧格式（只有 `cost.tokens`、没有 `cost.window`）时，列表这两列写「—」而不是
-拿本会话累计顶替，卡片里给出重跑命令；轨迹缺 `created_at` 时重跑也补不出窗口。
+拿本会话累计顶替；展开那一单会自动重建（见上）。
 
 
 每步的耗时占比这一格固定写「本次没记」，因为现在没有产出方：会话日志里的工具耗时按 harness 的

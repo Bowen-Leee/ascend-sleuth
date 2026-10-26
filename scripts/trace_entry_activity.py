@@ -749,6 +749,11 @@ def build_records(root: Path, traces_dir: Path, sessions_root, session_ids, appl
     if session_ids:
         traces = [t for t in traces if t.stem in set(session_ids)]
     if not traces:
+        if session_ids:
+            # 显式指定了会话却一个都对不上：这是参数错，不是"本轮没有新诊断"。
+            # 面板按退出码判成功——这里必须非零，否则"没找到这一单"会被显示成"重建成功"。
+            print(f"指定的会话在 {traces_dir} 下没有对应 trace：{', '.join(session_ids)}", file=sys.stderr)
+            return 2
         print(f"未找到任何 traces/*.yaml（读的是 {traces_dir}）——本轮没有要汇总的诊断。")
         return 0
 
@@ -888,6 +893,16 @@ def build_records(root: Path, traces_dir: Path, sessions_root, session_ids, appl
         print("以下 reference_lookup 值归不到任何词条 id（未计入记录，仍留在轨迹里）：")
         for u, n in sorted(unattributed.items()):
             print(f"  · {u}（{n} 次）")
+    if local_only:
+        # 只重建本机明细：面板可以安全地自动调用（写的是 gitignored 运行时件）。
+        # 不写 `metrics/entry-activity.d/` 的周增量行、不动共享游标——那两件归周批：游标更新
+        # 没有锁、且按"上次游标之后"计增量，面板自动跑会把用户聊天里的工具调用记进诊断指标。
+        # 放在「没有新行就返回」之前：明细已经写了，不能打印成"不写任何行"。
+        if not apply:
+            print("\n--dry-run（默认）：未写任何文件。")
+            return 0
+        print(f"\n只写本机明细 {detail_written} 份 → {local_dir}（不写源行、不更新游标）")
+        return 0
     if not rows:
         print("本轮没有新的条目使用增量（记录已是最新）——不写任何行。")
         return 0
@@ -901,12 +916,6 @@ def build_records(root: Path, traces_dir: Path, sessions_root, session_ids, appl
     if week is None:
         print(f"run {run!r} 归不了周——拒绝写入", file=sys.stderr)
         return 2
-    if local_only:
-        # 只重建本机明细：面板可以安全地自动调用（写的是 gitignored 运行时件）。
-        # 不写 `metrics/entry-activity.d/` 的周增量行、不动共享游标——那两件归周批：游标更新
-        # 没有锁、且按"上次游标之后"计增量，面板自动跑会把用户聊天里的工具调用记进诊断指标。
-        print(f"\n只写本机明细 {detail_written} 份 → {local_dir}（不写源行、不更新游标）")
-        return 0
     f = ea.append_rows(root, week, rows)
     save_state(state_path, state)
     print(f"\n已追加 {len(rows)} 行 → {f}")
@@ -958,9 +967,10 @@ def _workload_type(st):
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("--apply", action="store_true", help="写源行、本机明细与游标（默认 dry-run）")
-    ap.add_argument("--local-only", action="store_true",
-                    help="只重建本机明细（gitignored），不写源行、不更新游标——面板可安全自动调用")
+    mode = ap.add_mutually_exclusive_group()
+    mode.add_argument("--apply", action="store_true", help="写源行、本机明细与游标（默认 dry-run）")
+    mode.add_argument("--local-only", action="store_true",
+                      help="只重建本机明细（gitignored），不写源行、不更新游标——面板可安全自动调用")
     ap.add_argument("--run", default=None, help="本次运行的标识（默认取当前时间 YYYY-MM-DD-HHMM）")
     ap.add_argument("--root", default=None, help="检出根（默认：脚本上两级）")
     ap.add_argument("--traces-dir", default=None,

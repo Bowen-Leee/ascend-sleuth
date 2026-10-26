@@ -919,7 +919,9 @@ return {
     const ENTRY_GEN_DIR = 'metrics/entry-activity'
     const ENTRY_LOCAL_DIR = 'metrics/entry-activity.local'
     const REBUILD_ENTRY = 'python3 scripts/build_entry_activity.py'
-    const REBUILD_LOCAL = 'python3 scripts/trace_entry_activity.py --apply'
+    // 面板给的重建命令一律 --local-only：`--apply` 会写进 git 的周增量行并更新共享游标，
+    // 那是周批的入口，不该出现在面板的「重建」入口里（用户照做会改到仓库状态）。
+    const REBUILD_LOCAL = 'python3 scripts/trace_entry_activity.py --local-only'
     // 读入账的四个分项（与 scripts/index_read_cost.py 的分项同名）
     const ACCT_LABELS = [
       ['class_view', '类视图'],
@@ -2016,7 +2018,7 @@ return {
     // 写操作 → 沙箱策略按上面「跑子进程的沙箱策略」①钉 `workspace-write`，根就是主检出。
     async function rebuildLocalCost(cwd, sessionId) {
       const manual = 'python3 scripts/trace_entry_activity.py --local-only --session ' + String(sessionId || '<会话>')
-      if (!shell) return { ok: false, error: '重建本机明细需要 shell 服务（当前不可用）。手工复现：' + manual }
+      if (!shell) return { ok: false, error: '重建本机明细需要执行命令的能力（当前会话不可用）。手工复现：' + manual }
       if (!cwd) return { ok: false, error: '拿不到会话工作区，定位不到 scripts/trace_entry_activity.py。手工复现：' + manual }
       if (!/^[A-Za-z0-9._-]+$/.test(String(sessionId || ''))) {
         return { ok: false, error: '会话号不合法（拒绝拼命令）：' + String(sessionId || '（空）') }
@@ -2047,7 +2049,7 @@ return {
       if (r && r.sandbox && r.sandbox.denied) {
         return {
           ok: false, manual: manual,
-          error: '重建被沙箱拒绝（写权限的根不是主检出）：把本机明细写进 ' + cwd + '/metrics/entry-activity.local/ 需要该目录可写。'
+          error: '重建被沙箱拒绝（可写目录不是运行时数据所在目录）：把本机明细写进 ' + cwd + '/metrics/entry-activity.local/ 需要该目录可写。'
             + '手工复现（不受面板沙箱限制）：' + manual,
         }
       }
@@ -2056,6 +2058,21 @@ return {
       if (!r || r.exitCode !== 0) {
         const tail = out.split(/\r?\n/).filter(Boolean).slice(-6).join('\n')
         return { ok: false, error: '重建脚本退出码 ' + String(r && r.exitCode) + (tail ? '：\n' + tail : '（无输出）'), manual: manual }
+      }
+      // 退出码 0 不等于「窗口补上了」：会话日志不在这台机器上时，明细照样写出，只是
+      // `cost.window` 为 null——这类单重跑多少次结果都一样。读回明细确认，补不出来就如实报失败，
+      // 不写成「已重建」让人反复点重试。
+      if (fs) {
+        try {
+          const rec = await readLocalRecord(cwd, sessionId)
+          if (!rec.ok || !rec.record || !rec.record.costWindow) {
+            return { ok: false, manual: manual,
+              error: '重建跑完了，但这一单仍然没有诊断窗口：会话日志不在这台机器上，或轨迹缺 created_at。'
+                + '这两样补不出来，重跑结果一样。' }
+          }
+        } catch (e) {
+          // 读回失败不推翻脚本结果：下一次列表刷新会重新判定
+        }
       }
       return { ok: true, manual: manual, output: out.slice(-2000) }
     }
