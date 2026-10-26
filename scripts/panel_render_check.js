@@ -1545,9 +1545,9 @@ _MS._run_no_pipe = no_fallback`)
       ))
       expect('成本两列：窗口内的数照常显示（耗时与 token 合计）',
         /273\.7 s/.test(cg.text) && /7,345,761/.test(cg.text), cg.text.slice(0, 200))
-      expect('成本两列：旧格式明细写「—」并在 title 给重跑命令，不拿本会话累计顶替',
+      expect('成本两列：旧格式明细写「—」并在 title 说清会自动重建，不拿本会话累计顶替',
         !/609945\.7 s/.test(cg.text) && !/291,146,361/.test(cg.text)
-        && /旧格式/.test(cg.text) && /trace_entry_activity\.py --apply --session sess-old/.test(cg.text),
+        && /旧格式/.test(cg.text) && /打开这一单会自动重建/.test(cg.text),
         (cg.text.match(/«title:工具调用累计[^»]*»/g) || []).join(' '))
     }
 
@@ -1793,6 +1793,70 @@ _MS._run_no_pipe = no_fallback`)
       expect('交接包：外来单在收起态就标「外来」并给出源主机（短名）', /外来 · outer-node-01/.test(hg.text), hg.text.slice(0, 240))
       expect('交接包：普通单不标外来（标记宁缺勿造）', (hg.text.match(/外来 ·/g) || []).length === 1)
 
+      // —— 本机明细重建：旧格式卡片打开时自动跑一次（成本窗口），不必让读者记命令 ——
+      // 手法与「报告进面板」同：自建 harness，每轮重置 hookIdx、保留 hookState。
+      {
+        const rpc = []
+        let detailHits = 0
+        const oldRec = {
+          sessionId: 'sess-cost', tokens: { uncached: 1, cache_read: 2, cache_write: 0, out: 3 },
+          toolCallCount: 742, toolTotalMs: 609945652, toolSlowest: null, toolFailures: 0,
+          stepCost: [], indexRead: null, strength: 'investigation', sessionLog: '已关联',
+          harnessSession: 'h', kbRev: 'k', sedimented: {},
+        }
+        const newRec = Object.assign({}, oldRec, {
+          costWindow: { from: 1792243800000, to: 1792245900000, boundTo: 'updated_at', truncated: true,
+            calls: 4, ms: 286570, msComplete: true, pending: 0,
+            tokens: { uncached: 1013, cache_read: 3071744, cache_write: 0, out: 3291 },
+            longCalls: 0, longMs: 0, longThresholdMs: 600000, outsideCalls: 738, outsideMs: 609658,
+            failures: 0, slowest: { ms: 120, tool: 'read', step: 1 } },
+        })
+        const costHost = (m, a) => {
+          if (m === 'ascend-rebuild-local') { rpc.push(a); return { ok: true, manual: 'python3 scripts/trace_entry_activity.py --local-only --session sess-cost', output: '只写本机明细 1 份' } }
+          if (m === 'ascend-traces-detail') {
+            detailHits++
+            return Object.assign({}, stepsPayload, { record: detailHits === 1 ? oldRec : newRec })
+          }
+          if (m === 'ascend-traces-list') {
+            return { ok: true, sessions: [mkSession(1, { sessionId: 'sess-cost', file: 'sess-cost.yaml' })] }
+          }
+          return diagHost(m, a)
+        }
+        hookIdx = 0; hookState = []; depState = []; effectQueue = []
+        const registrations = []
+        const ctx = { get: n => n === 'slots' ? { inject: (s, cb) => cb(), register: (o, c) => registrations.push({ o, c }) } : undefined, effect(fn) { const d = fn(); return typeof d === 'function' ? d : () => {} }, on() { return () => {} } }
+        const host = { call: (m, a) => Promise.resolve(costHost(m, a)) }
+        const plugin = new Function('React', 'host', 'styles', 'return (function(){' + ascSrc + '})()')(React, host, { insert: () => () => {} })
+        plugin.apply(ctx)
+        const renderTree = () => { effectQueue = []; hookIdx = 0; const o = []; registrations.filter(r => r.o.id === 'ascend-diagnose').forEach(r => o.push(r.c({ sessionId: 'sess-1' }))); return o }
+        const textOf = t => { const o = []; flatten(t, o); return o.join('\n') }
+        const pump = async (rounds) => {
+          let tree = null
+          for (let i = 0; i < rounds; i++) {
+            tree = renderTree()
+            effectQueue.slice().forEach(f => f())
+            await new Promise(r => setImmediate(r))
+            await new Promise(r => setImmediate(r))
+          }
+          return tree
+        }
+        let tree = await pump(4)
+        const hs = []
+        tree.forEach(t => collectHandlers(t, hs))
+        const head = hs.find(h => String(h.text).includes('sess-cost'))
+        expect('成本：卡片可展开（旧格式单也能打开）', !!head)
+        if (head) {
+          head.fn({})
+          tree = await pump(6)
+          const texts = textOf(tree)
+          expect('成本：旧格式卡片打开时自动重建本机明细（一次，带会话号）',
+            rpc.length === 1 && rpc[0] && rpc[0].sessionId === 'sess-cost', JSON.stringify(rpc))
+          expect('成本：重建后按诊断窗口显示（不是本会话累计）',
+            /上面四个 token 数是诊断窗口/.test(texts) && /不在本单窗口内/.test(texts), texts.slice(0, 160))
+          expect('成本：重建入口留在卡片上（可再重建一次）', /再重建一次/.test(texts))
+        }
+      }
+
       // 运行时的导出链路**在 host 侧驱动**，不靠模拟点击：mock React 的 hook 槽是全局顺序计数，
       // 点开卡片后多次重渲染会错位、展开态读不回来（同一限制在轨迹时间轴那段已如实记过）。
       // host 侧这套驱动更强：命令怎么拼、stdout 怎么取 JSON、退出后的错误怎么上屏，都在真代码里跑。
@@ -1989,7 +2053,11 @@ _MS._run_no_pipe = no_fallback`)
         const follows = (src) => (src.match(/\.\.\.\(policy \? \{ sandboxPolicy: policy \} : \{\}\)/g) || []).length
         const ascSrcFile = fs.readFileSync(path.join(repo, 'dsh-plugins/ascend-panel/panel-host.js'), 'utf8')
         const evSrcFile = fs.readFileSync(path.join(repo, 'dsh-plugins/ev-panel/panel-host.js'), 'utf8')
-        expect('沙箱策略：写死 workspace-write 的只剩交接包导出这一处（写操作）', pinned(ascSrcFile) === 1, 'pinned=' + pinned(ascSrcFile))
+        // 写操作两处：交接包导出（traces/exports/）与重建本机明细（metrics/entry-activity.local/）。
+        // 两处都写死在主检出上——写入面必须显式，不能滑成"跟随会话档位"。
+        expect('沙箱策略：写死 workspace-write 的只有两处写操作（导出 / 重建本机明细）', pinned(ascSrcFile) === 2, 'pinned=' + pinned(ascSrcFile))
+        expect('沙箱策略：重建本机明细的写根是运行时工作目录（主检出）',
+          /async function rebuildLocalCost\(cwd, sessionId\)[\s\S]{0,1600}sandboxPolicy: \{ mode: 'workspace-write', workspaceRoot: cwd \}/.test(ascSrcFile))
         expect('沙箱策略：自演进面板不再写死档位（两个调用点都跟随会话）', pinned(evSrcFile) === 0, 'pinned=' + pinned(evSrcFile))
         expect('沙箱策略：诊断面板的探活/体检/实时计算三个只读点都跟随会话档位（' + follows(ascSrcFile) + ' 处）',
           follows(ascSrcFile) >= 3, 'follows=' + follows(ascSrcFile))
@@ -3116,9 +3184,10 @@ print(json.dumps([{'role': s(t.get('role')), 'step': s(t.get('step')), 'action':
       const d = driveHost(ascHostSrc, NO_SVC)
       const needFsRpcs = ['ascend-traces-list', 'ascend-traces-detail', 'ascend-update-sedimented',
         'ascend-metrics-load', 'ascend-read-report', 'ascend-kb-health', 'ascend-process-health']
-      const noFsRpcs = ['ascend-open-evidence', 'ascend-metrics-verdict', 'ascend-export-trace']
-      expect('ascend-panel：fs 缺失时仍注册全部 10 个 RPC（「实时计算」那条已随块一起删）',
-        Object.keys(d.regs).length === 10, Object.keys(d.regs).join(','))
+      const noFsRpcs = ['ascend-open-evidence', 'ascend-metrics-verdict', 'ascend-export-trace',
+        'ascend-rebuild-local']
+      expect('ascend-panel：fs 缺失时仍注册全部 11 个 RPC（「实时计算」那条已随块一起删）',
+        Object.keys(d.regs).length === 11, Object.keys(d.regs).join(','))
       expect('ascend-panel：返回可用的 disposer', typeof d.disposer === 'function')
       expect('ascend-panel：导出交接包的 RPC 已注册（fs 缺失不影响它）', !!d.regs['ascend-export-trace'])
       for (const rpc of needFsRpcs) {
@@ -3226,6 +3295,55 @@ print(json.dumps([{'role': s(t.get('role')), 'step': s(t.get('step')), 'action':
       await call({ refresh: true })
       expect('ascend-panel 判决 · 失败也能 refresh 立刻重试（不被窗口锁死）',
         counter['metrics_health.py'] === 2, 'spawns=' + counter['metrics_health.py'])
+    }
+
+    // —— 本机明细重建（只写运行时件）——
+    // 面板会自动调它（打开旧格式卡片时），所以命令形状、沙箱根与"不写周增量行"必须钉住：
+    // 走 `--apply` 会把用户当次聊天里的工具调用记进诊断指标，并把检出弄脏。
+    {
+      const seen = []
+      const boot = (reply) => {
+        const regs = {}
+        const shell = {
+          resolve: (x) => x,
+          run: async (spec) => {
+            const cmd = String(spec && spec.command || '')
+            if (/--version$/.test(cmd)) return { exitCode: 0, timedOut: false, stdout: { text: 'Python 3.11.0' }, stderr: { text: '' } }
+            seen.push(spec)
+            return reply
+          },
+        }
+        const ctx = {
+          get: (n) => n === 'fs' ? undefined : n === 'shell' ? shell
+            : n === 'sessions' ? { get: () => ({ header: { cwd: CWD } }), list: () => [{ header: { cwd: CWD } }] } : undefined,
+        }
+        const harness = { handle: (name, fn) => { regs[name] = fn; return () => {} }, defineTool: (o) => o, registerTool: () => () => {} }
+        const plugin = new Function('harness', 'console', fs.readFileSync(path.join(repo, 'dsh-plugins/ascend-panel/panel-host.js'), 'utf8'))(harness, { error: () => {}, log: () => {} })
+        plugin.apply(ctx)
+        return regs
+      }
+      const okRegs = boot({ exitCode: 0, timedOut: false, stdout: { text: '只写本机明细 1 份 → /repo/metrics/entry-activity.local' }, stderr: { text: '' } })
+      const r1 = await okRegs['ascend-rebuild-local']({ sessionId: '2026-10-18-18178-eplb-hixl-103900' })
+      const cmd = seen.length ? String(seen[0].command) : ''
+      expect('本机明细重建 · 只跑 --local-only（不写周增量行、不动游标）',
+        /scripts\/trace_entry_activity\.py --local-only --session 2026-10-18-18178-eplb-hixl-103900/.test(cmd)
+        && !/--apply/.test(cmd), cmd)
+      expect('本机明细重建 · 工作目录是运行时主检出、写根钉在它上面',
+        seen[0] && seen[0].workdir === CWD
+        && seen[0].sandboxPolicy && seen[0].sandboxPolicy.mode === 'workspace-write'
+        && seen[0].sandboxPolicy.workspaceRoot === CWD,
+        JSON.stringify(seen[0] && { workdir: seen[0].workdir, policy: seen[0].sandboxPolicy }))
+      expect('本机明细重建 · 成功时如实返回', r1 && r1.ok === true, JSON.stringify(r1).slice(0, 90))
+
+      const badId = await okRegs['ascend-rebuild-local']({ sessionId: 'x; rm -rf /' })
+      expect('本机明细重建 · 会话号只允许白名单字符（拒绝拼命令）',
+        badId && badId.ok === false && /不合法/.test(badId.error), String(badId && badId.error).slice(0, 90))
+
+      const failRegs = boot({ exitCode: 1, timedOut: false, stdout: { text: '' }, stderr: { text: 'Traceback: boom' } })
+      const r2 = await failRegs['ascend-rebuild-local']({ sessionId: 'sess-x' })
+      expect('本机明细重建 · 脚本失败时报退出码与 stderr 末几行，并给手工命令',
+        r2 && r2.ok === false && /退出码 1/.test(r2.error) && /Traceback: boom/.test(r2.error) && /--local-only/.test(String(r2.manual)),
+        String(r2 && r2.error).slice(0, 120))
     }
 
     {

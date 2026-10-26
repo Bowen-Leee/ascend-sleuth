@@ -13,10 +13,14 @@
 链路是两跳显式的：
 
 ```bash
-python3 scripts/trace_entry_activity.py            # 先 dry-run：读 traces/ 与会话日志，看要写什么
-python3 scripts/trace_entry_activity.py --apply    # 追加源行 metrics/entry-activity.d/<周>.yaml
-python3 scripts/build_entry_activity.py            # 重建生成物 metrics/entry-activity/<部署>.yaml（面板读它）
+python3 scripts/trace_entry_activity.py             # 先 dry-run：读 traces/ 与会话日志，看要写什么
+python3 scripts/trace_entry_activity.py --apply     # 追加源行 metrics/entry-activity.d/<周>.yaml
+python3 scripts/trace_entry_activity.py --local-only # 只重建本机明细（面板自动走这一档）
+python3 scripts/build_entry_activity.py             # 重建生成物 metrics/entry-activity/<部署>.yaml（面板读它）
 ```
+
+`--local-only` 与 `--apply` 的分界是写什么：前者只写 `metrics/entry-activity.local/`（gitignored），
+后者还追加周增量行并更新共享游标。面板重建成本明细时只能用前者；后者是周批的入口。
 
 这三条是周度知识整理的第 3.6 步（见 `skills/knowledge-groom/SKILL.md`），日常不跑也不影响诊断。
 

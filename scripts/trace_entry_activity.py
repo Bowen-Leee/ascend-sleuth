@@ -30,6 +30,8 @@
   python3 scripts/trace_entry_activity.py                 # dry-run：只打印将要写的行
   python3 scripts/trace_entry_activity.py --apply         # 追加进源文件 + 更新游标 + 写本机明细
   python3 scripts/trace_entry_activity.py --session <id>  # 只处理某个会话（调试用）
+  python3 scripts/trace_entry_activity.py --local-only     # 只重建本机明细（面板可自动调用）
+
 
 退出码：0 = 成功（含「本轮没有新数据」）；2 = 参数或环境不可用。
 """
@@ -737,7 +739,8 @@ def _delta_purpose(new: dict, old: dict):
 
 
 def build_records(root: Path, traces_dir: Path, sessions_root, session_ids, apply: bool,
-                  run: str, state_path: Path, use_log: bool = True, local_dir: Path | None = None):
+                  run: str, state_path: Path, use_log: bool = True, local_dir: Path | None = None,
+                  local_only: bool = False):
     if local_dir is None:
         local_dir = ea.local_dir(root)
     state = load_state(state_path)
@@ -898,6 +901,12 @@ def build_records(root: Path, traces_dir: Path, sessions_root, session_ids, appl
     if week is None:
         print(f"run {run!r} 归不了周——拒绝写入", file=sys.stderr)
         return 2
+    if local_only:
+        # 只重建本机明细：面板可以安全地自动调用（写的是 gitignored 运行时件）。
+        # 不写 `metrics/entry-activity.d/` 的周增量行、不动共享游标——那两件归周批：游标更新
+        # 没有锁、且按"上次游标之后"计增量，面板自动跑会把用户聊天里的工具调用记进诊断指标。
+        print(f"\n只写本机明细 {detail_written} 份 → {local_dir}（不写源行、不更新游标）")
+        return 0
     f = ea.append_rows(root, week, rows)
     save_state(state_path, state)
     print(f"\n已追加 {len(rows)} 行 → {f}")
@@ -950,6 +959,8 @@ def _workload_type(st):
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--apply", action="store_true", help="写源行、本机明细与游标（默认 dry-run）")
+    ap.add_argument("--local-only", action="store_true",
+                    help="只重建本机明细（gitignored），不写源行、不更新游标——面板可安全自动调用")
     ap.add_argument("--run", default=None, help="本次运行的标识（默认取当前时间 YYYY-MM-DD-HHMM）")
     ap.add_argument("--root", default=None, help="检出根（默认：脚本上两级）")
     ap.add_argument("--traces-dir", default=None,
@@ -971,10 +982,14 @@ def main() -> int:
     else:
         state_path, _where = resolve_rel(root, STATE_REL)
     run = args.run or ea.now_run()
+    if args.local_only and not args.apply:
+        # `--local-only` 本身就是"要写"的声明；不必再加 --apply，少记一个组合
+        args.apply = True
     return build_records(root, traces, Path(args.sessions_root) if args.sessions_root else None,
                          args.session, args.apply, run, state_path,
                          use_log=not args.no_session_log,
-                         local_dir=Path(args.local_dir).resolve() if args.local_dir else None)
+                         local_dir=Path(args.local_dir).resolve() if args.local_dir else None,
+                         local_only=args.local_only)
 
 
 if __name__ == "__main__":

@@ -1,6 +1,6 @@
 /* eslint-disable */
 // 生成物 —— 勿手改。由 `node scripts/build_panel_bundle.js` 从下列源文件拼出：
-//   dsh-plugins/ascend-panel/panel-host.js  (sha256:368124b1c510)
+//   dsh-plugins/ascend-panel/panel-host.js  (sha256:2de3ac2d5577)
 //   dsh-plugins/ev-panel/panel-host.js  (sha256:7cb53df00162)
 // 校验：`node scripts/build_panel_bundle.js --check`（源文件改了没重跑生成器即红）。
 //
@@ -81,7 +81,7 @@ const PANELS = [
     id: 'ascend-panel',
     build(harness) {
       return (function () {
-// ---- dsh-plugins/ascend-panel/panel-host.js (sha256:368124b1c510) 原文开始 ----
+// ---- dsh-plugins/ascend-panel/panel-host.js (sha256:2de3ac2d5577) 原文开始 ----
 return {
   apply(ctx) {
     const fs = ctx.get('fs')
@@ -111,7 +111,8 @@ return {
     //
     // 两类调用点，判据是"它要不要写仓库里的文件"：
     //
-    // ① 写操作（只此一处：交接包导出写 `<检出>/traces/exports/`）→ 显式写死
+    // ① 写操作（两处：交接包导出写 `<检出>/traces/exports/`、重建本机明细写
+    //    `<检出>/metrics/entry-activity.local/`）→ 显式写死
     //    `{ mode: 'workspace-write', workspaceRoot: cwd }`。理由（实测）：`shell.resolve` 不给
     //    策略时，shell 自己的默认根是 **DSH 自己的检出**（实测 workspaceRoot = …/deepseek-harness），
     //    子进程写仓库里任何路径都被拒，报出来只有一句 `[Errno 1] Operation not permitted`——
@@ -1267,7 +1268,7 @@ return {
       // 有会话账单、却没有窗口那一段：说明这份明细是旧格式写的（只记本会话累计）。
       // 不静默按会话累计显示——同一段对话做过两单时，那样两单的读数会一模一样。
       if (rec.tokens && !rec.costWindow) {
-        missing.push('诊断窗口内的成本（cost.window）：本机明细是旧格式，重跑一次 ' + REBUILD_LOCAL + ' --session ' + sid + ' 即可补上（轨迹缺 created_at 时重跑也补不出来）')
+        missing.push('诊断窗口内的成本（cost.window）：本机明细是旧格式——打开这一单时面板会自动重建一次；也可点「重建这一单的本机明细」（轨迹缺 created_at 时重建也补不出来）')
       }
       if (!calls.length) missing.push('逐次工具调用与每步耗时（tool_calls）')
       if (!rec.indexRead) {
@@ -2088,6 +2089,56 @@ return {
       })
     }
 
+    // 重建一单的本机明细（成本块的「重建」按钮；打开旧格式卡片时也自动走这里一次）。
+    //
+    // **为什么走 `--local-only` 而不是 `--apply`**：后者除了写本机明细，还会往
+    // `metrics/entry-activity.d/` 追加周增量行、更新共享游标。自动跑它等于把用户当次聊天里的
+    // 工具调用记进诊断指标（实测：一次 dry-run 就计划写 164 次 bash），而游标更新没有锁。
+    // `--local-only` 只写 `metrics/entry-activity.local/`（gitignored 运行时件），可以安全自动调用。
+    //
+    // 工作目录用 `resolveCwd`（主检出）：本机明细锚主检出的共享侧，worktree 里那份是空的。
+    // 写操作 → 沙箱策略按上面「跑子进程的沙箱策略」①钉 `workspace-write`，根就是主检出。
+    async function rebuildLocalCost(cwd, sessionId) {
+      const manual = 'python3 scripts/trace_entry_activity.py --local-only --session ' + String(sessionId || '<会话>')
+      if (!shell) return { ok: false, error: '重建本机明细需要 shell 服务（当前不可用）。手工复现：' + manual }
+      if (!cwd) return { ok: false, error: '拿不到会话工作区，定位不到 scripts/trace_entry_activity.py。手工复现：' + manual }
+      if (!/^[A-Za-z0-9._-]+$/.test(String(sessionId || ''))) {
+        return { ok: false, error: '会话号不合法（拒绝拼命令）：' + String(sessionId || '（空）') }
+      }
+      const py = await resolvePython(cwd, readPolicy(sessionId))
+      if (!py) {
+        return { ok: false, error: '未找到可用的 Python 3 解释器（已试 python3 / python / py -3）。手工复现：' + manual }
+      }
+      let r = null
+      try {
+        r = await shell.run(shell.resolve({
+          command: py + ' scripts/trace_entry_activity.py --local-only --session ' + sessionId,
+          workdir: cwd,
+          timeoutMs: 120000,
+          stdoutMaxBytes: 65536,
+          env: { PYTHONIOENCODING: 'utf-8' },
+          sandboxPolicy: { mode: 'workspace-write', workspaceRoot: cwd },   // 写操作：见上面「跑子进程的沙箱策略」①
+        }))
+      } catch (e) {
+        return { ok: false, error: '重建脚本执行失败: ' + String(e && e.message || e), manual: manual }
+      }
+      if (r && r.timedOut) return { ok: false, error: '重建超时（120s）——会话日志很大时会偏慢。手工复现：' + manual, manual: manual }
+      if (r && r.sandbox && r.sandbox.denied) {
+        return {
+          ok: false, manual: manual,
+          error: '重建被沙箱拒绝（写权限的根不是主检出）：把本机明细写进 ' + cwd + '/metrics/entry-activity.local/ 需要该目录可写。'
+            + '手工复现（不受面板沙箱限制）：' + manual,
+        }
+      }
+      const out = [r && r.stdout && r.stdout.text, r && r.stderr && r.stderr.text]
+        .filter(t => typeof t === 'string' && t.trim()).join('\n').trim()
+      if (!r || r.exitCode !== 0) {
+        const tail = out.split(/\r?\n/).filter(Boolean).slice(-6).join('\n')
+        return { ok: false, error: '重建脚本退出码 ' + String(r && r.exitCode) + (tail ? '：\n' + tail : '（无输出）'), manual: manual }
+      }
+      return { ok: true, manual: manual, output: out.slice(-2000) }
+    }
+
     // 读取沉淀状态——兼容三种写法：块映射（doc.sedimented 为对象，schema 默认）、
     // 内联流映射字符串（面板写入形态 sedimented: {state:…, caseId:…}）、纯字符串。
     function readSedimented(doc) {
@@ -2540,6 +2591,12 @@ return {
       return openEvidence(sessionId, path)
     })
 
+    const rebuildDisposer = harness.handle('ascend-rebuild-local', async (args) => {
+      const sessionId = args && args.sessionId ? String(args.sessionId) : null
+      if (!sessionId) return { ok: false, error: '缺 sessionId' }
+      return rebuildLocalCost(await resolveCwd(sessionId), sessionId)
+    })
+
     const sedDisposer = harness.handle('ascend-update-sedimented', async (args) => {
       if (!fs) return needFs()
       const sessionId = args && args.sessionId ? String(args.sessionId) : null
@@ -2607,6 +2664,7 @@ return {
     return () => {
       if (disposer) disposer()
       if (handleDisposer) handleDisposer()
+      if (rebuildDisposer) rebuildDisposer()
       if (detailDisposer) detailDisposer()
       if (openDisposer) openDisposer()
       if (sedDisposer) sedDisposer()

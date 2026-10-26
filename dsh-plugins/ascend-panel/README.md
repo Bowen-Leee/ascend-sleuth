@@ -30,9 +30,18 @@
 
 ```bash
 python3 scripts/trace_entry_activity.py                    # dry-run
-python3 scripts/trace_entry_activity.py --apply            # 写本机明细 + 增量行 + 游标
+python3 scripts/trace_entry_activity.py --apply            # 写本机明细 + 增量行 + 游标（周批用）
 python3 scripts/trace_entry_activity.py --apply --session <session_id>
+python3 scripts/trace_entry_activity.py --local-only       # 只写本机明细（面板自动走这一档）
 ```
+
+**成本明细是旧格式时不用手工跑命令。** 明细里没有 `cost.window` 的（旧口径只有本会话累计）单一经
+展开，面板会自己跑一次 `--local-only` 重建这一单，然后按诊断窗口重画；失败时卡片里就地给原因和
+手工命令，另留「重试」。只重建打开的这一单（单会话约 4 秒），不做列表级全量重建：全量要几十秒。
+
+`--local-only` 与 `--apply` 的分界不是方便与否，而是写什么：前者只写 `metrics/entry-activity.local/`
+（gitignored 运行时件）；后者还会往 `metrics/entry-activity.d/<周>.yaml` 追加增量行、更新共享游标。
+面板自动跑只能走前者——用后者会把用户当次聊天里的工具调用记进诊断指标，并与其他 session 抢游标。
 
 **每步耗时与 token 还要求轨迹里有 `ts`**：没有 `ts` 切不出步窗口，明细里 `cost.step_cost` 就只能是空。
 所以看到「每步耗时」一栏恒空时，先查 trace 有没有 `ts`（`skills/diagnose/SKILL.md` 的「每步必写 trace」节），
@@ -375,6 +384,12 @@ node scripts/panel_install.js --remove   # 卸载
   有强外部证据档的可走 owner 双签。
 
 ## 版本
+
+- 2026-10-26 · 面板可一键/自动重建本机明细。旧格式（只有 `cost.tokens`、没有 `cost.window`）的
+  单一展开就自动跑一次 `trace_entry_activity.py --local-only`，重建后按窗口重画；失败就地给原因与
+  手工命令，卡片里留「重试」。新 RPC `ascend-rebuild-local`（写操作，沙箱根钉在运行时主检出）。
+  `--local-only` 只写 gitignored 的本机明细，不写周增量行、不动共享游标——那两件仍归周批的 `--apply`。
+  面板包 0.6.14 → 0.6.15。
 
 - 2026-10-26 · 成本按诊断窗口报。会话日志记的是整条 harness 会话的账，同一段对话里做过两单时
   两单的耗时与 token 会一模一样；改成读本机明细的 `cost.window`（`created_at` → `ended_at`，

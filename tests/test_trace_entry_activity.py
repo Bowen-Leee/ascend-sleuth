@@ -384,6 +384,28 @@ class WindowCostTest(Fixture):
         self.assertEqual(w["outside_calls"], 2)
         self.assertEqual(doc["cost"]["tokens"]["out"], 20, "本会话累计仍原样保留")
 
+    def test_local_only_writes_detail_without_rows_or_cursor(self):
+        """面板自动重建走这一档：只写 gitignored 的本机明细，不写源行、不动游标。
+
+        为什么单钉：游标更新没有锁、且按「上次游标之后」计增量；面板若走 --apply 自动重建，
+        会把用户聊天里的工具调用记进诊断指标，并与其他 session 抢游标。
+        """
+        self.write_trace()
+        import contextlib
+        import io
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            rc = tea.build_records(self.root, self.traces, self.sessions, None, True,
+                                   "2026-10-16-1500", self.state, use_log=True,
+                                   local_dir=self.local, local_only=True)
+        self.assertEqual(rc, 0)
+        self.assertIn("只写本机明细", buf.getvalue())
+        doc = ea.read_local_record(self.local, TRACE["session_id"])
+        self.assertIsNotNone(doc, "本机明细要写出来")
+        self.assertIn("window", doc["cost"])
+        self.assertEqual(self.rows(), [], "不得写 metrics/entry-activity.d/ 的增量行")
+        self.assertFalse(self.state.exists(), "不得落下共享游标")
+
     def test_detail_record_counts_calls_inside_the_window(self):
         """窗口内的调用与用量进 cost.window；与 cost.tokens（本会话累计）分开写。"""
         doc = dict(TRACE)
