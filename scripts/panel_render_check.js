@@ -2056,9 +2056,11 @@ _MS._run_no_pipe = no_fallback`)
         // 写操作两处：交接包导出（traces/exports/）与重建本机明细（metrics/entry-activity.local/）。
         // 两处都写死在主检出上——写入面必须显式，不能滑成"跟随会话档位"。
         expect('沙箱策略：写死 workspace-write 的只有两处写操作（导出 / 重建本机明细）', pinned(ascSrcFile) === 2, 'pinned=' + pinned(ascSrcFile))
-        expect('重建命令：面板只给 --local-only（--apply 会写周增量行、抢游标）',
+        // 两半都要查：出事的旧文案在 client（展开卡片那段），只查 host 抓不到回退
+        expect('重建命令：面板两半都只给 --local-only（--apply 会写周增量行、抢游标）',
           /trace_entry_activity\.py --local-only/.test(ascSrcFile)
-          && !/trace_entry_activity\.py --apply/.test(ascSrcFile))
+          && !/trace_entry_activity\.py --apply/.test(ascSrcFile)
+          && !/trace_entry_activity\.py --apply/.test(ascSrc))
         expect('沙箱策略：重建本机明细的写根是运行时工作目录（主检出）',
           /async function rebuildLocalCost\(cwd, sessionId\)[\s\S]{0,1600}sandboxPolicy: \{ mode: 'workspace-write', workspaceRoot: cwd \}/.test(ascSrcFile))
         expect('沙箱策略：自演进面板不再写死档位（两个调用点都跟随会话）', pinned(evSrcFile) === 0, 'pinned=' + pinned(evSrcFile))
