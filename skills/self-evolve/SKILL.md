@@ -133,6 +133,10 @@ dual 双签 + kb/high-risk，步骤级小调 review。
 ## 边界（不做）
 
 - 内容目标不进本 skill（路由到内容 skill + evolve-check）；
+- **不越过部署声明**：开工前跑 `python3 scripts/evolve_mode.py --json`。`record-only` 部署
+  （内网 fork 的常见形态）照做观测与报告，但**不产卡、不跑验证门**——候选写进报告与
+  MR 描述/issue 交上游，理由同 /skill:evolve-check 第 0 步（本地卡号会与上游号段重号）；
+  `off` 部署不执行深度轮，报告说明按部署声明跳过；
 - 指标口径只有人能改（agent 不自改评分定义）；
 - 不碰客户现场；蓝图态（长期任务层跨轮自动/超时降级/stale/策略记忆/稳态降频）触发条件出现才启用。
 
@@ -140,6 +144,7 @@ dual 双签 + kb/high-risk，步骤级小调 review。
 
 | 能力 | 工具/入口 | 何时用 |
 |---|---|---|
+| 部署声明（能不能产卡） | `scripts/evolve_mode.py --json` | 深度轮开工前、产卡前 |
 | 伴随评估（内容流程收尾） | /skill:evolve-check | 内容 skill 收尾自动（用户下内容目标时隐含） |
 | 观测（深度轮信号） | `scripts/component_tally.py` / `s2_replay.py --todo` / `_index.yaml` 头注 | 深度轮 |
 | 查重/产卡 | `scripts/ev_proposal.py --list / --new` | 产卡时 |

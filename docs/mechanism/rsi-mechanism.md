@@ -303,7 +303,7 @@ flowchart TD
 |---|---|---|---|
 | 修复后 | 回报修复结果。下一次诊断启动时会追问，不单独发起询问 | 回答诊断流程的追问 | 条目使用记录里的计数行；分数在重建索引时更新 |
 | 定位结束后 | 沉淀知识 | `/skill:to-postmortem`、`/skill:to-reference` | 待审草稿 |
-| 内容流程收尾 | 收尾检查。有信号才立改进项，没有信号只留一行记录 | `/skill:evolve-check` | 改进项，或一行无信号记录 |
+| 内容流程收尾 | 收尾检查。有信号才立改进项，没有信号只留一行记录（能不能立改进项由部署声明 `evolution.mode` 决定，`record-only` 下只记信号不产卡） | `/skill:evolve-check` | 改进项，或一行无信号记录 |
 | 每周 | 批处理待审队列、升格、去重、结算与汇总记录、算分、退休，并在周界那一次组装本期读数 | `/skill:knowledge-groom`；本期读数由 `python3 scripts/metrics_snapshot.py --kind live` 组装，人复核后写 `metrics/timeline.d/`；不提交生成物，合入后主干 job 重建索引与时序聚合 | 知识变更 PR，含一个期号源文件；生成物由主干 job 提交 |
 | 每周 | 批量拉取上游 issue | `/skill:issue-ingest` | 待审草稿与导入游标 |
 | 每周 | 跑一次体检 | `python3 scripts/evolution_health.py` | 逐条判据的结果与下一步动作 |

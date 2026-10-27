@@ -342,6 +342,35 @@ def check_index(root: Path):
             "detail": "knowledge/_index.yaml 不在", "fix": "python3 scripts/build_index.py"}
 
 
+def check_evolution(root: Path):
+    """部署级演进模式（deployment.yaml）。这是策略声明，不是环境缺陷。
+
+    为什么放进体检：内网 fork 的预期形态是 `record-only`（只记信号不产卡）。不显示时，
+    用户在收尾报告里只看到"没有卡"，会以为演进坏了；显示后，"按声明不产卡"与"演进失败"
+    能分开。声明写坏只挡演进流程，不挡诊断与沉淀，所以记降级而不是阻断。
+    """
+    try:
+        from evolve_mode import read_mode, ModeError
+    except Exception as e:
+        return {"id": "evolution", "label": "演进模式", "kind": "policy", "state": DEGRADE,
+                "detail": f"读不出声明（{e.__class__.__name__}）",
+                "fix": "确认 scripts/evolve_mode.py 在（缺文件时收尾读不到部署模式）"}
+    try:
+        mode, source = read_mode(root)
+    except ModeError as e:
+        return {"id": "evolution", "label": "演进模式", "kind": "policy", "state": DEGRADE,
+                "detail": f"声明写坏：{e}",
+                "note": "收尾检查会停下来问人，不会自己挑一档跑",
+                "fix": "改 deployment.yaml 的 evolution.mode 为 full / record-only / off 之一"}
+    meaning = {
+        "full": "照常产卡并攒批进 PR",
+        "record-only": "只记信号不产卡（内网 fork 的预期形态）",
+        "off": "不做收尾检查",
+    }[mode]
+    return {"id": "evolution", "label": "演进模式", "kind": "policy", "state": OK,
+            "detail": f"{mode} —— {meaning}（来源：{source}）", "fix": ""}
+
+
 def check_capability_table(checks):
     """能力表引用的 id 必须都存在于检查项里。
 
@@ -362,7 +391,8 @@ def check_capability_table(checks):
 def build_report(root: Path):
     checks = [check_python()]
     checks += check_third_party()
-    checks += [check_git(root), check_node(), check_gh(), check_traces(root), check_index(root)]
+    checks += [check_git(root), check_node(), check_gh(), check_traces(root), check_index(root),
+               check_evolution(root)]
     checks.append(check_capability_table(checks))
     by_id = {c["id"]: c for c in checks}
     caps = []

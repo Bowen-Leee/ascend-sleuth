@@ -61,6 +61,8 @@
 
 演进评估默认是内容执行的收尾动作，不构成独立目标。用户下的是内容目标（沉淀、补 case、诊断）时，该内容流程收尾自动执行 evolve-check（见 `/skill:evolve-check`）。evolve-check 把新数据能否让系统更好这类信号（同族 case 可归纳、miss 暴露缺口、流程摩擦、可复用链路）转成候选卡并自行验证。用户不必为改进单独立目标，也不必为改进单独开轮。只有深度全库体检（没有内容目标）才走本节会话协议。
 
+「默认执行」的边界由部署声明划：evolve-check 第 0 步读仓库根 `deployment.yaml` 的 `evolution.mode`（读端 `scripts/evolve_mode.py`）。`full` 照上段执行；`record-only` 仍然收尾检查、仍然落记录，但不产卡、不跑验证门，改动信号写进 MR 描述或 issue；`off` 只留一条跳过记录。内网 fork 用 `record-only`：本地卡号会与上游号段重号，冲突无法机械解决（见 [git-workflow.md](../guide/git-workflow.md) 的「fork 侧不产 EV 卡」）。
+
 机制参数（观测信号集、S2 池口径、授权分级阈值、预算分层、停止条件）都有文档默认值，用户不必说。用户只需覆盖自己关心的部分：范围、意图、预算上限、特殊约束（如「这轮不许动 triage」）。覆盖是例外而不是常态，绝大多数指令走到第 ③ 步对齐即可，第 ⑤ 步确认即可。
 
 会话状态落 `proposals/sessions/<SESSION-ID>.yaml`，内容含 session id、参数、计划、每卡进度、已耗 token、停止原因与报告引用。它是运行时状态，本地留存并写进 .gitignore（.gitignore:67 的 `proposals/sessions/*`），与仓库对 `traces/` 和 inbox 草稿的处理一致：逐轮变化的进度与账本不进 git，避免噪音与跨机断链；稳态结果以报告与采纳卡的形式进 git。
