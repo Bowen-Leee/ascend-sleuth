@@ -64,8 +64,10 @@ git worktree remove ../ascend-sleuth-s<session>
 追加型共享源（两边都写，且同一仓内多人同周并发追加）：`metrics/entry-activity.d/`。
 它与「两边都写」的差别在追加的粒度：一周一个文件、一行一条自包含记录（每行带 `deployment`），配了 `merge=union`——同周并发时各人各写各的行、两侧都留住，行序不影响结果（前提是「一行一条」，见 `.gitattributes` 的注释）。读端按 `deployment` 分组，一个部署出一份生成物 `metrics/entry-activity/<部署>.yaml`，不跨部署合并：合并两侧的行只解决同部署的并发，两份部署的计数不会被加成一条排行。它与 `metrics/timeline.d/` 一样按自然周命名，一个文件里可能装两个部署的行。
 
-每部署一份（不参与合并）：`metrics/timeline.d/`、`metrics/timeline.yaml`、`ingest-state.json`、`reference-ingest-state.json`、`eval/scorecard.yaml`、`.github/CODEOWNERS`（owner 名单各仓不同）。
+每部署一份（不参与合并）：`deployment.yaml`、`metrics/timeline.d/`、`metrics/timeline.yaml`、`ingest-state.json`、`reference-ingest-state.json`、`eval/scorecard.yaml`、`.github/CODEOWNERS`（owner 名单各仓不同）。
 冲突时保留本仓那份。同期名的指标文件也按本仓处理——两份部署的读数混进一条趋势线本身不成立。
+`deployment.yaml` 声明这个部署的演进模式（`evolution.mode`：`full` / `record-only` / `off`），
+读端只有 `scripts/evolve_mode.py`；fork 与上游的取值不同，改它属于本仓的部署配置，不是机制改动。
 
 生成物（重新生成，不逐行解）：`knowledge/_index.yaml` 与 `knowledge/_index/`、`triage-tree.yaml`、`references/_summary-index.yaml`、`references/_procedure-index.yaml` 与 `references/_procedure-index/`、`metrics/entry-activity/`（一个部署一份，由 `scripts/build_entry_activity.py` 从源重建）。
 
@@ -81,6 +83,8 @@ idea 卡（`proposals/ideas/`）是机制账本，归上游。两条原因：
 - 上游 `docs/mechanism/`、`docs/plan/` 里引用的卡号会随合并落进 fork，在那里指向另一张卡——这种错不报错。
 
 fork 负载类型的机制缺口写进 MR 描述或 issue，由维护者拿到上游产卡。内容产出（补 case、补词条、扩错误码家族、从 case 归纳 reference）不产卡，产卡范围见 `skills/evolve-check/SKILL.md`。fork 长期无法访问上游、又确实需要本地决策档案时，用与上游不重叠的号段或前缀，并让该目录归 fork 独占——复用 `proposals/ideas/` 的号段会让重号问题原样保留。
+
+**这条规则由声明承载，不靠记性**：fork 在自己的 `deployment.yaml` 里写 `evolution.mode: record-only`，evolve-check 收尾与深度轮都先读它（`scripts/evolve_mode.py`）。不设时缺省 `full`，也就是上游行为——所以 fork 要做一次显式声明，否则收尾照常产卡。`record-only` 下信号照记、执行记录照落，只把"该产卡"的结论改成写进 MR 描述或 issue。
 
 ### Skill 自包含边界（SKILL.md 与 docs/ 的引用关系）
 

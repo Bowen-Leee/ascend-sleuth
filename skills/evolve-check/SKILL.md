@@ -37,7 +37,35 @@ description: >
 地位）。如果一轮内容执行本身就是自演进深度轮的一部分（self-evolve 驱动），跳过本
 协议（深度轮已含观测）。
 
+**触发受部署声明约束**：这个部署要不要产卡由仓库根 `deployment.yaml` 的
+`evolution.mode` 决定（第 0 步读），不由本协议自己决定。内网 fork 只做内容沉淀时设
+`record-only`：信号照记，卡不产——本地卡号会与上游号段重号，合并时无法机械解决。
+
 ## 评估步骤（先扫信号，无信号即止）
+
+**第 0 步：读部署声明**（先于一切，一行命令）：
+
+```
+python3 scripts/evolve_mode.py --json      # → {"mode": "full" | "record-only" | "off", "source": "<来源>"}
+```
+
+| mode | 本协议怎么执行 |
+|---|---|
+| `full` | 照第 1～4 步执行 |
+| `record-only` | 第 1、2 步照做；**第 3 步整段跳过**（不产卡、不查重、不跑验证门）；命中行为面信号时写进收尾说明与 MR 描述/issue，不进本地产卡池；第 4 步照落记录 |
+| `off` | 不做第 1～3 步；收尾说明只写一行（"跳过，按部署声明"），并落一条 skip 记录（不落的话，"没跑"与"跑了无信号"在数据上无法区分） |
+
+- 脚本退出码 2 = 声明写坏（取值不在词表、YAML 解析失败、有文件但缺 `evolution.mode`）。
+  把报错原文给用户，**不要自己挑一档继续跑**——静默降级会让"这个部署在演进"与
+  "这个部署关掉了演进"在数据上混为一谈（原则十）。
+- 缺省（仓库根无 `deployment.yaml`）= `full`。`source` 要写进收尾说明，读的人才知道
+  这一轮按哪档跑的、依据在哪（`deployment.yaml` / 环境变量 / 缺省）。
+- 环境变量 `ASCEND_SLEUTH_EVOLUTION` 优先于文件，只用于临时覆盖（演练、CI、一次运行），
+  不是团队声明：要长期改这个部署的行为，改 `deployment.yaml` 并提交。
+- **用户说"这个部署不要产卡 / 只做沉淀"时**，不要让对方手改 YAML：跑
+  `python3 scripts/evolve_mode.py --set record-only`，并说明两件事——写的是仓库根的
+  `deployment.yaml`（提交后对该仓所有 agent 生效，未提交时只在本工作区生效），以及之后
+  机制缺口该怎么交（MR 描述或 issue）。要恢复说 `--set full`。
 
 **第 1 步：读本轮执行现场**（不重扫全库、不读 case 全文——token 预算，原则九）：
 
@@ -186,14 +214,21 @@ description: >
      --tokens <估算>
    ```
    无信号时 `--products` 留空、`--reason` 写"收尾无演进信号"（面板据此单列 no-signal 计数）。
+   非 `full` 的两种模式用各自的原因串，**不要复用"无演进信号"**——否则面板会把
+   "这个部署不产卡"读成"这条流程没有可改进点"：
+   - `record-only`：`--reason "收尾检查（record-only）：命中 T# …，按部署声明不产卡"`，
+     `--products` 留空；
+   - `off`：`--reason "收尾检查（off）：按部署声明跳过"`，`--products` 留空。
    落完自查本地不变量：`python3 scripts/verify_exec_log.py --check`（seq 唯一/字段齐全）。
    该脚本**不进 CI**——exec-log 是 `.gitignore` 运行时件，CI 上文件不存在，进 CI 只会空转。
 
-2. 出说明：
+2. 出说明（`full` 之外要带上模式与来源，读的人才知道这一轮为什么没有卡）：
 
 ```
 evolve-check：产出 EV-xxxx（补 case，S2 replay 佐证缺口）→ agent 判断采纳（validated）
 或：evolve-check：无演进信号（本轮无新增数据/无流程摩擦/无覆盖缺口）
+或：evolve-check：record-only（来源：deployment.yaml），命中 T10；不产卡，建议写进 MR/issue
+或：evolve-check：跳过（来源：deployment.yaml，mode=off）
 ```
 
 ## 与 self-evolve 的分工
@@ -221,12 +256,15 @@ evolve-check：产出 EV-xxxx（补 case，S2 replay 佐证缺口）→ agent �
 
 - 不为产卡而产卡：无信号即止；候选水位超限时只记信号不产卡；
 - 不代替用户下内容目标：本协议只回答"这次做完能否更好"，不决定"下次做什么"；
+- 不越过部署声明：`record-only` 下不产卡、不跑验证门，`off` 下不执行检查（第 0 步）；
+  声明写坏时停下来问人，不自己挑一档；
 - 不碰客户现场、不做批量改库（那是 self-evolve 深度轮 + 人审的范围）。
 
 ## 依赖的能力/工具
 
 | 能力 | 工具/入口 |
 |---|---|
+| 读部署声明（第 0 步） | `scripts/evolve_mode.py`（`--json` 取 mode+source；缺文件 = full，写坏 exit 2） |
 | 读本轮执行现场（第 1 步） | `scripts/tail_exec_log.py`（确定性入口；文件缺失/空表 = 正常退化，exit 0） |
 | 落收尾记录（第 4 步） | `scripts/log_skill_exec.py --skill evolve-check` + 自查 `scripts/verify_exec_log.py --check` |
 | 查重/产卡骨架 | `scripts/ev_proposal.py --list / --new` |

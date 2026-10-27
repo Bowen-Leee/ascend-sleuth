@@ -217,7 +217,7 @@ disable-model-invocation: true
 `python3 scripts/log_skill_exec.py --skill knowledge-groom --products "<升格 case id(knowledge),...>" --reason "<一句话：批审 N 条 / 升格 M 条 / 退休 K 条>" --source knowledge-groom --tokens <估算>`
 
 批审产出、出变更摘要前，执行一次伴随演进评估（`read skills/evolve-check/SKILL.md`
-遵循）：本轮暴露覆盖缺口（T2）、容量格子压线/健康指标恶化（T6）、reference 家族需扩
+遵循；**先按它的第 0 步读部署声明，`record-only` / `off` 下不产卡**）：本轮暴露覆盖缺口（T2）、容量格子压线/健康指标恶化（T6）、reference 家族需扩
 （T5）、或批审环节有重复手动动作与流程摩擦（T3/T4）时，**agent 自动产 idea 卡并自行验证
 执行**（ev_proposal 产卡 → 验证 → 进攒批）；无信号则摘要加一行"evolve-check：无演进信号"。
 这是流程默认收尾，**不需要用户另说"改进系统"**。
