@@ -1781,6 +1781,64 @@ namespaces:
       - synchronize_input_prep()
       file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-16446.yaml
       hash: 2d27d6140356
+    - id: VLLM-ASC-16447
+      title: DSV4-Flash + DSpark 投机解码（num_spec=7）decode 约 8 小时后 IndexCheck_int64_high_performance_0 越界（507035
+        → EngineDead）——triton 输入展开内核缺 valid_count==0 的下界守卫，写出约 1.06e9 的…
+      category: interrupt
+      tags:
+      - deepseek-v4
+      - dspark
+      - speculative-decoding
+      - indexcheck
+      - '507035'
+      - rope
+      compat: vllm-ascend <0.26.0rc2
+      confidence:
+        score: 0.75
+      symptoms:
+      - decode 实例运行约 8 小时后 8 卡同秒崩：设备侧 IndexCheck_int64_high_performance_0 报“索引 1064304640 超过上界 1048576”，host
+        侧 507035 vector cor…
+      sig:
+      - exceeds bounds 1048576
+      - 超过上界 1048576
+      - '507035'
+      - vector core exception
+      - EngineDead
+      tok:
+      - '16712'
+      - '507035'
+      file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-16447.yaml
+      hash: baca19b47d6f
+    - id: VLLM-ASC-17642
+      title: DeepSeek-V4 W4A8/W8A8 在 A2（非 A5）默认配置拉起：aclnnScatterNdUpdateSk 报 EZ1001 updates dtype DT_INT8
+        should be same with varRef dtype DT_BFLOAT16——indexer KV dtype 的 au…
+      category: interrupt
+      tags:
+      - deepseek-v4
+      - indexer
+      - dtype
+      - aclnn
+      - ez1001
+      - startup-failure
+      compat: ''
+      confidence:
+        score: 0.6
+      symptoms:
+      - 'DeepSeek-V4 W4A8/W8A8 在 A2（910B）默认配置拉起：aclnnScatterNdUpdateSk 报 AclNN_Parameter_Error(EZ1001):
+        updates dtype DT_INT8 sho…'
+      sig:
+      - aclnnScatterNdUpdateSk
+      - EZ1001
+      - AclNN_Parameter_Error
+      - indexer_kv_dtype
+      tok:
+      - '17635'
+      - DT_BFLOAT16
+      - DT_INT8
+      - EZ1001
+      - aclnnScatterNdUpdateSk
+      file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-17642.yaml
+      hash: 0725eb7119be
     - id: VLLM-ASC-1767
       title: '带 guided decoding / response_format（结构化输出）的请求打到 AscendScheduler（ascend_scheduler_config.enabled=true
         或该版本默认启用）上时整服务崩溃：RuntimeError: Invalid request status: WAIT…'
@@ -1807,6 +1865,31 @@ namespaces:
       - scheduler.py
       file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-1767.yaml
       hash: 9781cc470a02
+    - id: VLLM-ASC-18178
+      title: 'A3 + EPLB + 投机 draft 模型 + expandable_segments:True：EPLB 初始化报 HIXL EPLB register memory failed
+        with status 103900（PARAM_INVALID）——按分配器段注册的地址区间被内存段增长作废；PR #18217 …'
+      category: interrupt
+      tags:
+      - eplb
+      - hixl
+      - expandable-segments
+      - speculative-decoding
+      - startup-failure
+      - '103900'
+      compat: ''
+      confidence:
+        score: 0.6
+      symptoms:
+      - A3 + EPLB + 投机解码 draft 模型（expandable_segments:True）启动时 EPLB 初始化失败：HIXL EPLB register memory failed
+        with status 103900（PA…
+      sig:
+      - expandable_segments
+      tok:
+      - '103900'
+      - '18217'
+      - PARAM_INVALID
+      file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-18178.yaml
+      hash: 46294b9bd297
     - id: VLLM-ASC-1991
       title: 'Qwen3-Embedding-4B（pooling 模型）在 300I Duo/310P3 上无法启动：模型加载报 ValueError: no module or parameter
         named ''layers'' in CustomQwen3ForCausalLM（或 worker init 报 ACL SetPr…'
