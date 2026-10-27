@@ -33,7 +33,8 @@ DSH 会话中加载可视化面板（诊断 / 指标 / 自演进）。每个面�
 桌面版多半落在第三行，原因有两条：发行版把插件管理器那条模型工具标成 `disabled: true`
 （`@deepseek-ai/dsh-base/cordis.patch.yml`、`@deepseek-ai/dsh-web-app/cordis.patch.yml` 各一处），
 模型侧没有 `plugin_manager`；较新的版本又从模型侧撤掉了 `cordis_define` / `cordis_run`。
-界面「插件」页调的是同一个插件管理器服务，模型够不着，桌面版把这条能力开在自带的命令行上。
+界面「插件」页调的是同一个插件管理器服务，模型够不着；桌面版在安装目录里带了一条 `dsh` 命令行，
+它的 `plugin` 子命令对桌面 profile 开放（见路由三）。
 
 ## 路由一：热加载（会话里有 `cordis_define` / `cordis_run`）
 
@@ -141,8 +142,9 @@ DSH 会话中加载可视化面板（诊断 / 指标 / 自演进）。每个面�
 - 退出码：0 = 操作完成（`application` 可能是 `restart-required`，要重启才加载新版本）｜2 = 拿不到
   地址与 token，或地址取到了但连不上，或 `/api` 没有认领端点、未授权｜1 = 其他失败。
 
-**桌面版上这条路多半不通**：宿主带 `--no-open` 启动，不打印 `dsh web:` 行；Windows 的日志目录
-`%APPDATA%\@deepseek-ai\dsh-desktop\logs` 是空的；token 由宿主经进程间通道交给界面，磁盘上不落。
+**桌面版上这条路多半不通**：宿主把 `dsh web:` 那一行写进自己接管的管道，磁盘上找不到（`--no-open`
+只跳过开浏览器，那一行照常打印）；Windows 的日志目录
+`%APPDATA%\@deepseek-ai\dsh-desktop\logs` 是空的；token 由宿主经进程间通道交给界面，不落文件。
 拿不到就改用路由三或路由五，不要反复试。
 
 ## 路由五：插件页粘贴（命令行不可用，或用户能操作界面时）
@@ -166,7 +168,7 @@ DSH 会话中加载可视化面板（诊断 / 指标 / 自演进）。每个面�
 1. **看宿主启动输出**：装完第一次启动时，stderr 会打出没加载成的插件行，形如
    `1 entry did not activate` 与 `failed to import: …`。有这两行，问题在包，不在界面。
 2. **包静态 import 了 `@deepseek-ai/*`**。装进 profile 的包按自己的真实路径解析模块，到不了安装处的
-   `node_modules`；桌面版 `resources/` 下没有模块回退文件。报错原文是
+   `node_modules`；这个发行版的 `resources/` 下没有模块回退文件。报错原文是
    `Cannot find package '@deepseek-ai/dsh-tools'`。表现是：插件页显示已安装、tab 一个都没有、
    面板接口回 405。修法在包这一侧，不在 profile：把那句 import 改成能解析到就用、解析不到用包内的
    最小实现（`dsh-plugins/dsh-sleuth-panels` 现在这么做），再重建产物、重启。
