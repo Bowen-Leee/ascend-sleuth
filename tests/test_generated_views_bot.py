@@ -222,6 +222,35 @@ class GeneratedViewsBotTest(unittest.TestCase):
         self.assertIn("git clean -fd --", p.stdout)
         self.assertTrue(extra.exists())
 
+    def test_sync_gives_recovery_when_push_is_rejected_after_dry_run(self):
+        remote, other = self.make_remote()
+        p = other / "knowledge" / "inference" / "vllm-ascend" / "interrupt" / "TEST-SYNC-3.yaml"
+        p.write_text(CASE.format(cid="TEST-SYNC-3"), encoding="utf-8")
+        sh(other, "git", "add", "-A")
+        sh(other, "git", "commit", "-qm", "add case 3")
+        p = sh(other, "git", "push", "-q", "origin", "main")
+        self.assertEqual(p.returncode, 0, p.stderr)
+
+        hook = remote / "hooks" / "pre-receive"
+        hook.write_text("#!/bin/sh\necho 'protected: refused' >&2\nexit 1\n", encoding="utf-8")
+        hook.chmod(0o755)
+
+        p = sh(
+            self.repo,
+            sys.executable,
+            "scripts/rebuild_generated.py",
+            "--sync",
+            "--remote",
+            "origin",
+            "--main-branch",
+            "main",
+        )
+        self.assertEqual(p.returncode, 1, p.stdout + p.stderr)
+        self.assertIn("提交已在本地", p.stderr)
+        self.assertIn("git branch -f", p.stderr)
+        log = sh(self.repo, "git", "log", "-1", "--format=%s").stdout.strip()
+        self.assertEqual(log, "chore: rebuild generated views")
+
     def test_sync_pr_branch_pushes_branch_and_leaves_main_alone(self):
         remote, other = self.make_remote()
         p = other / "knowledge" / "inference" / "vllm-ascend" / "interrupt" / "TEST-SYNC-2.yaml"

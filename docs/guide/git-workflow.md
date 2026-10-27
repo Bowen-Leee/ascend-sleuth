@@ -233,7 +233,7 @@ PR 经 required review 批准后合入 `main`。自动部署合并完没有任�
 | 闸门 | 机制 | 强度 |
 |---|---|---|
 | YAML 语法 + 生成物新鲜度 | CI：PR 先跑 `rebuild_generated.py` 再跑各 `--check`；main 由 `rebuild-generated` job 重建并提交 | 硬（自动部署）；手工部署降为约定，靠人工重建 |
-| 命名空间变更审批 | `CODEOWNERS` + 分支保护 required review | 硬 |
+| 命名空间变更审批 | `CODEOWNERS` + 分支保护 required review | 硬（开启保护后） |
 | 高风险双签 | `kb/high-risk` 标签 + CODEOWNERS 双组路径（每组至少一人批） | 半硬（两个 approval 是否来自两组需人核验，见下） |
 | 脱敏 / severity 纪律 | to-postmortem 流程 + groom 周批审抽查 | 约定 |
 | eval 回归（改 skill 时） | 按 [eval.md](eval.md) 分级手动 replay；触及输出契约/交互形态时另出盲辨对照（同问题新旧输出各一份、交不知情者判）；replay 脚本化后并入 CI（属 roadmap 里「fixture replay 半自动化」一项） | 约定 → 半硬 |
