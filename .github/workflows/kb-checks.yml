@@ -9,9 +9,9 @@ name: kb-checks
 # 保护会让 PR 永远等一个不会出现的 Expected。单文件 + job 级 `if:` 下，跳过的 job 照常上报 skipped。
 on:
   push:
-    paths: ["knowledge/**", "references/**", "skills/**", "metrics/**", "proposals/**", "eval/**", "tests/**", "docs/**", "README.md", ".gitattributes", "triage-tree.yaml", "triage-tree.d/**", "dsh-plugins/**", "scripts/**", "trace-status.yaml", ".github/workflows/kb-checks.yml", ".github/actions/**"]
+    paths: ["knowledge/**", "references/**", "skills/**", "metrics/**", "proposals/**", "eval/**", "tests/**", "docs/**", "README.md", ".gitattributes", "triage-tree.yaml", "triage-tree.d/**", "dsh-plugins/**", "scripts/**", "trace-status.yaml", ".github/workflows/**", ".github/actions/**"]
   pull_request:
-    paths: ["knowledge/**", "references/**", "skills/**", "metrics/**", "proposals/**", "eval/**", "tests/**", "docs/**", "README.md", ".gitattributes", "triage-tree.yaml", "triage-tree.d/**", "dsh-plugins/**", "scripts/**", "trace-status.yaml", ".github/workflows/kb-checks.yml", ".github/actions/**"]
+    paths: ["knowledge/**", "references/**", "skills/**", "metrics/**", "proposals/**", "eval/**", "tests/**", "docs/**", "README.md", ".gitattributes", "triage-tree.yaml", "triage-tree.d/**", "dsh-plugins/**", "scripts/**", "trace-status.yaml", ".github/workflows/**", ".github/actions/**"]
 
 jobs:
   # ── 细网：这次改了哪一面 ──────────────────────────────────────────────────────

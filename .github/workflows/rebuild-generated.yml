@@ -22,6 +22,8 @@ on:
       - "scripts/**"
       - ".github/workflows/rebuild-generated.yml"
       - ".github/actions/rebuild-generated/**"
+  # 手动补跑：首次启用、或某次 job 失败后修完配置时，不必等下一次合并。
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -35,7 +37,7 @@ jobs:
   rebuild:
     # 机器人自己的提交只改生成物；上面的 paths 会命中 knowledge/** 等目录，所以按提交信息跳过。
     # 用提交信息而不是 actor：PAT / App token 的提交者名不一定是 github-actions[bot]。
-    if: "${{ !startsWith(github.event.head_commit.message, 'chore: rebuild generated views') }}"
+    if: "${{ github.event_name == 'workflow_dispatch' || !startsWith(github.event.head_commit.message, 'chore: rebuild generated views') }}"
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
