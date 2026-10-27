@@ -33,7 +33,7 @@ def main() -> int:
         "--name-only",
         f"{args.base}...HEAD",
     ]
-    p = subprocess.run(cmd, capture_output=True, text=True)
+    p = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8")
     if p.returncode != 0:
         print(f"取不到与基线 {args.base} 的差异：", p.stderr.strip(), sep="\n")
         print("如果是浅克隆，先 git fetch origin <base>；三点 diff 需要 merge-base。")

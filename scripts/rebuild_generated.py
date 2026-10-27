@@ -48,7 +48,7 @@ CHECKS = (
 
 def run(script: str, args: tuple[str, ...] = ()) -> None:
     cmd = [sys.executable, str(ROOT / script), *args]
-    p = subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True)
+    p = subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True, encoding="utf-8")
     if p.returncode != 0:
         print(f"失败：{' '.join(cmd)}", file=sys.stderr)
         if p.stdout:
