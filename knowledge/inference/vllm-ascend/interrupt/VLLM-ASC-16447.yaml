@@ -1,0 +1,79 @@
+# VLLM-ASC-16447 —— DSV4-Flash + DSpark 投机 decode 约 8 小时后 IndexCheck 越界（507035）
+# 来源：交接报告 traces/2026-09-18-dsv4flash-dspark-indexcheck.report.md（现场 dump 由姊妹 session 定案）
+# 修复：PR #16712（merged 2026-09-16，v0.26.0rc2 backport）：triton 输入展开内核加 has_valid_context 守卫
+# pre-triage: new_pattern —— 知识库无 IndexCheck_int64_high_performance 签名；507035 现有 case 均不同根因
+# verification: upstream-fix-merged（PR #16712）+ 现场 dump/源码复核
+# 建议命名空间：inference/vllm-ascend/interrupt/
+# 脱敏：报告已脱敏；不要回填客户集群拓扑
+
+cases:
+  - id: VLLM-ASC-16447
+
+    title: "DSV4-Flash + DSpark 投机解码（num_spec=7）decode 约 8 小时后 IndexCheck_int64_high_performance_0 越界（507035 → EngineDead）——triton 输入展开内核缺 valid_count==0 的下界守卫，写出约 1.06e9 的 query_pos，RoPE 表 1048576 行越界；PR #16712 加 has_valid_context"
+
+    category: interrupt
+    tags: [deepseek-v4, dspark, speculative-decoding, indexcheck, '507035', rope, pd-disaggregation, vector-core-exception]
+    compat:
+      - framework: vllm-ascend
+        ranges: ["<0.26.0rc2"]
+    investigation_quality: high
+
+    validation_record:
+      consistent: 0
+      inconsistent: 0
+      self_consistent: 1
+      last_verified: 2026-W44
+    upstream:
+      - repo: vllm-project/vllm-ascend
+        pr: 16712
+        url: https://github.com/vllm-project/vllm-ascend/pull/16712
+
+    verification:
+      source: upstream-fix-merged
+      detail: "fix PR #16712（merged 2026-09-16，v0.26.0rc2 backport）：dspark 输入展开内核加 has_valid_context 守卫 + 回归测试；本地 dump 的 224 个值（32×7）与内核算式逐项吻合"
+
+    symptoms:
+      - "decode 实例运行约 8 小时后 8 卡同秒崩：设备侧 IndexCheck_int64_high_performance_0 报“索引 1064304640 超过上界 1048576”，host 侧 507035 vector core exception → EngineDead"
+      - "越界值呈 base+1..+7 连续序列；224 = 32×7，通常只有 batch 第 0 行异常；关掉 --speculative-config（dspark）后不再触发"
+
+    quickly_check:
+      primary:
+        command_template: "grep -aE 'IndexCheck_int64_high_performance_0|exceeds bounds 1048576|超过上界 1048576' {{log_path}}"
+        rank_selector: all_failed
+        expected: "regex:IndexCheck_int64_high_performance_0|exceeds bounds 1048576|超过上界 1048576"
+      fallback:
+        command_template: "grep -aE '507035|vector core exception|EngineDead' {{log_path}}"
+        rank_selector: all_failed
+        expected: "regex:507035|vector core exception|EngineDead"
+
+    diagnosis:
+      - step: 1
+        check: "是否出现 IndexCheck_int64_high_performance_0 越界（上界 1048576）并伴随 507035 vector core exception / EngineDead？"
+        expected: "是——先把它当“索引值内容错”而不是普通算子崩溃"
+      - step: 2
+        check: "上界 1048576 是否等于 RoPE 表 65536 × 16（original_max_position_embeddings × factor）？越界值是否像 float 位模式，且呈 base+1..+7 连续序列？"
+        expected: "是——指向 dspark 输入展开内核把浮点数据当 last_pos，query_pos 未 clamp"
+      - step: 3
+        check: "vllm-ascend 是否含 PR #16712 / >= v0.26.0rc2 的 has_valid_context 守卫？"
+        expected: "不含 → 升级或回移该守卫；含 → 按第 4 步重试"
+      - step: 4
+        check: "临时规避：去掉 --speculative-config 整项（等价于关投机解码；不要写 num_speculative_tokens=0）"
+        expected: "内核不再被调用，崩溃消失；本体制下草稿头冻结，关掉无吞吐损失"
+
+    severity: service-affecting
+    fix_side_effects: [requires-restart, requires-code-change]
+    fix_type: code-patch
+
+    root_cause: >
+      vllm-ascend 0.25.1rc1 的 dspark 输入展开内核对“该行本步 valid_count == 0（不采样）”
+      缺下界守卫：last_pos = target_positions[valid_ctx_end - 1] 在 batch 第 0 行落到 -1，
+      读到 positions 缓冲之前的相邻浮点数据；随后 query_pos = last_pos + 1 + q_idx 没有 clamp，
+      写出 7 个约 1.06e9 的位置，查 RoPE 表（65536 × 16 = 1048576 行）时越界，被 CANN 插入的
+      IndexCheck 拦下并报 507035。Python 侧的同类“无有效 token”状态有 clamp 兜底，triton 内核
+      没有，二者不一致。PR #16712 增加 has_valid_context 守卫并补回归测试。
+
+    fix: >
+      升级到含 PR #16712 / >= v0.26.0rc2 的 vllm-ascend。升级前规避：去掉整个
+      --speculative-config（不要只写 num_speculative_tokens=0）。若不能升级，只回移
+      has_valid_context 守卫逻辑，不要改动 RoPE 表或上界。
+    rollback: "回退 PR #16712 的守卫会恢复越界路径（可复现）；回退前先确认现场已回退到旧版本"

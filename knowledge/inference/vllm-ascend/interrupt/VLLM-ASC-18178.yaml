@@ -1,0 +1,75 @@
+# VLLM-ASC-18178 —— A3 + EPLB + 投机 draft 模型 + expandable_segments 下 HIXL 注册 103900
+# 来源：https://github.com/vllm-project/vllm-ascend/issues/18178
+# 修复：PR #18217（merged 2026-10-12）：EPLB 从“按分配器段注册”改为“按对齐合并的活张量区间注册”
+# pre-triage: new_pattern —— 知识库 grep EPLB 零命中；103900 签名未覆盖
+# verification: upstream-fix-merged（fix PR #18217，issue 同日 closed）
+# 建议命名空间：inference/vllm-ascend/interrupt/
+# 脱敏：上游 issue 无内网 IP/密钥
+
+cases:
+  - id: VLLM-ASC-18178
+
+    title: "A3 + EPLB + 投机 draft 模型 + expandable_segments:True：EPLB 初始化报 HIXL EPLB register memory failed with status 103900（PARAM_INVALID）——按分配器段注册的地址区间被内存段增长作废；PR #18217 改为按活张量区间注册"
+
+    category: interrupt
+    tags: [eplb, hixl, expandable-segments, speculative-decoding, startup-failure, '103900']
+    platforms: ["A3-910C"]
+    investigation_quality: medium
+
+    validation_record:
+      consistent: 0
+      inconsistent: 0
+      self_consistent: 1
+      last_verified: 2026-W44
+    upstream:
+      - repo: vllm-project/vllm-ascend
+        issue: 18178
+        url: https://github.com/vllm-project/vllm-ascend/issues/18178
+
+    verification:
+      source: upstream-fix-merged
+      detail: "fix PR #18217（merged 2026-10-12，issue #18178 同日 closed）：修复前 EPLB 按 allocator segment 整段注册 HIXL 内存；修复后按 aligned、merged live tensor ranges 注册，无关的分配器增长不再使注册失效"
+
+    symptoms:
+      - "A3 + EPLB + 投机解码 draft 模型（expandable_segments:True）启动时 EPLB 初始化失败：HIXL EPLB register memory failed with status 103900（PARAM_INVALID）"
+      - "关闭 expandable_segments 或本次先不启用 EPLB 后不再报；同配置在修复版本上正常"
+
+    quickly_check:
+      primary:
+        command_template: "grep -aE 'HIXL EPLB register memory failed with status 103900' {{log_path}}"
+        rank_selector: all_failed
+        expected: "regex:HIXL EPLB register memory failed with status 103900"
+      fallback:
+        command_template: "grep -aE 'EPLB.*103900|103900.*EPLB|expandable_segments' {{log_path}}"
+        rank_selector: all_failed
+        expected: "regex:EPLB.*103900|103900.*EPLB|expandable_segments"
+
+    diagnosis:
+      - step: 1
+        check: "日志是否出现 HIXL EPLB register memory failed with status 103900（PARAM_INVALID），且发生在 EPLB 初始化阶段？"
+        expected: "是"
+      - step: 2
+        check: "现场是否同时开了 expandable_segments:True，或使用投机解码 draft 模型？"
+        expected: "是——这两类条件都会改变分配器段布局，触发按段注册失效"
+      - step: 3
+        check: "vllm-ascend 版本是否含 PR #18217（EPLB 按对齐合并的活张量区间注册）？"
+        expected: "不含 → 升级；含 → 按第 4 步重试"
+      - step: 4
+        check: "临时规避：关闭 expandable_segments，或本次先不启用 EPLB"
+        expected: "EPLB 初始化不再报 103900；升级后恢复 EPLB 与 expandable_segments"
+
+    severity: service-affecting
+    fix_side_effects: [requires-restart]
+    fix_type: code-patch
+
+    root_cause: >
+      修复前的 EPLB 在启动时按 PyTorch 分配器段整段注册 HIXL 内存。expandable_segments
+      或 draft 模型会让分配器段增长/变化，已注册的地址区间随之失效，HIXL 以 PARAM_INVALID
+      （103900）拒绝注册。上游 #18217 改为按 aligned、merged live tensor ranges 注册，
+      后续无关的分配器增长不再改变这些注册。根因面由修复 PR 的设计文档确认；现场绕过
+      方式与根因一致，但原始 issue 未逐项回报。
+
+    fix: >
+      升级到含 PR #18217 的 vllm-ascend。升级前规避：关闭 expandable_segments，或暂不启用
+      EPLB；这两条都不改变“注册模型需修复”的结论。
+    rollback: "revert PR #18217 的注册逻辑会回到按段注册；不要用回退代替升级"
