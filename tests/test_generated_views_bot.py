@@ -48,7 +48,7 @@ class GeneratedViewsBotTest(unittest.TestCase):
                 ignore=shutil.ignore_patterns("__pycache__"),
             )
         shutil.copytree(ROOT / "triage-tree.d", r / "triage-tree.d")
-        for name in (".gitattributes", "triage-tree.yaml"):
+        for name in (".gitattributes", ".gitignore", "triage-tree.yaml"):
             shutil.copy2(ROOT / name, r / name)
         sh(r, "git", "init", "-q", "-b", "main")
         sh(r, "git", "config", "user.email", "t@example.com")
@@ -147,6 +147,78 @@ class GeneratedViewsBotTest(unittest.TestCase):
 
         g = self.guard()
         self.assertEqual(g.returncode, 0, g.stdout + g.stderr)
+
+    # ---------------------------------------------------------------- ④ 手动同步
+    def make_remote(self):
+        remote = Path(self.tmp.name) / "remote.git"
+        sh(self.tmp.name, "git", "init", "--bare", "-q", str(remote))
+        sh(self.repo, "git", "remote", "add", "origin", str(remote))
+        p = sh(self.repo, "git", "push", "-q", "-u", "origin", "main")
+        self.assertEqual(p.returncode, 0, p.stderr)
+
+        other = Path(self.tmp.name) / "other"
+        p = sh(self.tmp.name, "git", "clone", "-q", str(remote), str(other))
+        self.assertEqual(p.returncode, 0, p.stderr)
+        sh(other, "git", "config", "user.email", "t@example.com")
+        sh(other, "git", "config", "user.name", "t")
+        return remote, other
+
+    def test_sync_pulls_rebuilds_commits_and_pushes_in_one_command(self):
+        remote, other = self.make_remote()
+        p = other / "knowledge" / "inference" / "vllm-ascend" / "interrupt" / "TEST-SYNC-1.yaml"
+        p.write_text(CASE.format(cid="TEST-SYNC-1"), encoding="utf-8")
+        sh(other, "git", "add", "-A")
+        sh(other, "git", "commit", "-qm", "add case")
+        p = sh(other, "git", "push", "-q", "origin", "main")
+        self.assertEqual(p.returncode, 0, p.stderr)
+
+        p = sh(
+            self.repo,
+            "python3",
+            "scripts/rebuild_generated.py",
+            "--sync",
+            "--remote",
+            "origin",
+            "--main-branch",
+            "main",
+        )
+        self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
+        self.assertIn("已推送到 origin/main", p.stdout)
+        self.assertIn(
+            "TEST-SYNC-1",
+            (self.repo / "knowledge" / "_index.yaml").read_text(encoding="utf-8"),
+        )
+        log = sh(remote, "git", "log", "-1", "--format=%s", "main").stdout.strip()
+        self.assertEqual(log, "chore: rebuild generated views")
+
+    def test_sync_pr_branch_pushes_branch_and_leaves_main_alone(self):
+        remote, other = self.make_remote()
+        p = other / "knowledge" / "inference" / "vllm-ascend" / "interrupt" / "TEST-SYNC-2.yaml"
+        p.write_text(CASE.format(cid="TEST-SYNC-2"), encoding="utf-8")
+        sh(other, "git", "add", "-A")
+        sh(other, "git", "commit", "-qm", "add case 2")
+        p = sh(other, "git", "push", "-q", "origin", "main")
+        self.assertEqual(p.returncode, 0, p.stderr)
+
+        p = sh(
+            self.repo,
+            "python3",
+            "scripts/rebuild_generated.py",
+            "--sync",
+            "--remote",
+            "origin",
+            "--main-branch",
+            "main",
+            "--pr-branch",
+            "chore/rebuild-generated",
+        )
+        self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
+        self.assertIn("已推送分支 chore/rebuild-generated", p.stdout)
+
+        main_log = sh(remote, "git", "log", "-1", "--format=%s", "main").stdout.strip()
+        self.assertEqual(main_log, "add case 2")
+        branch_log = sh(remote, "git", "log", "-1", "--format=%s", "chore/rebuild-generated").stdout.strip()
+        self.assertEqual(branch_log, "chore: rebuild generated views")
 
 
 if __name__ == "__main__":

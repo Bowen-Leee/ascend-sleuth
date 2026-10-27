@@ -111,7 +111,7 @@ fork 负载类型的机制缺口写进 MR 描述或 issue，由维护者拿到�
 - **有 CI 的部署**：合入 main 后由 `rebuild-generated` job 跑 `python3 scripts/rebuild_generated.py --check`，有 diff 就提交。PR 只交源文件；`generated-guard` 挡住手改生成物。门是覆盖检查（能从源产出齐全生成物），不是逐字节相同。
 - **没有合入后重建流水线的部署**：没有这个 job 就不会自动重建。两条路选一条，并写进该部署的说明：
   - **保留旧纪律**：PR 带生成物，提交前跑 `python3 scripts/rebuild_generated.py --check`，评审看生成物 diff；
-  - **合入后人工重建**：由人跑同一条命令并提交。必须有人负责；忘记的后果是新 case 不进索引、新路由词不生效，不是只慢一步。
+  - **合入后人工重建**：在 main 上跑 `python3 scripts/rebuild_generated.py --sync`——一条命令完成拉取、重建、校验、提交、推送。main 受保护或没有权限时加 `--pr-branch chore/rebuild-generated`，改成推分支后开 PR（只用于没有 generated-guard 的部署）。命令会拒绝非生成物的未提交改动、丢弃本地生成物改动、推送前先探权限。必须有人负责；忘记的后果是新 case 不进索引、新路由词不生效，不是只慢一步。
 
 生成物里不写数字（条数 / 容量 / 日期现算）仍是前提：数字一进 git，两人并发合并时要么落在同一行、要么漂移成错的数。路由性质文件走 `merge=union`，两人同一天加词两边都留；索引是嵌套结构，不配 union——有 CI 时由主干 job 整体重建，无 CI 时冲突了重跑生成器。
 
@@ -124,7 +124,29 @@ fork 负载类型的机制缺口写进 MR 描述或 issue，由维护者拿到�
 | 路由聚合 `triage-tree.yaml` | 主干 job（有 CI）/ 人（无 CI） | `build_triage_tree.py` | `build_triage_tree.py --check-coverage`（源里每条症状组、负载类型层每个字段都在聚合里） |
 | reference 索引 / timeline / 条目使用记录 | 主干 job（有 CI）/ 人（无 CI） | `rebuild_generated.py` | 各自 `--check` |
 
-有 CI 的部署合并不需要任何人再跑命令；没有 CI 的部署必须有人跑 `rebuild_generated.py --check` 并提交，或者保留“PR 带生成物”的旧纪律。两种纪律不要混用：混用时 `generated-guard` 会把带生成物的 PR 判红，而人工重建又没人负责。
+有 CI 的部署合并不需要任何人再跑命令；没有 CI 的部署必须有人跑 `rebuild_generated.py --sync`，或者保留“PR 带生成物”的旧纪律。两种纪律不要混用：混用时 `generated-guard` 会把带生成物的 PR 判红，而人工重建又没人负责。
+
+#### 手动同步（没有合入后 job）
+
+在 main 上一条命令：
+
+```bash
+python3 scripts/rebuild_generated.py --sync
+```
+
+它会拒绝非生成物的未提交改动、拉取最新 main（只允许快进）、重建并校验、只提交生成物、推送。main 受保护或没有权限时：
+
+```bash
+python3 scripts/rebuild_generated.py --sync --pr-branch chore/rebuild-generated
+```
+
+改成推一个只含生成物的分支，再由人在平台上开 PR（只用于没有 `generated-guard` 的部署）。只想看会改什么、不提交：
+
+```bash
+python3 scripts/rebuild_generated.py --sync --dry-run
+```
+
+失败时按命令打印的下一步做；不要在旧生成物上 rebase。
 
 覆盖检查问的是“条目都在吗、与内容对得上吗”，不问“是否与重新生成一遍逐字节相同”。想归一化（顺序/注释回到生成器口径）随时跑一次生成器，那是可选的：`build_index.py --check --canonical` 与 `build_triage_tree.py --check` 是那两个自检，不作门。
 
@@ -232,7 +254,7 @@ pip install pyyaml
 python3 scripts/rebuild_generated.py --check
 ```
 
-这条命令在任何平台都能等价配置：有 CI 就放在合入后的 job（GitHub 的写法见 `.github/workflows/rebuild-generated.yml`，GitLab 等平台的流水线调用同一个脚本即可）；没有 CI 就在合入后由人跑并提交。`--check` 会先重建再校验，不只是检查。合入后流水线最少两步：在最新 main 的检出上跑这条命令；`git status --porcelain` 有输出就提交并 push。失败时从最新 main 重来，不要在旧生成物上 rebase。没有 CI 又没人跑时，新 case 不会进索引、诊断看不见——这个失败形态不报错，比“CI 变红”更难发现。
+这条命令在任何平台都能等价配置：有 CI 就放在合入后的 job（GitHub 的写法见 `.github/workflows/rebuild-generated.yml`，GitLab 等平台的流水线调用同一个脚本即可）；没有 CI 就在 main 上跑 `python3 scripts/rebuild_generated.py --sync`（拉取、重建、提交、推送一条命令）。`--check` 会先重建再校验，不只是检查。合入后流水线最少两步：在最新 main 的检出上跑这条命令；`git status --porcelain` 有输出就提交并 push。失败时从最新 main 重来，不要在旧生成物上 rebase。没有 CI 又没人跑时，新 case 不会进索引、诊断看不见——这个失败形态不报错，比“CI 变红”更难发现。
 
 ### 触发分两层（改 CI 时两者都要照顾）
 
