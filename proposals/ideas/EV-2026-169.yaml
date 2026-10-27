@@ -170,3 +170,7 @@ decisions:
       指纹只认 case 实名 `knowledge/**/<case-prefix>-<issue>.yaml`（默认前缀 `VLLM-ASC`），
       库内换命名规则要显式传 `--case-prefix`。未做：判定池扩容（新增未吸收样本要人工选样与标注）
       与排序型口径（另一张卡）。
+  - who: agent
+    when: 2026-10-27
+    type: action
+    conclusion: "合入指针回写：本卡（及其结论）随 PR #319 进入 main（回写由 evolve 批次收尾执行，供判据「待合入积压」读取）"

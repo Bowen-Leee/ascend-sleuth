@@ -154,3 +154,7 @@ decisions:
       同轮按复核意见去拟人与自我评价：`scripts/trace_metrics.py` 的注释、`tests/test_trace_metrics.py`
       的 docstring 与用例说明、本卡此前新增文字里的「一条 metrics 都不吐」「如实」，措辞改成
       「中断」「按实测值」；本卡新增行里「并发标记」一律写成统一名「同批并发标记」。
+  - who: agent
+    when: 2026-10-27
+    type: action
+    conclusion: "合入指针回写：本卡（及其结论）随 PR #317 进入 main（回写由 evolve 批次收尾执行，供判据「待合入积压」读取）"

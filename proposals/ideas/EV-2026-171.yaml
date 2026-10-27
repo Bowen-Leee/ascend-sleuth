@@ -155,3 +155,7 @@ decisions:
       12980 的标注站得住（正文 91 行，只有 `collect_env` 输出与空小节）；`Ran 326` 的 12 项失败与
       `git archive 3c3ba14` 树上 `Ran 322` 的失败逐条相同。跨提交对照要注明基线取的是 `3c3ba14` 的树，
       不是复核期间已被并发推进的主检出。
+  - who: agent
+    when: 2026-10-27
+    type: action
+    conclusion: "合入指针回写：本卡（及其结论）随 PR #321 进入 main（回写由 evolve 批次收尾执行，供判据「待合入积压」读取）"

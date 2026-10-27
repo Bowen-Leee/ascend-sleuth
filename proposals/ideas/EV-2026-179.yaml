@@ -91,6 +91,10 @@ decisions:
       子进程的写权限根（`workspaceRoot`）。边界照实标注：①改道后的包不在 `traces/exports`，
       历史习惯要重新建立；②面板的错误文案是脚本原文加一句它给子进程的可写范围，没有替读者判断范围对不对；
       ③未加 write 探针（本轮范围外，另行评估）。
+  - who: agent
+    when: 2026-10-27
+    type: action
+    conclusion: "合入指针回写：本卡（及其结论）随 PR #355 进入 main（回写由 evolve 批次收尾执行，供判据「待合入积压」读取）"
 actual_cost:
   tokens: 32000
   source: estimate

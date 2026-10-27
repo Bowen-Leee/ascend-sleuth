@@ -105,6 +105,10 @@ decisions:
     conclusion: >-
       边界照实写：①面板导出失败的错误文案未改（仍不翻译「缺依赖」），本卡只补了发现入口；②体检器不判内容；
       ③未加单元测试——它不做口径计算，判据是退出码与能力表一致性；④3.8 未单独验证，与 3.9 同一条退化路径。
+  - who: agent
+    when: 2026-10-27
+    type: action
+    conclusion: "合入指针回写：本卡（及其结论）随 PR #354 进入 main（回写由 evolve 批次收尾执行，供判据「待合入积压」读取）"
 actual_cost:
   tokens: 48000
   source: estimate
