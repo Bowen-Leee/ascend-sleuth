@@ -108,7 +108,7 @@ fork 负载类型的机制缺口写进 MR 描述或 issue，由维护者拿到�
 
 生成物（索引、路由聚合、reference 索引、timeline、条目使用记录）由脚本写，不由人写。分两种部署形态：
 
-- **有 CI 的部署**：合入 main 后由 `rebuild-generated` job 跑 `python3 scripts/rebuild_generated.py --check`，有 diff 就提交。PR 只交源文件；`generated-guard` 挡住手改生成物。门是覆盖检查（能从源产出齐全生成物），不是逐字节相同。
+- **有 CI 的部署**：合入 main 后由 `rebuild-generated` job 跑 `python3 scripts/rebuild_generated.py --check`，有 diff 就提交。PR 只交源文件；GitHub 上的 `generated-guard` 挡住手改生成物，其他平台的流水线可以调用同一条 `scripts/check_generated_untouched.py --base <基线>`。门是覆盖检查（能从源产出齐全生成物），不是逐字节相同。
 - **没有合入后重建流水线的部署**：没有这个 job 就不会自动重建。两条路选一条，并写进该部署的说明：
   - **保留旧纪律**：PR 带生成物，提交前跑 `python3 scripts/rebuild_generated.py --check`，评审看生成物 diff；
   - **合入后人工重建**：在 main 上跑 `python3 scripts/rebuild_generated.py --sync`——一条命令完成拉取、重建、校验、提交、推送。main 受保护或没有权限时加 `--pr-branch chore/rebuild-generated`，改成推分支后开 PR（只用于没有 generated-guard 的部署）。命令会拒绝非生成物的未提交改动与生成物目录里的未跟踪文件，只丢弃已跟踪生成物的本地改动，推送前先探权限。必须有人负责；忘记的后果是新 case 不进索引、新路由词不生效，不是只慢一步。
