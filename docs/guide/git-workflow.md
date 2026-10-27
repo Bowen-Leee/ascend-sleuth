@@ -7,13 +7,13 @@
 
 ## 1 做完得到什么
 
-改动合入受保护的 `main`，并且过了「门控映射表」里与它相关的门。知识库变更与 groom 的周批次都走 PR 合入。
+改动合入 `main`，并且过了「门控映射表」里与它相关的门。知识库变更与 groom 的周批次都走 PR 合入。
 
 ## 2 前置条件
 
 ### 分支模型
 
-- `main` 受保护、禁止直接 push：所有知识库变更（包括 groom 的周批次）都走 PR。
+- `main` 受保护、禁止直接 push：所有知识库变更（包括 groom 的周批次）都走 PR。**开启保护后，`rebuild-generated` job 必须能写 main**（允许 GitHub Actions 绕过，或改用 PAT / App token）；否则生成物只能靠人工重建。
 - 冷启动或单人阶段可以先不开分支保护，机制先行、权限后收紧；kb-checks CI 从第一天就启用，它是唯一不依赖人的硬门。
 
 ### 多 agent 并行（worktree 约束）
@@ -185,7 +185,7 @@ owner 尚未确定时，`CODEOWNERS.example` 保留 TODO 占位，CI 与标签�
 
 ### 6 合入
 
-PR 经 required review 批准后合入受保护的 `main`。合并完没有任何收尾动作——不需要谁再跑一次命令（见步骤 2）。
+PR 经 required review 批准后合入 `main`。有 CI 的部署合并完没有任何收尾动作；没有 CI 的部署见步骤 2 的两条纪律。
 
 通知机制：
 
@@ -232,7 +232,7 @@ pip install pyyaml
 python3 scripts/rebuild_generated.py --check
 ```
 
-这条命令在任何平台都能等价配置：有 CI 就放在合入后的 job（GitHub 的写法见 `.github/workflows/rebuild-generated.yml`，GitLab / CodeHub 流水线调用同一个脚本即可）；没有 CI 就在合入后由人跑并提交。`--check` 会先重建再校验，不只是检查。没有 CI 又没人跑时，新 case 不会进索引、诊断看不见——这个失败形态不报错，比“CI 变红”更难发现。
+这条命令在任何平台都能等价配置：有 CI 就放在合入后的 job（GitHub 的写法见 `.github/workflows/rebuild-generated.yml`，GitLab / CodeHub 流水线调用同一个脚本即可）；没有 CI 就在合入后由人跑并提交。`--check` 会先重建再校验，不只是检查。CodeHub 的合入后流水线最少两步：在最新 main 的检出上跑这条命令；`git status --porcelain` 有输出就提交并 push。失败时从最新 main 重来，不要在旧生成物上 rebase。没有 CI 又没人跑时，新 case 不会进索引、诊断看不见——这个失败形态不报错，比“CI 变红”更难发现。
 
 ### 触发分两层（改 CI 时两者都要照顾）
 
