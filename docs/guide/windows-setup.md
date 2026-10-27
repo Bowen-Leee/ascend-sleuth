@@ -43,7 +43,7 @@ Remove-Item .dsh\skills -Force     # 删掉 clone 残留的文本文件（或破
 git checkout -- .dsh/skills        # 重新检出为真 symlink
 ```
 
-4. 开不了开发者模式时，用脚本建 junction。`python3 scripts/enable_agent_skills.py`（Windows 上先试真 symlink，无权限自动退到 `mklink /J` 目录链接，免管理员），它还会自动对 `.dsh/skills` 打 `git update-index --skip-worktree`。等价的手工版：
+4. 开不了开发者模式时，用脚本建 junction。脚本不看检测结果，一定修 `.dsh/skills`。它是本仓自己跟踪的条目，任何模式（含 `--agents`）都修。原因在 DSH Desktop。它的 home 在 `%APPDATA%\dsh-desktop\harness`，`dsh` 命令也不在 PATH。人手动开的 PowerShell 里两条检测都不成立。其余 agent 只修检测到的，Windows 上逐个打印跳过原因；要六个都建用 `--all`。脚本先试真 symlink，无权限时退到 `mklink /J` 目录链接（免管理员）。git 侧适配随链接类型走。真 symlink 设 `core.symlinks=true`；junction 打 `git update-index --skip-worktree`。某个目录已存在却不是链接时，脚本打印 ⚠️ 并以非 0 退出。以下是手工版（不看检测，六个目录全建）：
 
 ```powershell
 # 在仓库根目录运行
