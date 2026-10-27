@@ -211,7 +211,14 @@ def sync(remote: str, main_branch: str, pr_branch: str, dry_run: bool) -> int:
 
     p = git("push", remote, f"HEAD:{main_branch}", check=False)
     if p.returncode != 0:
-        print("推送失败：远端在同步期间更新，或权限被拒。重跑一次同步；若仍失败，检查分支保护。", file=sys.stderr)
+        print("推送失败：远端在同步期间更新，或权限被拒。提交已在本地，先重试：", file=sys.stderr)
+        print(f"  git push {remote} HEAD:{main_branch}", file=sys.stderr)
+        print(f"若 {main_branch} 受保护，把这次提交挪到分支：", file=sys.stderr)
+        print(f"  git fetch {remote} {main_branch}", file=sys.stderr)
+        print("  git branch chore/rebuild-generated", file=sys.stderr)
+        print(f"  git reset --hard {remote}/{main_branch}", file=sys.stderr)
+        print(f"  git push -u {remote} chore/rebuild-generated", file=sys.stderr)
+        print("  然后在平台上开 PR（仅用于没有 generated-guard 的部署）。", file=sys.stderr)
         if p.stderr.strip():
             print(p.stderr.strip(), file=sys.stderr)
         return 1
