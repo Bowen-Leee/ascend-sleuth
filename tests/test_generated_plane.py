@@ -163,7 +163,12 @@ class GeneratedPlaneTest(unittest.TestCase):
         self.assertNotIn("case 总数：", head)
         self.assertNotIn("容量(", head)
         out = sh(self.repo, "python3", "scripts/index_counts.py", "--json").stdout
-        self.assertEqual(yaml.safe_load(out)["total"], 169)
+        expected = 0
+        for path in (self.repo / "knowledge").rglob("*.yaml"):
+            if path.name.startswith("_") or "_archive" in path.parts:
+                continue
+            expected += len((yaml.safe_load(path.read_text(encoding="utf-8")) or {}).get("cases") or [])
+        self.assertEqual(yaml.safe_load(out)["total"], expected)
 
 
 if __name__ == "__main__":
