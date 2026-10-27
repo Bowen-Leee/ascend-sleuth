@@ -46,7 +46,7 @@ jobs:
   #   · unit-tests 只按 scripts/tests 触发。它确有 4 个模块读仓库内容（test_trace_metrics 读
   #     knowledge/_index.yaml、test_build_triage_tree 读 triage-tree*、test_concurrent_submit
   #     copytree knowledge/、test_generated_plane 跑生成器），但那几面的**口径与新鲜度**由
-  #     index-freshness / case-structure 兜底，所以只改 knowledge/ 的 PR 不再付这 135 秒。
+  #     index-freshness / case-structure 兜底，所以只改 knowledge/ 的 PR 不再付 unit-tests 这轮最长 job 的代价。
   #     要更保守：把 knowledge 也加进它（代价是内容 PR 继续付满）。
   #   · panel-checks 不算 knowledge：panel_render_check.js 读 knowledge/ 只做「索引非空、case
   #     文件非空」两条 >0 断言，新鲜度由 index-freshness 管。
@@ -229,8 +229,7 @@ jobs:
     needs: changes
     # `knowledge` / `references` 也进：条目使用记录的生成物里有 `cold` 与
     # `cold_never_looked_up` 两个现算自库的字段（`entry_activity.library_inventory()`），
-    # 加一条 case 或一条词条就会让它过期。不列进来的后果实测过：加 case 的 PR 全绿，
-    # 生成物停在旧值，下一个碰 `metrics/` 的 PR 才因与它无关的原因变红。
+    # 加一条 case 或词条会改变它。本 job 先调重建 action 再校验，读到的是这棵树的产物。
     if: needs.changes.outputs.metrics == 'true' || needs.changes.outputs.code == 'true' || needs.changes.outputs.knowledge == 'true' || needs.changes.outputs.references == 'true'
     runs-on: ubuntu-latest
     steps:
@@ -245,13 +244,12 @@ jobs:
       # metrics 时序数据结构校验（教训：W28/W35 字段格式漂移导致跨期不可比、趋势不可算）：
       # period 唯一 / kind 合法 / recorded_at 必填 / 比例字段 ok,total 合法 / live 期号命名。结构由 CI 兜底。
       - run: python3 scripts/verify_metrics.py --check
-      # 生成物与源一致（源 = metrics/timeline.d/<期号>.yaml，一期一个文件）。
-      # 为什么需要这道门：timeline.yaml 是**生成物**，两人各写各的源文件才不撞；但若谁直接改了
-      # 生成物（或改了源忘记重建），读者会拿到一份与源不符的时序数据——必须红，且报错要给出"重跑一次"的修法。
+      # timeline.yaml 是生成物（源 = metrics/timeline.d/<期号>.yaml）。提交面由 generated-guard
+      # 与主干 job 管；这里 `--check` 验的是生成器能从源产出一致产物，不负责抓"忘重建"。
       - run: python3 scripts/build_timeline.py --check
       # 条目使用记录：源（metrics/entry-activity.d/，一周一个文件、一行一条）与生成物
       # （metrics/entry-activity/<部署>.yaml）两层。两条判据分工明确——
-      # `--check` 验「生成物与源一致」，`verify_entry_activity` 验「源本身合法」
+      # `--check` 验「生成器与源一致」，`verify_entry_activity` 验「源本身合法」
       # （行形状 / (run,kind,id) 唯一 / id 在知识库里查得到 / run 与文件名归周一致 / 部署名一致）。
       # 只跑前者会把「源写错了但生成物忠实照搬」判绿。
       - run: python3 scripts/verify_entry_activity.py

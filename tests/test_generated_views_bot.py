@@ -11,6 +11,7 @@
 
 import shutil
 import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -48,7 +49,7 @@ class GeneratedViewsBotTest(unittest.TestCase):
                 ignore=shutil.ignore_patterns("__pycache__"),
             )
         shutil.copytree(ROOT / "triage-tree.d", r / "triage-tree.d")
-        for name in (".gitattributes", ".gitignore", "triage-tree.yaml"):
+        for name in (".gitattributes", ".gitignore", "README.md", "triage-tree.yaml"):
             shutil.copy2(ROOT / name, r / name)
         sh(r, "git", "init", "-q", "-b", "main")
         sh(r, "git", "config", "user.email", "t@example.com")
@@ -86,11 +87,11 @@ class GeneratedViewsBotTest(unittest.TestCase):
 
     # ---------------------------------------------------------------- 机器人的动作
     def rebuild(self):
-        p = sh(self.repo, "python3", "scripts/rebuild_generated.py", "--check")
+        p = sh(self.repo, sys.executable, "scripts/rebuild_generated.py", "--check")
         self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
 
     def guard(self, base: str = "main"):
-        return sh(self.repo, "python3", "scripts/check_generated_untouched.py", "--base", base)
+        return sh(self.repo, sys.executable, "scripts/check_generated_untouched.py", "--base", base)
 
     # ---------------------------------------------------------------- ① + ②
     def test_two_source_only_prs_merge_and_bot_rebuild_covers_both(self):
@@ -174,7 +175,7 @@ class GeneratedViewsBotTest(unittest.TestCase):
 
         p = sh(
             self.repo,
-            "python3",
+            sys.executable,
             "scripts/rebuild_generated.py",
             "--sync",
             "--remote",
@@ -191,12 +192,27 @@ class GeneratedViewsBotTest(unittest.TestCase):
         log = sh(remote, "git", "log", "-1", "--format=%s", "main").stdout.strip()
         self.assertEqual(log, "chore: rebuild generated views")
 
+    def test_sync_refuses_non_generated_dirty_change(self):
+        p = self.repo / "README.md"
+        p.write_text(p.read_text(encoding="utf-8") + "\n本地改动\n", encoding="utf-8")
+        r = sh(self.repo, sys.executable, "scripts/rebuild_generated.py", "--sync", "--dry-run")
+        self.assertEqual(r.returncode, 2, r.stdout + r.stderr)
+        self.assertIn("非生成物", r.stdout)
+
+    def test_sync_refuses_staged_generated_change(self):
+        p = self.repo / "knowledge" / "_index.yaml"
+        p.write_text(p.read_text(encoding="utf-8") + "\n# 手改\n", encoding="utf-8")
+        sh(self.repo, "git", "add", "knowledge/_index.yaml")
+        r = sh(self.repo, sys.executable, "scripts/rebuild_generated.py", "--sync", "--dry-run")
+        self.assertEqual(r.returncode, 2, r.stdout + r.stderr)
+        self.assertIn("已暂存", r.stdout)
+
     def test_sync_refuses_untracked_generated_file_instead_of_deleting(self):
         extra = self.repo / "knowledge" / "_index" / "extra.list"
         extra.write_text("手放的文件\n", encoding="utf-8")
         p = sh(
             self.repo,
-            "python3",
+            sys.executable,
             "scripts/rebuild_generated.py",
             "--sync",
             "--dry-run",
@@ -217,7 +233,7 @@ class GeneratedViewsBotTest(unittest.TestCase):
 
         p = sh(
             self.repo,
-            "python3",
+            sys.executable,
             "scripts/rebuild_generated.py",
             "--sync",
             "--remote",

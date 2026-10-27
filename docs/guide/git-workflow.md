@@ -13,8 +13,8 @@
 
 ### 分支模型
 
-- `main` 受保护、禁止直接 push：所有知识库变更（包括 groom 的周批次）都走 PR。**开启保护后，`rebuild-generated` job 必须能写 main**（允许 GitHub Actions 绕过，或改用 PAT / App token）；否则生成物只能靠人工重建。
-- 冷启动或单人阶段可以先不开分支保护，机制先行、权限后收紧；kb-checks CI 从第一天就启用，它是唯一不依赖人的硬门。
+- `main` 应开启保护、禁止直接 push；当前仓库尚未开启（冷启动可先不开，见下条）。所有知识库变更（包括 groom 的周批次）都走 PR。**开启保护后，`rebuild-generated` job 必须能写 main**（允许 GitHub Actions 绕过，或改用 PAT / App token）；否则生成物只能靠人工重建。
+- 冷启动或单人阶段可先不开保护；kb-checks CI 从第一天就启用，它是唯一不依赖人的硬门。
 
 ### 多 agent 并行（worktree 约束）
 
@@ -108,25 +108,25 @@ fork 负载类型的机制缺口写进 MR 描述或 issue，由维护者拿到�
 
 生成物（索引、路由聚合、reference 索引、timeline、条目使用记录）由脚本写，不由人写。分两种部署形态：
 
-- **有 CI 的部署**：合入 main 后由 `rebuild-generated` job 跑 `python3 scripts/rebuild_generated.py --check`，有 diff 就提交。PR 只交源文件；GitHub 上的 `generated-guard` 挡住手改生成物，其他平台的流水线可以调用同一条 `scripts/check_generated_untouched.py --base <基线>`。门是覆盖检查（能从源产出齐全生成物），不是逐字节相同。
-- **没有合入后重建流水线的部署**：没有这个 job 就不会自动重建。两条路选一条，并写进该部署的说明：
+- **有合入后重建 job 的部署（下称自动部署）**：合入 main 后由 `rebuild-generated` job 跑 `python3 scripts/rebuild_generated.py --check`，有 diff 就提交。PR 只交源文件；GitHub 上的 `generated-guard`（生成物守卫）挡住手改生成物，其他平台的流水线可以调用同一条 `scripts/check_generated_untouched.py --base <基线>`。门是覆盖检查（能从源产出齐全生成物），不是逐字节相同。
+- **没有这个 job 的部署（下称手工部署）**：没有这个 job 就不会自动重建。两条路选一条，并写进该部署的说明：
   - **保留旧纪律**：PR 带生成物，提交前跑 `python3 scripts/rebuild_generated.py --check`，评审看生成物 diff；
-  - **合入后人工重建**：在 main 上跑 `python3 scripts/rebuild_generated.py --sync`——一条命令完成拉取、重建、校验、提交、推送。main 受保护或没有权限时加 `--pr-branch chore/rebuild-generated`，改成推分支后开 PR（只用于没有 generated-guard 的部署）。命令会拒绝非生成物的未提交改动与生成物目录里的未跟踪文件，只丢弃已跟踪生成物的本地改动，推送前先探权限。必须有人负责；忘记的后果是新 case 不进索引、新路由词不生效，不是只慢一步。
+  - **合入后人工重建**：在 main 上跑 `python3 scripts/rebuild_generated.py --sync`——一条命令完成拉取、重建、校验、提交、推送。main 受保护或没有权限时加 `--pr-branch chore/rebuild-generated`，改成推分支后开 PR（只用于没有生成物守卫的部署）。命令会拒绝非生成物的未提交改动与生成物目录里的未跟踪文件，只丢弃已跟踪生成物的本地改动；推送前只探远端可达与快进，分支保护要等真实推送才暴露，失败时提交已在本地，按打印的恢复命令挪到分支。必须有人负责；忘记的后果是新 case 不进索引、新路由词不生效，不是只慢一步。
 
-有 `generated-guard` 的部署不要用 `--pr-branch`：那会开一个只含生成物的 PR，被守卫判红。GitHub 上 main 受保护时，正解是让 `rebuild-generated` job 能写 main（允许 Actions 绕过，或用 PAT / App token）；否则没有自动或半自动路径，只能由有绕过权限的人跑 `--sync`。
+有生成物守卫的部署不要用 `--pr-branch`：那会开一个只含生成物的 PR，被守卫判红。GitHub 上 main 受保护时，正解是让 `rebuild-generated` job 能写 main（允许 Actions 绕过，或用 PAT / App token）；否则没有自动或半自动路径，只能由有绕过权限的人跑 `--sync`。
 
-生成物里不写数字（条数 / 容量 / 日期现算）仍是前提：数字一进 git，两人并发合并时要么落在同一行、要么漂移成错的数。路由性质文件走 `merge=union`，两人同一天加词两边都留；索引是嵌套结构，不配 union——有 CI 时由主干 job 整体重建，无 CI 时冲突了重跑生成器。
+生成物里不写数字（条数 / 容量 / 日期现算）仍是前提：数字一进 git，两人并发合并时要么落在同一行、要么漂移成错的数。路由性质文件走 `merge=union`，两人同一天加词两边都留；索引是嵌套结构，不配 union——自动部署由主干 job 整体重建；手工部署冲突了重跑生成器。
 
 | 文件 | 谁提交 | 提交前跑什么 | 门 |
 |---|---|---|---|
 | case 本体 `knowledge/<ns>/<cat>/*.yaml` | 人（PR） | — | `verify_case_draft.py --all` |
-| 读侧视图 + 总表 `knowledge/_index/…` | 主干 job（有 CI）/ 人（无 CI） | `rebuild_generated.py` | `build_index.py --check`（覆盖检查：每条 case 的读侧行与总表条目都在、与内容对得上） |
+| 读侧视图 + 总表 `knowledge/_index/…` | 主干 job（自动部署）/ 人（手工部署） | `rebuild_generated.py` | `build_index.py --check`（覆盖检查：每条 case 的读侧行与总表条目都在、与内容对得上） |
 | 路由性质文件 `triage-tree.d/<性质>.yaml` | 人（PR） | — | `build_triage_tree.py --check-sources`（性质 id 唯一 / category 合法 / ≤30 性质 / 一性质一文件 / `<side>` 占位在 / 源清单无遗漏） |
 | 路由协议与清单 `triage-tree.d/00-protocol.md` | 人（PR） | — | 同上（`sources:` 决定拼接顺序与归属，`workload_types:` 是负载类型层的唯一写点） |
-| 路由聚合 `triage-tree.yaml` | 主干 job（有 CI）/ 人（无 CI） | `build_triage_tree.py` | `build_triage_tree.py --check-coverage`（源里每条症状组、负载类型层每个字段都在聚合里） |
-| reference 索引 / timeline / 条目使用记录 | 主干 job（有 CI）/ 人（无 CI） | `rebuild_generated.py` | 各自 `--check` |
+| 路由聚合 `triage-tree.yaml` | 主干 job（自动部署）/ 人（手工部署） | `build_triage_tree.py` | `build_triage_tree.py --check-coverage`（源里每条症状组、负载类型层每个字段都在聚合里） |
+| reference 索引 / timeline / 条目使用记录 | 主干 job（自动部署）/ 人（手工部署） | `rebuild_generated.py` | 各自 `--check` |
 
-有 CI 的部署合并不需要任何人再跑命令；没有 CI 的部署必须有人跑 `rebuild_generated.py --sync`，或者保留“PR 带生成物”的旧纪律。两种纪律不要混用：混用时 `generated-guard` 会把带生成物的 PR 判红，而人工重建又没人负责。
+自动部署合并不需要任何人再跑命令；手工部署必须有人跑 `rebuild_generated.py --sync`，或者保留“PR 带生成物”的旧纪律。两种纪律不要混用：混用时生成物守卫会把带生成物的 PR 判红，而人工重建又没人负责。
 
 #### 手动同步（没有合入后 job）
 
@@ -142,7 +142,7 @@ python3 scripts/rebuild_generated.py --sync
 python3 scripts/rebuild_generated.py --sync --pr-branch chore/rebuild-generated
 ```
 
-改成推一个只含生成物的分支，再由人在平台上开 PR（只用于没有 `generated-guard` 的部署）。只想看会改什么、不提交：
+改成推一个只含生成物的分支，再由人在平台上开 PR（只用于没有生成物守卫的部署）。只想看会改什么、不提交：
 
 ```bash
 python3 scripts/rebuild_generated.py --sync --dry-run
@@ -209,7 +209,7 @@ owner 尚未确定时，`CODEOWNERS.example` 保留 TODO 占位，CI 与标签�
 
 ### 6 合入
 
-PR 经 required review 批准后合入 `main`。有 CI 的部署合并完没有任何收尾动作；没有 CI 的部署见步骤 2 的两条纪律。
+PR 经 required review 批准后合入 `main`。自动部署合并完没有任何收尾动作；手工部署见步骤 2 的两条纪律。
 
 通知机制：
 
@@ -222,17 +222,17 @@ PR 经 required review 批准后合入 `main`。有 CI 的部署合并完没有�
 1. `git fetch upstream && git merge upstream/main`，合并后 `git status`：冲突应只出现在「两边都写」那四个路径上；
 2. 只接收面出现冲突，说明 fork 改过它——还原上游那份，改动挪进反提 PR；
 3. 「每部署一份」保留本仓那份，「生成物」重新生成，都不逐行解；
-4. `python3 scripts/rebuild_generated.py --check` 与 `python3 scripts/verify_proposals.py --check` 应绿（本地生成只作预览；有 CI 的部署由主干 job 提交生成物）。
+4. `python3 scripts/rebuild_generated.py --check` 与 `python3 scripts/verify_proposals.py --check` 应绿（本地生成只作预览；自动部署由主干 job 提交生成物）。
 
 ## 4 怎么确认做对了
 
-需要说明各道闸门的实际强度。平台与 CI 能硬性强制的是三件事：谁审批过、YAML 是否合法、有 CI 时生成物是否新鲜（无 CI 时降为约定）。语义层面的闸门（脱敏是否彻底、root cause 是否正确、severity 标注是否恰当）只能依靠流程约定与人工抽查。下表对每道闸门标注强度，避免把约定误认为已被强制。
+需要说明各道闸门的实际强度。平台与 CI 能硬性强制的是三件事：谁审批过、YAML 是否合法、自动部署时生成物是否新鲜（手工部署降为约定）。语义层面的闸门（脱敏是否彻底、root cause 是否正确、severity 标注是否恰当）只能依靠流程约定与人工抽查。下表对每道闸门标注强度，避免把约定误认为已被强制。
 
 ### 门控映射表
 
 | 闸门 | 机制 | 强度 |
 |---|---|---|
-| YAML 语法 + 生成物新鲜度 | CI：PR 先跑 `rebuild_generated.py` 再跑各 `--check`；main 由 `rebuild-generated` job 重建并提交 | 硬（有 CI）；无 CI 的部署降为约定，靠人工重建 |
+| YAML 语法 + 生成物新鲜度 | CI：PR 先跑 `rebuild_generated.py` 再跑各 `--check`；main 由 `rebuild-generated` job 重建并提交 | 硬（自动部署）；手工部署降为约定，靠人工重建 |
 | 命名空间变更审批 | `CODEOWNERS` + 分支保护 required review | 硬 |
 | 高风险双签 | `kb/high-risk` 标签 + CODEOWNERS 双组路径（每组至少一人批） | 半硬（两个 approval 是否来自两组需人核验，见下） |
 | 脱敏 / severity 纪律 | to-postmortem 流程 + groom 周批审抽查 | 约定 |
@@ -256,7 +256,7 @@ pip install pyyaml
 python3 scripts/rebuild_generated.py --check
 ```
 
-这条命令在任何平台都能等价配置：有 CI 就放在合入后的 job（GitHub 的写法见 `.github/workflows/rebuild-generated.yml`，GitLab 等平台的流水线调用同一个脚本即可）；没有 CI 就在 main 上跑 `python3 scripts/rebuild_generated.py --sync`（拉取、重建、提交、推送一条命令）。`--check` 会先重建再校验，不只是检查。合入后流水线最少两步：在最新 main 的检出上跑这条命令；`git status --porcelain` 有输出就提交并 push。失败时从最新 main 重来，不要在旧生成物上 rebase。没有 CI 又没人跑时，新 case 不会进索引、诊断看不见——这个失败形态不报错，比“CI 变红”更难发现。
+这条命令在任何平台都能等价配置：有合入后重建 job 就放在该 job（GitHub 的写法见 `.github/workflows/rebuild-generated.yml`，GitLab 等平台的流水线调用同一个脚本即可）；没有这个 job 就在 main 上跑 `python3 scripts/rebuild_generated.py --sync`（拉取、重建、提交、推送一条命令）。`--check` 会先重建再校验，不只是检查。合入后流水线最少两步：在最新 main 的检出上跑这条命令；`git status --porcelain` 有输出就提交并 push。失败时从最新 main 重来，不要在旧生成物上 rebase。没有这个 job 又没人跑时，新 case 不会进索引、诊断看不见——这个失败形态不报错，比 CI 报错更难发现。
 
 ### 触发分两层（改 CI 时两者都要照顾）
 
@@ -349,10 +349,10 @@ CI 侧只有机械切片：模板结构（`pr-template.yml`）、docs 名单与�
 | 冲突文件 | 动作 |
 |---|---|
 | `triage-tree.d/<性质>.yaml`、`triage-tree.d/00-protocol.md` | 通常不会冲突（配了 `merge=union`）。若真出现冲突标记：把两份都留下、删掉三行标记。聚合由主干 job 重建，不在 PR 里解。 |
-| 生成物（总表 / 读侧视图 / 路由聚合 / reference 索引） | 正常不会冲突：生成物不进 PR。旧分支若还带着生成物，把它还原到基线（`git checkout origin/main -- knowledge/_index.yaml knowledge/_index triage-tree.yaml …`），不要逐行解；有 CI 时合入后主干 job 会重建，无 CI 时本地跑 `python3 scripts/rebuild_generated.py --check` 后提交。 |
+| 生成物（总表 / 读侧视图 / 路由聚合 / reference 索引） | 正常不会冲突：生成物不进 PR。旧分支若还带着生成物，把它还原到基线（`git checkout origin/main -- knowledge/_index.yaml knowledge/_index triage-tree.yaml …`），不要逐行解；自动部署由主干 job 重建；手工部署本地跑 `python3 scripts/rebuild_generated.py --check` 后提交。 |
 | case 本体 | 真正需要人判断的只剩这里（同一 case 两人改）——按内容合。 |
 
-有 CI 时建议开启“合并前分支必须最新到主干”：它不会再把索引冲突丢给提交者（生成物已不在 PR 里），只会让内容冲突在合入前暴露。
+自动部署建议开启“合并前分支必须最新到主干”：它不会再把索引冲突丢给提交者（生成物已不在 PR 里），只会让内容冲突在合入前暴露。
 
 为什么这么做（可复跑的实验在 `tests/test_concurrent_submit.py`，`python3 tests/test_concurrent_submit.py`
 会打印一张对比表）：三人并发、同一个框架时，改前冲突在总表 + 分片 + 路由单文件上，其中路由文件的冲突
@@ -370,5 +370,5 @@ CI 侧只有机械切片：模板结构（`pr-template.yml`）、docs 名单与�
 
 - 未合入的改动：`git worktree remove ../ascend-sleuth-s<session>` 清理 worktree；收工前提交或 stash，不留未提交改动。
 - fork 首次同步冲突：只接收面还原上游那份，把改动挪进反提 PR；「每部署一份」保留本仓那份；「生成物」重新生成。
-- 生成物冲突：先还原到基线；有 CI 由主干 job 重建，无 CI 跑 `python3 scripts/rebuild_generated.py --check` 后提交。
+- 生成物冲突：先还原到基线；自动部署由主干 job 重建；手工部署跑 `python3 scripts/rebuild_generated.py --check` 后提交。
 - 已合入改动的回滚不在本文范围。

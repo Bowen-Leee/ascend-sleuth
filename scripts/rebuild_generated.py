@@ -14,6 +14,7 @@ PR 只交源文件；本脚本是"生成物由谁写"的唯一实现：
 from __future__ import annotations
 
 import argparse
+import shlex
 import subprocess
 import sys
 from pathlib import Path
@@ -86,12 +87,19 @@ def git(*args: str, check: bool = True) -> subprocess.CompletedProcess:
 
 
 def status_paths() -> list[tuple[str, str]]:
+    """`-z`：路径含空格/非 ASCII 时不会被 git 加引号或转义。"""
     out = []
-    p = git("status", "--porcelain")
-    for line in p.stdout.splitlines():
-        if len(line) < 4:
+    chunks = git("status", "--porcelain", "-z").stdout.split("\0")
+    i = 0
+    while i < len(chunks):
+        chunk = chunks[i]
+        i += 1
+        if len(chunk) < 4:
             continue
-        out.append((line[:2], line[3:]))
+        code, path = chunk[:2], chunk[3:]
+        if code[0] in ("R", "C"):
+            i += 1  # 改名/复制在 -z 里还跟一条原路径
+        out.append((code, path))
     return out
 
 
@@ -130,7 +138,7 @@ def sync(remote: str, main_branch: str, pr_branch: str, dry_run: bool) -> int:
         for code, path in untracked:
             print(f"  {code} {path}")
             paths.append(path)
-        print("  git clean -fd -- " + " ".join(paths))
+        print("  git clean -fd -- " + shlex.join(paths))
         return 2
 
     if generated:
@@ -171,14 +179,15 @@ def sync(remote: str, main_branch: str, pr_branch: str, dry_run: bool) -> int:
         return 0
 
     if not pr_branch:
-        # 先探一次 push 权限/保护规则；失败就不要在 main 上留下提交。
+        # 先探一次远端可达与快进。分支保护/服务端规则只有真实 push 才会暴露；
+        # 真 push 失败时提交已在本地，按错误信息里的恢复命令挪到分支。
         p = git("push", "--dry-run", remote, f"HEAD:{main_branch}", check=False)
         if p.returncode != 0:
             err = p.stderr or ""
             if "non-fast-forward" in err or "fetch first" in err:
                 return fail("远端 main 在同步期间更新了；重跑一次同步即可。")
             return fail(
-                f"{main_branch} 不能直接推（受保护或无权限）。加 --pr-branch <新分支名> 重跑，"
+                f"{main_branch} 推不上去（连不上远端、没有权限，或不在快进位置）。加 --pr-branch <新分支名> 重跑，"
                 "改成推一个只含生成物的分支，再在平台上开 PR（仅用于没有 generated-guard 的部署）。"
             )
 
@@ -190,7 +199,7 @@ def sync(remote: str, main_branch: str, pr_branch: str, dry_run: bool) -> int:
     # 不在 `git add` 里逐条列路径：生成器可能产出一个当前不存在的目录（如某部署没有
     # entry-activity），逐条列会 pathspec 报错。先全加，再核对暂存内容只有生成物。
     git("add", "-A")
-    staged = [path for path in git("diff", "--cached", "--name-only").stdout.splitlines() if path]
+    staged = [path for path in git("diff", "--cached", "--name-only", "-z").stdout.split("\0") if path]
     not_generated = [path for path in staged if not is_generated(path)]
     if not_generated:
         git("reset", "-q")
@@ -215,7 +224,7 @@ def sync(remote: str, main_branch: str, pr_branch: str, dry_run: bool) -> int:
         print(f"  git push {remote} HEAD:{main_branch}", file=sys.stderr)
         print(f"若 {main_branch} 受保护，把这次提交挪到分支：", file=sys.stderr)
         print(f"  git fetch {remote} {main_branch}", file=sys.stderr)
-        print("  git branch chore/rebuild-generated", file=sys.stderr)
+        print("  git branch -f chore/rebuild-generated", file=sys.stderr)
         print(f"  git reset --hard {remote}/{main_branch}", file=sys.stderr)
         print(f"  git push -u {remote} chore/rebuild-generated", file=sys.stderr)
         print("  然后在平台上开 PR（仅用于没有 generated-guard 的部署）。", file=sys.stderr)
@@ -251,7 +260,7 @@ def main() -> int:
     ap.add_argument(
         "--pr-branch",
         default="",
-        help="--sync 不直接推 main，改为新建并推送这个分支，再由人在平台上开 PR",
+        help="--sync 不直接推 main，改为新建并推送这个分支，再由人在平台上开 PR（仅用于没有 generated-guard 的部署）",
     )
     ap.add_argument(
         "--dry-run",
