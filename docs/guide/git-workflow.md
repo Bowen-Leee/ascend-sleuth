@@ -109,7 +109,7 @@ fork 负载类型的机制缺口写进 MR 描述或 issue，由维护者拿到�
 生成物（索引、路由聚合、reference 索引、timeline、条目使用记录）由脚本写，不由人写。分两种部署形态：
 
 - **有 CI 的部署**：合入 main 后由 `rebuild-generated` job 跑 `python3 scripts/rebuild_generated.py --check`，有 diff 就提交。PR 只交源文件；`generated-guard` 挡住手改生成物。门是覆盖检查（能从源产出齐全生成物），不是逐字节相同。
-- **没有 CI 的部署**（内网 CodeHub 等）：没有这个 job 就不会自动重建。两条路选一条，并写进该部署的说明：
+- **没有合入后重建流水线的部署**：没有这个 job 就不会自动重建。两条路选一条，并写进该部署的说明：
   - **保留旧纪律**：PR 带生成物，提交前跑 `python3 scripts/rebuild_generated.py --check`，评审看生成物 diff；
   - **合入后人工重建**：由人跑同一条命令并提交。必须有人负责；忘记的后果是新 case 不进索引、新路由词不生效，不是只慢一步。
 
@@ -232,7 +232,7 @@ pip install pyyaml
 python3 scripts/rebuild_generated.py --check
 ```
 
-这条命令在任何平台都能等价配置：有 CI 就放在合入后的 job（GitHub 的写法见 `.github/workflows/rebuild-generated.yml`，GitLab / CodeHub 流水线调用同一个脚本即可）；没有 CI 就在合入后由人跑并提交。`--check` 会先重建再校验，不只是检查。CodeHub 的合入后流水线最少两步：在最新 main 的检出上跑这条命令；`git status --porcelain` 有输出就提交并 push。失败时从最新 main 重来，不要在旧生成物上 rebase。没有 CI 又没人跑时，新 case 不会进索引、诊断看不见——这个失败形态不报错，比“CI 变红”更难发现。
+这条命令在任何平台都能等价配置：有 CI 就放在合入后的 job（GitHub 的写法见 `.github/workflows/rebuild-generated.yml`，GitLab 等平台的流水线调用同一个脚本即可）；没有 CI 就在合入后由人跑并提交。`--check` 会先重建再校验，不只是检查。合入后流水线最少两步：在最新 main 的检出上跑这条命令；`git status --porcelain` 有输出就提交并 push。失败时从最新 main 重来，不要在旧生成物上 rebase。没有 CI 又没人跑时，新 case 不会进索引、诊断看不见——这个失败形态不报错，比“CI 变红”更难发现。
 
 ### 触发分两层（改 CI 时两者都要照顾）
 
