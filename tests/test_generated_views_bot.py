@@ -157,7 +157,7 @@ class GeneratedViewsBotTest(unittest.TestCase):
         self.assertEqual(p.returncode, 0, p.stderr)
 
         other = Path(self.tmp.name) / "other"
-        p = sh(self.tmp.name, "git", "clone", "-q", str(remote), str(other))
+        p = sh(self.tmp.name, "git", "clone", "-q", "-b", "main", str(remote), str(other))
         self.assertEqual(p.returncode, 0, p.stderr)
         sh(other, "git", "config", "user.email", "t@example.com")
         sh(other, "git", "config", "user.name", "t")
