@@ -13,7 +13,7 @@
 
 ### 分支模型
 
-- `main` 应开启保护、禁止直接 push；当前仓库尚未开启（冷启动可先不开，见下条）。所有知识库变更（包括 groom 的周批次）都走 PR。**开启保护后，`rebuild-generated` job 必须能写 main**（允许 GitHub Actions 绕过，或改用 PAT / App token）；否则生成物只能靠人工重建。
+- `main` 应开启保护、禁止直接 push；当前仓库尚未开启（冷启动可先不开，见下条）。所有知识库变更（包括 groom 的周批次）都走 PR。**开启保护后，把 `DEPLOY_KEY` 对应的 deploy key 加进 ruleset 的 bypass 列表**；`GITHUB_TOKEN` 不能直接绕过。没配好时生成物只能靠人工重建。
 - 冷启动或单人阶段可先不开保护；kb-checks CI 从第一天就启用，它是唯一不依赖人的硬门。
 
 ### 多 agent 并行（worktree 约束）
@@ -113,7 +113,7 @@ fork 负载类型的机制缺口写进 MR 描述或 issue，由维护者拿到�
   - **保留旧纪律**：PR 带生成物，提交前跑 `python3 scripts/rebuild_generated.py --check`，评审看生成物 diff；
   - **合入后人工重建**：在 main 上跑 `python3 scripts/rebuild_generated.py --sync`——一条命令完成拉取、重建、校验、提交、推送。main 受保护或没有权限时加 `--pr-branch chore/rebuild-generated`，改成推分支后开 PR（只用于没有生成物守卫的部署）。命令会拒绝非生成物的未提交改动与生成物目录里的未跟踪文件，只丢弃已跟踪生成物的本地改动；推送前只探远端可达与快进，分支保护要等真实推送才暴露，失败时提交已在本地，按打印的恢复命令挪到分支。必须有人负责；忘记的后果是新 case 不进索引、新路由词不生效，不是只慢一步。
 
-有生成物守卫的部署不要用 `--pr-branch`：那会开一个只含生成物的 PR，被守卫判红。GitHub 上 main 受保护时，正解是让 `rebuild-generated` job 能写 main（允许 Actions 绕过，或用 PAT / App token）；否则没有自动或半自动路径，只能由有绕过权限的人跑 `--sync`。
+有生成物守卫的部署不要用 `--pr-branch`：那会开一个只含生成物的 PR，被守卫判红。GitHub 上 main 受保护时，正解是把 `DEPLOY_KEY` 对应的 deploy key 加进 ruleset bypass；否则没有自动或半自动路径，只能由有绕过权限的人跑 `--sync`。
 
 生成物里不写数字（条数 / 容量 / 日期现算）仍是前提：数字一进 git，两人并发合并时要么落在同一行、要么漂移成错的数。路由性质文件走 `merge=union`，两人同一天加词两边都留；索引是嵌套结构，不配 union——自动部署由主干 job 整体重建；手工部署冲突了重跑生成器。
 

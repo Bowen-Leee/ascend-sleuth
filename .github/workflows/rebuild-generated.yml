@@ -7,9 +7,9 @@ name: rebuild-generated
 # 生成物就落后一次；要求分支最新时，每个人都要 rebase、重建、push。把所有权移到主干，
 # 这一类冲突从流程里消失，代价是主干有几秒生成物稍旧。
 #
-# 分支保护：GITHUB_TOKEN 默认不能绕过保护规则。若 main 要求 PR / 签名 / 线性历史，
-# 需要在仓库设置里允许 GitHub Actions 写入，或改用 PAT / GitHub App token；否则本 job
-# 会在最后一步失败并打印修法。
+# 分支保护：GITHUB_TOKEN 默认不能绕过。本 job 用 DEPLOY_KEY（有写权限的 deploy key）
+# 做 checkout 与 push；该 key 必须加进 ruleset 的 bypass 列表，否则 push 会被拒。
+# secrets 里没有 DEPLOY_KEY 时 checkout 就会失败——合入前先配好。
 on:
   push:
     branches: [main]
@@ -44,6 +44,9 @@ jobs:
         with:
           ref: main
           fetch-depth: 0
+          # deploy key：只给这个 job 用，权限限于本仓库写；需先在仓库 secrets 配 DEPLOY_KEY，
+          # 并把对应 deploy key 加进 ruleset 的 bypass 列表（见 docs/guide/git-workflow.md）。
+          ssh-key: ${{ secrets.DEPLOY_KEY }}
 
       - uses: actions/setup-python@v5
         with:
@@ -80,5 +83,5 @@ jobs:
             sleep 5
           done
 
-          echo "推送失败：检查 main 的分支保护是否允许 GitHub Actions 写入，或改用 PAT / App token。" >&2
+          echo "推送失败：检查 DEPLOY_KEY 对应的 deploy key 是否在 ruleset bypass 列表里，以及 secret 是否配好。" >&2
           exit 1
