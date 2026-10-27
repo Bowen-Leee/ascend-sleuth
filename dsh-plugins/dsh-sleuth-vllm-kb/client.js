@@ -78,6 +78,7 @@ window.__ModuleLoader__.load({
       .vk-toast{font-size:12px;color:var(--vk-ok);opacity:0;transform:translateX(-4px);
         transition:opacity .2s ease,transform .2s ease}
       .vk-toast[data-on="1"]{opacity:1;transform:none}
+      .vk-dirty{font-size:12px;color:var(--vk-mut)}
       .vk-adv{margin-top:14px;border-top:1px dashed var(--vk-line);padding-top:10px}
       .vk-adv summary{cursor:pointer;color:var(--vk-mut);font-size:12px;list-style:none;
         display:flex;align-items:center;gap:6px;transition:color .16s ease}
@@ -112,7 +113,7 @@ window.__ModuleLoader__.load({
       const { endpoint, active, state, busy, onRename, onUrl, onActivate, onProbe, onRemove } = props
       const status = busy ? 'testing' : state ? (state.ok ? 'ok' : 'bad') : 'idle'
       const pillText = busy ? '探测中' : state ? (state.ok ? `${state.elapsed_ms} ms` : '不可用') : '未探测'
-      const eq = state && !state.ok ? (state.detail || `HTTP ${state.status}`) : (state && state.ok ? `HTTP ${state.status}${state.embedding ? `｜embedding ${state.embedding}` : ''}${state.ocr ? `｜ocr ${state.ocr}` : ''}` : '')
+      const eq = state && !state.ok ? (state.detail || `HTTP ${state.status}`) : (state && state.ok ? `HTTP ${state.status}${state.embedding ? `｜embedding ${state.embedding}` : ''}${state.ocr ? `｜ocr ${state.ocr}` : ''}${state.saved === false ? '｜这个地址还没保存' : ''}` : '')
       return h('div', { className: 'vk-row', 'data-on': active ? '1' : '0' },
         h('input', { className: 'vk-dot', type: 'radio', name: 'vk-active', checked: active, onChange: onActivate, 'aria-label': '启用这个端点' }),
         h('input', { className: 'vk-in', value: endpoint.label, placeholder: '名称，如内网测试', onChange: (e) => onRename(e.target.value) }),
@@ -132,12 +133,25 @@ window.__ModuleLoader__.load({
       const [saved, setSaved] = React.useState(false)
       const [busy, setBusy] = React.useState('')
       const [probes, setProbes] = React.useState({})
+      // 上次读进来或存下去的那份配置：和它不同就说明页面上的改动还没落盘。
+      const [baseline, setBaseline] = React.useState('')
 
       // 函数声明而不是 const：首次渲染在 config===null 处提前返回，const 定义不会执行，
       // 而上面的 effect 已经排进队列，回调再调用它就会报 "Cannot access before initialization"。
       function probeOne(endpoint) {
+        const baseUrl = String(endpoint.base_url || '').trim()
+        if (baseUrl === '') {
+          setProbes((prev) => Object.assign({}, prev, {
+            [endpoint.id]: { ok: false, status: 0, detail: '还没填地址：填上再点「测试」。' },
+          }))
+          return
+        }
         setBusy(endpoint.id)
-        request('/probe', { method: 'POST', body: JSON.stringify({ endpoint_id: endpoint.id }) })
+        // 地址与超时一起带上：探测测的是屏幕上这条，不要求先保存。
+        request('/probe', {
+          method: 'POST',
+          body: JSON.stringify({ endpoint_id: endpoint.id, base_url: baseUrl, probe_timeout_ms: config.probe_timeout_ms }),
+        })
           .then((result) => setProbes((prev) => Object.assign({}, prev, { [endpoint.id]: result })))
           .catch((e) => setProbes((prev) => Object.assign({}, prev, {
             [endpoint.id]: {
@@ -155,6 +169,7 @@ window.__ModuleLoader__.load({
           .then((payload) => {
             if (!alive) return
             setConfig(payload.config || EMPTY)
+            setBaseline(JSON.stringify(payload.config || EMPTY))
             if (payload.error) setError(payload.error)
           })
           .catch((e) => { if (alive) setError(String((e && e.message) || e)) })
@@ -172,12 +187,21 @@ window.__ModuleLoader__.load({
 
       const patch = (next) => setConfig(Object.assign({}, config, next))
 
+      const dirty = JSON.stringify(config) !== baseline
+      const unfilled = config.endpoints.filter((item) => String(item.base_url || '').trim() === '')
+
       const save = () => {
+        // 没有地址的端点存不下来（会从文件里被剔掉），保存后那一行就消失——先明说，不静默丢。
+        if (unfilled.length > 0) {
+          setError('有端点还没填地址：补上或删掉再保存（没有地址的端点不会存进配置文件）。')
+          return
+        }
         setBusy('save')
         setError('')
         request('/config', { method: 'POST', body: JSON.stringify(config) })
           .then((payload) => {
             setConfig(payload.config || config)
+            setBaseline(JSON.stringify(payload.config || config))
             setSaved(true)
             setTimeout(() => setSaved(false), 1800)
           })
@@ -198,6 +222,13 @@ window.__ModuleLoader__.load({
         onUrl: (value) => {
           const endpoints = config.endpoints.map((item, i) => (i === index ? Object.assign({}, item, { base_url: value }) : item))
           patch({ endpoints })
+          // 地址一改，上一次的探测结果就不属于这个地址了：清掉，别把绿色的毫秒数留在新地址旁边。
+          setProbes((prev) => {
+            if (prev[endpoint.id] === undefined) return prev
+            const next = Object.assign({}, prev)
+            delete next[endpoint.id]
+            return next
+          })
         },
         onActivate: () => patch({ active: endpoint.id }),
         onProbe: () => probeOne(endpoint),
@@ -222,8 +253,9 @@ window.__ModuleLoader__.load({
             },
           }, '+ 添加端点'),
           h('div', { className: 'vk-foot' },
-            h('button', { className: 'vk-btn vk-btn-primary', disabled: busy !== '', onClick: save }, busy === 'save' ? '保存中…' : '保存'),
+            h('button', { className: 'vk-btn vk-btn-primary', disabled: busy !== '', onClick: save }, busy === 'save' ? '保存中…' : (dirty ? '保存改动' : '保存')),
             h('span', { className: 'vk-toast', 'data-on': saved ? '1' : '0' }, '已保存，工具下次调用即生效'),
+            dirty ? h('span', { className: 'vk-dirty' }, unfilled.length > 0 ? '有端点没填地址' : '有未保存的改动') : null,
           ),
           h('details', { className: 'vk-adv' },
             h('summary', null, '高级'),
@@ -238,7 +270,7 @@ window.__ModuleLoader__.load({
           ),
           error ? h('div', { className: 'vk-err' }, error) : null,
         ),
-        h('div', { className: 'vk-empty' }, '打开这个页面不会自动探测；点每行的「测试」才发请求。工具行（vllm-kb-tools）默认关闭，在插件页单独打开；配置改完不用重启。'),
+        h('div', { className: 'vk-empty' }, '打开这个页面不会自动探测；点每行的「测试」按屏幕上的地址试一次，不必先保存。工具行（vllm-kb-tools）默认关闭，在插件页单独打开；配置改完不用重启。'),
       )
     }
 

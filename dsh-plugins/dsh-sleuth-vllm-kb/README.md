@@ -15,7 +15,7 @@
 ## 装与配
 
 1. 装包：`node scripts/panel_install.js --all`（和面板包一起装/更新），或 `node scripts/panel_install.js --spec "$PWD/dsh-plugins/vllm-kb"` 只装它；也可以在侧栏「插件」里粘贴本目录绝对路径。换装要重启 DSH Desktop。
-2. **设置页左侧栏**多一项「vllm-kb」，点进去：添加端点（名称 + 地址）、单选启用、点「测试」看 `/health` 的往返耗时与 embedding 状态。**OCR 走哪个地址**：与检索同一个 KB 端点（`POST :8000/ocr`）。从 vllm-kb 实现看，`/ocr` 是同一个 API 应用上的路由，PaddleOCR 由服务端通过 `ocr_provider=api` + `ocr_api_base` 调用，agent 不直连它。
+2. **设置页左侧栏**多一项「vllm-kb」，点进去：添加端点（名称 + 地址）、单选启用、点「测试」看 `/health` 的往返耗时与 embedding 状态（探的就是输入框里那条地址，改完直接测，不必先保存）。**OCR 走哪个地址**：与检索同一个 KB 端点（`POST :8000/ocr`）。从 vllm-kb 实现看，`/ocr` 是同一个 API 应用上的路由，PaddleOCR 由服务端通过 `ocr_provider=api` + `ocr_api_base` 调用，agent 不直连它。
 3. 打开插件页里本包的 `vllm-kb-tools` 行；需要截图转文字再单独开 `vllm-kb-ocr`（模型能读图就不用开）。
 4. 会话里就有 `vllm_kb_*` 四个工具了。
 
@@ -58,14 +58,14 @@
 node scripts/check_vllm_kb.js
 ```
 
-打桩跑 26 项：配置归一化与读写、`repo#编号 → source_id`、四个能力的请求形状（进程内假服务核对 body 与 query）、输出截断、5xx 映射、可用性三态与缓存。CI 的 panel-checks 里跑这一条。
+打桩跑 30 项：配置归一化与读写、`repo#编号 → source_id`、四个能力的请求形状（进程内假服务核对 body 与 query）、输出截断、5xx 映射、可用性三态与缓存，以及探测路由用请求带来的地址与超时（页面上改了还没保存也能测）、探没保存的地址不写缓存。CI 的 panel-checks 里跑这一条。
 
 **它证明不了的**：设置页那一项能否渲染、工具注册、真服务返回的业务字段。这几条只能真机验证。
 
 ## 联调清单（内网）
 
 1. `curl <KB 端点>/health` 有 JSON 返回，并看 `ocr` 字段的状态（服务端没配 OCR 时这里会显示未配置）。
-2. 设置页「vllm-kb」→ 添加端点 → 点「测试」看到 `HTTP 200` 与毫秒数。
+2. 设置页「vllm-kb」→ 添加端点 → 点「测试」看到 `HTTP 200` 与毫秒数。**填完地址直接点「测试」就行，不必先保存**——探测用的是页面上那条地址；保存只决定工具侧读哪一条。
 3. 打开 `vllm-kb-tools` 行，新会话看工具目录里有没有 `vllm_kb_*`。
 4. 真实问题跑一次 `vllm_kb_code`（镜像现场最好）：看返回是否被截断、耗时。
    再补三条字段级验证，用来区分「插件/流程没接好」与「服务端数据没构建」：

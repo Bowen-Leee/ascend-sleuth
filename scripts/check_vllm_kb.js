@@ -286,6 +286,52 @@ check('没有端点时 POST /probe → 200 且 ok:false', async () => {
   eq(out.payload.ok, false)
   return true
 })
+check('页面上的地址没保存也能探：用请求里的 base_url 与超时', async () => {
+  const sent = []
+  const config = core.normalizeConfig({ endpoints: [{ id: 'ep-1', label: '旧', base_url: 'http://old:8000' }], probe_timeout_ms: 1000 })
+  const out = await core.handleApiRequest(
+    { method: 'POST', pathname: '/probe', headers: { 'x-vllm-kb': '1' }, body: JSON.stringify({ endpoint_id: 'ep-1', base_url: 'http://new:9000/', probe_timeout_ms: 250 }) },
+    { readConfig: async () => ({ config, error: null }), probe: async (url, timeoutMs) => { sent.push([url, timeoutMs]); return { ok: true, status: 200, elapsed_ms: 3 } } },
+  )
+  eq(sent, [['http://new:9000', 250]], '应探页面上的地址与超时，不是配置文件里那条')
+  eq(out.payload.ok, true)
+  eq(out.payload.base_url, 'http://new:9000')
+  eq(out.payload.saved, false, '这个地址还没保存')
+  return true
+})
+check('没保存的地址不写探测缓存（工具侧可用性不该跟着变）', async () => {
+  const written = []
+  const config = core.normalizeConfig({ endpoints: [{ id: 'ep-1', label: '旧', base_url: 'http://old:8000' }] })
+  await core.handleApiRequest(
+    { method: 'POST', pathname: '/probe', headers: { 'x-vllm-kb': '1' }, body: JSON.stringify({ endpoint_id: 'ep-1', base_url: 'http://new:9000' }) },
+    { readConfig: async () => ({ config, error: null }), probe: async () => ({ ok: true, status: 200, elapsed_ms: 1 }), cache: { set: (id, value) => written.push([id, value]) } },
+  )
+  eq(written.length, 0)
+  return true
+})
+check('探的就是已保存的地址 → 照旧写缓存', async () => {
+  const written = []
+  const config = core.normalizeConfig({ endpoints: [{ id: 'ep-1', label: '现行', base_url: 'http://old:8000' }] })
+  const out = await core.handleApiRequest(
+    { method: 'POST', pathname: '/probe', headers: { 'x-vllm-kb': '1' }, body: JSON.stringify({ endpoint_id: 'ep-1', base_url: 'http://old:8000' }) },
+    { readConfig: async () => ({ config, error: null }), probe: async () => ({ ok: true, status: 200, elapsed_ms: 2 }), cache: { set: (id, value) => written.push([id, value]) } },
+  )
+  eq(written.length, 1)
+  eq(written[0][0], 'ep-1')
+  eq(out.payload.saved, true)
+  return true
+})
+check('地址还没填 → 明确说没填，不发请求', async () => {
+  let called = false
+  const out = await core.handleApiRequest(
+    { method: 'POST', pathname: '/probe', headers: { 'x-vllm-kb': '1' }, body: JSON.stringify({ endpoint_id: 'ep-new', base_url: '   ' }) },
+    { readConfig: async () => ({ config: core.normalizeConfig(null), error: null }), probe: async () => { called = true; return { ok: true } } },
+  )
+  eq(called, false)
+  eq(out.payload.ok, false)
+  ok(/还没有地址/.test(out.payload.detail), 'detail 应说明还没地址')
+  return true
+})
 check('未知路径 → 404', async () => {
   const out = await core.handleApiRequest({ method: 'GET', pathname: '/nope', headers: { 'x-vllm-kb': '1' } })
   eq(out.status, 404)
