@@ -1,5 +1,6 @@
 #!/usr/bin/env node
-// 外部查证配置的命令行入口：不改配置文件格式，直接读写 ~/.dsh/sleuth-kb.json。
+// 外部查证配置的命令行入口：不改配置文件格式，直接读写 ~/.dsh/vllm-kb.json
+// （文件不存在时读到旧路径 ~/.dsh/sleuth-kb.json，第一次写入落在新路径）。
 // 用途：设置页那一项万一没渲染出来时，端点照样可以配，工具侧每次调用都重读这个文件。
 //
 // 用法：
@@ -9,7 +10,7 @@
 //   node scripts/vllm_kb_config.mjs remove <名称或 id>
 //   node scripts/vllm_kb_config.mjs probe                           # 探一次当前启用的端点
 
-import { readConfig, writeConfig, normalizeConfig, activeEndpoint, probe, configPath } from '../dsh-plugins/vllm-kb/lib/core.js'
+import { readConfig, writeConfig, normalizeConfig, activeEndpoint, probe, configPath } from '../dsh-plugins/dsh-sleuth-vllm-kb/lib/core.js'
 
 const [cmd, a, b] = process.argv.slice(2)
 

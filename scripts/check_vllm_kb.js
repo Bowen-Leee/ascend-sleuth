@@ -2,14 +2,17 @@
 // vllm-kb 接入插件的离线自测：打桩，不需要 DSH，也不需要内网实例。
 //
 // 覆盖：配置归一化与读写、repo#编号 → source_id、四个能力的请求形状（打一台进程内假服务）、
-// 输出截断、错误映射（HTTP 4xx/5xx）、可用性三态与缓存、无端点时的降级。
+// 输出截断、错误映射（HTTP 4xx/5xx）、可用性三态与缓存、无端点时的降级、
+// 探测路由用请求带来的地址（页面改了还没保存也能测）、兜底命令行入口能跑。
 //
 // 跑法：node scripts/check_vllm_kb.js（CI 的 panel-checks 里跑这一条）
 
+import { execFileSync } from 'node:child_process'
 import { mkdtemp, writeFile, rm } from 'node:fs/promises'
 import { createServer } from 'node:http'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 
 const core = await import(new URL('../dsh-plugins/dsh-sleuth-vllm-kb/lib/core.js', import.meta.url).href)
 
@@ -75,7 +78,7 @@ check('完整 source_id 原样透传', () => eq(core.resolveSourceId('github:a-b
 check('没有 # 时原样返回', () => eq(core.resolveSourceId('pdf:manual'), 'pdf:manual'))
 
 const workdir = await mkdtemp(join(tmpdir(), 'vllm-kb-'))
-process.env.KB_EVIDENCE_CONFIG = join(workdir, 'sleuth-kb.json')
+process.env.KB_EVIDENCE_CONFIG = join(workdir, 'vllm-kb.json')
 
 console.log('[3] 配置读写')
 check('文件不存在时给默认值且不报错', async () => {
@@ -335,6 +338,35 @@ check('地址还没填 → 明确说没填，不发请求', async () => {
 check('未知路径 → 404', async () => {
   const out = await core.handleApiRequest({ method: 'GET', pathname: '/nope', headers: { 'x-vllm-kb': '1' } })
   eq(out.status, 404)
+  return true
+})
+
+console.log('[8] 命令行入口（scripts/vllm_kb_config.mjs）')
+// 设置页渲染不出来时的兜底：它 import 的是插件里的 core.js，路径写错就整条命令不能用。
+const cliPath = fileURLToPath(new URL('../scripts/vllm_kb_config.mjs', import.meta.url))
+function cli(dir, args) {
+  const env = Object.assign({}, process.env, { KB_EVIDENCE_CONFIG: join(dir, 'vllm-kb.json') })
+  return execFileSync(process.execPath, [cliPath].concat(args), { env, encoding: 'utf8' })
+}
+check('show 能跑起来并打印配置（模块路径没断）', () => {
+  const out = cli(join(workdir, 'cli-show'), ['show'])
+  ok(out.includes('"endpoints"'), 'show 应打印配置 JSON')
+  ok(out.includes('还没有端点'), '空配置应提示怎么加')
+  return true
+})
+check('add-endpoint 写进去，show 读得回来', () => {
+  const dir = join(workdir, 'cli-add')
+  cli(dir, ['add-endpoint', '本地', 'http://127.0.0.1:8000'])
+  const out = cli(dir, ['show'])
+  ok(out.includes('"label": "本地"'), '应读回端点名称')
+  ok(out.includes('http://127.0.0.1:8000'), '应读回端点地址')
+  return true
+})
+check('remove 删掉后回到空配置', () => {
+  const dir = join(workdir, 'cli-remove')
+  cli(dir, ['add-endpoint', '本地', 'http://127.0.0.1:8000'])
+  cli(dir, ['remove', '本地'])
+  ok(cli(dir, ['show']).includes('还没有端点'), '删掉后应是空配置')
   return true
 })
 
