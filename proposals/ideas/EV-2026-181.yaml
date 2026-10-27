@@ -1,0 +1,59 @@
+id: EV-2026-181
+layer: L2
+target_component: skills/evolve-check/SKILL.md
+title: 收尾检查在内网 fork 无落点 → 部署声明 evolution.mode 分档，record-only 下只记信号不产卡
+status: validated
+authorization: review
+dimension: evolvability
+supersedes: []
+superseded_by: null
+created_at: 2026-10-27
+source_signals:
+  - signal: human_feedback
+    evidence: 内网部署要求每个用户自己说「只沉淀、不要产卡」，是逐个用户的认知负担；而 fork 侧不产 EV 卡早已是成文政策
+    trajectory:
+      - "docs/guide/git-workflow.md#fork 侧不产 EV 卡"
+      - "docs/guide/evolution-user-guide.md#运行模式"
+  - signal: self_review_gap
+    evidence: 那条 fork 政策只写在 docs/ 里，skill 执行时读不到——规则交给执行者自觉，会随会话漂移
+    trajectory:
+      - "skills/evolve-check/SKILL.md#何时触发（收尾钩子）"
+      - "skills/evolve-check/SKILL.md#评估步骤"
+hypothesis: 把「要不要产卡」从 skill 正文的自觉改成部署级声明后，fork 部署收尾不再产卡，而上游缺省行为不变
+predicted_effect:
+  metric: 部署声明为 record-only 时的收尾产卡数
+  from: "每轮可能 ≥1（自审缺口是主要产卡来源）"
+  to: "0（仍记信号、仍落执行记录）"
+  measure:
+    command: "mkdir -p /tmp/evmode-check && python3 scripts/evolve_mode.py --root /tmp/evmode-check --set record-only && python3 scripts/evolve_mode.py --root /tmp/evmode-check --json"
+    expect_exit: 0
+    expect_stdout: "record-only"
+validation:
+  method: scan_review
+  baseline: 现 evolve-check 收尾协议（无部署声明，收尾一律可产卡）
+  success_criteria: 单测覆盖三档解析与写坏报错；端到端演练结果与改动前一致（190/193，剩余 3 条在干净 main 上同样失败）；人审确认 skill 正文三档可执行
+  rollback: 合入前整体丢弃分支；合入后 git revert 该 commit（新文件删除、文档与 CI 路径回退）
+gate:
+  condition: "内网 fork 需要「不产卡」形态，且上游自身仍要产卡——同一份 skill 要能分开这两种部署"
+risk: medium
+principle_refs: [2, 6, 10, 11]
+actual_cost:
+  tokens: 0
+  note: 人工指派的机制改动，token 未单独记账；范围 15 个文件、377 行
+decisions:
+  - who: agent
+    when: 2026-10-27
+    type: proposal
+    conclusion: 把「要不要产卡」从 skill 正文改成部署级声明 deployment.yaml，读端只留 scripts/evolve_mode.py；三档 full / record-only / off，缺省 full
+  - who: agent
+    when: 2026-10-27
+    type: action
+    conclusion: 落地 15 个文件：deployment.yaml、scripts/evolve_mode.py、tests/test_evolve_mode.py；evolve-check 第 0 步分档；self-evolve 与 issue-ingest / knowledge-groom 收尾加声明读取；doctor 显示模式与来源
+  - who: agent
+    when: 2026-10-27
+    type: eval
+    conclusion: 527 个单测通过（含新增 13 个）；docs-index、skill 自包含、proposal 校验、panel 两项通过；端到端演练 190/193，未通过的 3 条在干净 main 上同样失败
+  - who: agent
+    when: 2026-10-27
+    type: decision
+    conclusion: 采纳（validated）——声明写进结构，fork 设一次全队继承；缺省 full 保证上游行为不变
