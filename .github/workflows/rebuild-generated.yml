@@ -1,0 +1,82 @@
+name: rebuild-generated
+
+# 生成物（索引 / 路由聚合 / reference 索引）由这个 job 在合入后重建并提交。
+# 提交者只交源文件；PR 上的生成物守卫会挡住手改。
+#
+# 为什么用 push 后重建，而不是让每个 PR 带生成物：N 个在途 PR 里每合一个，其余分支的
+# 生成物就落后一次；要求分支最新时，每个人都要 rebase、重建、push。把所有权移到主干，
+# 这一类冲突从流程里消失，代价是主干有几秒生成物稍旧。
+#
+# 分支保护：GITHUB_TOKEN 默认不能绕过保护规则。若 main 要求 PR / 签名 / 线性历史，
+# 需要在仓库设置里允许 GitHub Actions 写入，或改用 PAT / GitHub App token；否则本 job
+# 会在最后一步失败并打印修法。
+on:
+  push:
+    branches: [main]
+    paths:
+      - "knowledge/**"
+      - "references/**"
+      - "triage-tree.d/**"
+      - "triage-tree.yaml"
+      - "metrics/**"
+      - "scripts/**"
+      - ".github/workflows/rebuild-generated.yml"
+      - ".github/actions/rebuild-generated/**"
+
+permissions:
+  contents: write
+
+# 两次合并挨得近时串行重建；后一次会重取 main 再生成，不会把前一次的旧结果推回去。
+concurrency:
+  group: rebuild-generated
+  cancel-in-progress: false
+
+jobs:
+  rebuild:
+    # 机器人自己的提交只改生成物；上面的 paths 会命中 knowledge/** 等目录，所以按提交信息跳过。
+    # 用提交信息而不是 actor：PAT / App token 的提交者名不一定是 github-actions[bot]。
+    if: "${{ !startsWith(github.event.head_commit.message, 'chore: rebuild generated views') }}"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - run: pip install pyyaml
+
+      - name: rebuild and commit
+        run: |
+          set -eu
+          for attempt in 1 2 3; do
+            # 每次重试都从最新 main 重来：生成物必须由"合并后的树"生成，
+            # 不能在旧结果上 rebase（那会把另一条 PR 的条目拼丢）。
+            git fetch origin main
+            git reset --hard origin/main
+            git clean -fd
+            python3 scripts/rebuild_generated.py --check
+
+            if [ -z "$(git status --porcelain)" ]; then
+              echo "生成物已是最新，无需提交"
+              exit 0
+            fi
+
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add -A
+            git commit -m "chore: rebuild generated views"
+
+            if git push origin HEAD:main; then
+              exit 0
+            fi
+
+            echo "push 失败（第 $attempt 次），重取 main 后重试" >&2
+            sleep 5
+          done
+
+          echo "推送失败：检查 main 的分支保护是否允许 GitHub Actions 写入，或改用 PAT / App token。" >&2
+          exit 1

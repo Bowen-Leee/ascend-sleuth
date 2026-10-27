@@ -9,13 +9,13 @@ name: kb-checks
 # 保护会让 PR 永远等一个不会出现的 Expected。单文件 + job 级 `if:` 下，跳过的 job 照常上报 skipped。
 on:
   push:
-    paths: ["knowledge/**", "references/**", "skills/**", "metrics/**", "proposals/**", "eval/**", "tests/**", "docs/**", "README.md", ".gitattributes", "triage-tree.yaml", "triage-tree.d/**", "dsh-plugins/**", "scripts/**", "trace-status.yaml", ".github/workflows/kb-checks.yml"]
+    paths: ["knowledge/**", "references/**", "skills/**", "metrics/**", "proposals/**", "eval/**", "tests/**", "docs/**", "README.md", ".gitattributes", "triage-tree.yaml", "triage-tree.d/**", "dsh-plugins/**", "scripts/**", "trace-status.yaml", ".github/workflows/kb-checks.yml", ".github/actions/**"]
   pull_request:
-    paths: ["knowledge/**", "references/**", "skills/**", "metrics/**", "proposals/**", "eval/**", "tests/**", "docs/**", "README.md", ".gitattributes", "triage-tree.yaml", "triage-tree.d/**", "dsh-plugins/**", "scripts/**", "trace-status.yaml", ".github/workflows/kb-checks.yml"]
+    paths: ["knowledge/**", "references/**", "skills/**", "metrics/**", "proposals/**", "eval/**", "tests/**", "docs/**", "README.md", ".gitattributes", "triage-tree.yaml", "triage-tree.d/**", "dsh-plugins/**", "scripts/**", "trace-status.yaml", ".github/workflows/kb-checks.yml", ".github/actions/**"]
 
 jobs:
   # ── 细网：这次改了哪一面 ──────────────────────────────────────────────────────
-  # GitHub 只支持 workflow 级 `paths:`，不支持 job 级，所以粗网一命中就会把下面 12 个 job 全拉起来。实测一轮
+  # GitHub 只支持 workflow 级 `paths:`，不支持 job 级，所以粗网一命中就会把下面全部 job 拉起来。实测一轮
   # PR 的 wall clock 140 秒，其中 unit-tests 单独占 135 秒（其余 11 个最慢 38 秒）——只改 docs 的
   # PR 也在付这 135 秒。本 job 把「改了哪一面」算成一组布尔量供各 job 取用。
   #
@@ -112,8 +112,8 @@ jobs:
               changed=$(git -c core.quotePath=false ls-files 2>/dev/null || true)
             fi
           fi
-          if printf '%s\n' "$changed" | grep -qE '^\.github/workflows/'; then
-            echo "本工作流自身有改动——全部 job 复验"
+          if printf '%s\n' "$changed" | grep -qE '^\.github/(workflows|actions)/'; then
+            echo "本工作流或共用 action 自身有改动——全部 job 复验"
             all=true
           fi
           echo "改动文件："
@@ -133,11 +133,28 @@ jobs:
           emit code       '^scripts/|^tests/'
           emit panels     '^dsh-plugins/|^trace-status\.yaml$'
 
+  # 生成物守卫：PR 不得手改生成物。生成物由合入后的 rebuild-generated job 写。
+  # 不依赖生成器能否跑通，是提交面的判据；放在最前面，红得早、报错直接给还原命令。
+  generated-guard:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: fetch base
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: git fetch --no-tags origin "$BASE_REF"
+      - name: reject hand-edited generated files
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: python3 scripts/check_generated_untouched.py --base "origin/$BASE_REF"
+
   index-freshness:
     needs: changes
     # `metrics` 也进：索引行的 `score` 由 `score_entries.py` 从条目使用记录的生成物算出来，
-    # 只追加记录、不重建索引的 PR 会让索引过期。实测：追加一行 `resolved: 1` 后
-    # `build_index.py --check` 退 1。
+    # 只追加记录、不重建索引的 PR 会让索引过期。现在 PR 不再提交索引，这里先生成再检查。
     if: needs.changes.outputs.knowledge == 'true' || needs.changes.outputs.code == 'true' || needs.changes.outputs.metrics == 'true'
     runs-on: ubuntu-latest
     steps:
@@ -146,18 +163,17 @@ jobs:
         with:
           python-version: "3.11"
       - run: pip install pyyaml
-      # 一致性门是**覆盖检查**（每条 case 的索引行都在、且与 case 内容对得上），不是逐字节相同。
-      # 为什么：并发合并后文件的**内容是对的**，只是条目顺序可能与重新生成不同（路由聚合配了
-      # merge=union，索引**故意没配**——嵌套结构做行级合并会拼坏 YAML，同格并发要重跑一次生成器）。
-      # 逐字节的门会把它判红，于是又逼人跑一遍收尾命令。数字（条数/容量/日期）已从生成物里拿掉，
-      # 改成现算（scripts/index_counts.py），所以合并之后不会有漂移的错数。
-      # 这条既跑 PR 也跑主干——主干上红了说明真丢条目，修法照报错跑一次生成器。
+      # 生成物由合入后的 rebuild-generated job 维护；PR 只交源文件，所以先在本工作树里生成，
+      # 后续检查读到的是"这棵树能产出的索引"，不是提交面上那份可能已旧的索引。
+      - uses: ./.github/actions/rebuild-generated
+      # 覆盖检查仍然保留：它验证生成器能从这棵树产出齐全的索引（每条 case 的行都在、与内容对得上），
+      # 不是要求提交面与重新生成逐字节相同。数字（条数/容量/日期）不进生成物，要数字现算。
       - run: python3 scripts/build_index.py --check
       # triage-tree 语法检查：曾因 pipe-or 写法长期不可解析而无人发现（原则二教训），
       # 结构化工具化（路由统计/学习型路由）前必须堵住。
       - run: python3 -c "import yaml; yaml.safe_load(open('triage-tree.yaml')); print('triage-tree ok')"
       # Tier 1 路由：源文件校验（分支 id 唯一 / category 合法 / 症状组形态 / ≤30 分支 / 一族一文件）
-      # + 覆盖检查（源里每条症状组都在聚合里）。两条都跑 PR 与主干：源是提交面，聚合也是提交面。
+      # + 覆盖检查（源里每条症状组都在聚合里）。聚合由主干 job 重建；PR 上先生成再校验。
       - run: python3 scripts/build_triage_tree.py --check-sources
       - run: python3 scripts/build_triage_tree.py --check-coverage
 
@@ -194,18 +210,19 @@ jobs:
         with:
           python-version: "3.11"
       - run: pip install pyyaml
+      # reference 索引也由主干 job 维护；PR 只交 references/ 源文件。先生成，再跑两类校验：
+      # 一条问"词条本身合法吗"（verify_references），其余问"从这棵树能产出齐全的索引吗"。
+      - uses: ./.github/actions/rebuild-generated
       # reference 层入口门槛比 case 更严（先验知识框架 ADR §8）：
       # 基础元信息 + 已登记 type + 按来源类型子字段 + 深审（case-derived methodology
       # 派生引用数 <3 不允许 active）。脚本解析全部 case YAML 计算派生计数，语法错即红。
       - run: python3 scripts/verify_references.py --check
-      # 背景类 summary 索引新鲜度（B1 EV-2026-026）：references 变更未重建即红
+      # 背景类 summary 索引：生成器能从当前 references/ 生成即可；生成物由主干 job 提交。
       - run: python3 scripts/build_ref_summary_index.py --check
-      # 流程选择器索引新鲜度（B2 EV-2026-038）：methodology 不进背景层，走独立索引；
-      # references/ 变更未重建即红（与背景索引同待遇）。
+      # 流程选择器索引：methodology 不进背景层，走独立索引；同上，PR 不再要求提交生成物。
       - run: python3 scripts/build_procedure_index.py --check
-      # 错误码缺口索引新鲜度：故障模式表里出现、而错误表没有行的码——那是"错误表未命中"时的
-      # 唯一跳板。不重建即红，理由同上：它是数据（哪个码在哪张表有修法），漂移会让跳板指向
-      # 一个不存在的条目，而读侧无从分辨"库里没有"与"跳板坏了"。
+      # 错误码缺口索引：故障模式表里出现、而错误表没有行的码——那是"错误表未命中"时的
+      # 唯一跳板。漂移会让跳板指向一个不存在的条目，而读侧无从分辨"库里没有"与"跳板坏了"。
       - run: python3 scripts/build_error_gap_index.py --check
 
   metrics-validation:
@@ -222,6 +239,9 @@ jobs:
         with:
           python-version: "3.11"
       - run: pip install pyyaml
+      # 本 job 读 knowledge/_index.yaml（条目使用记录里的库清单）。PR 不再提交索引，
+      # 所以先生成，避免读到旧条目数。
+      - uses: ./.github/actions/rebuild-generated
       # metrics 时序数据结构校验（教训：W28/W35 字段格式漂移导致跨期不可比、趋势不可算）：
       # period 唯一 / kind 合法 / recorded_at 必填 / 比例字段 ok,total 合法 / live 期号命名。结构由 CI 兜底。
       - run: python3 scripts/verify_metrics.py --check
@@ -340,6 +360,9 @@ jobs:
         with:
           python-version: "3.11"
       - run: pip install pyyaml
+      # `eval_scorecard.py` 从 knowledge/_index.yaml 取目标 case 的内容哈希；PR 不再提交索引，
+      # 先生成，否则软信号会对着旧哈希判"待复核"。
+      - uses: ./.github/actions/rebuild-generated
       # fixture 字节哈希对不上 = 夹具改过而账本没跟着重建（真红）；
       # 目标 case 内容变了只进「待复核」清单不红（case 的合法变更不该阻塞无关 PR）。
       - run: python3 scripts/eval_scorecard.py --check
@@ -374,6 +397,9 @@ jobs:
         with:
           python-version: "3.11"
       - run: pip install pyyaml
+      # 有测试读 knowledge/_index.yaml 与 triage-tree.yaml（口径断言）；PR 不再提交生成物，
+      # 先生成，测试读到的是这棵树的实际产物。
+      - uses: ./.github/actions/rebuild-generated
       - run: python3 -m unittest discover tests
 
   # 面板：两个面板的渲染、文案、色语与数据口径契约都由 `panel_render_check` 与
@@ -397,6 +423,8 @@ jobs:
         with:
           node-version: "20"
       - run: pip install pyyaml
+      # `panel_render_check.js` 读 knowledge/_index.yaml；PR 不再提交索引，先生成再渲染检查。
+      - uses: ./.github/actions/rebuild-generated
       - run: python3 scripts/check_panel_tokens.py
       # 真实 trace 的对照走主检出那一份（`scripts/shared_dir.py traces`）；CI 检出里没有
       # traces/（gitignore 运行时件），脚本会如实打印跳过，只跑形状夹具。
