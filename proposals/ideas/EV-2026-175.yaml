@@ -137,3 +137,7 @@ decisions:
       判 validated：闸门条数从判断语换成可复算的算式，且算式与工具函数由一条命令绑定。
       **边界**：本卡只定「什么时候该划出终判子集」，不定「该采多少新样本」（那要看翻转率与 owner 定的 K）；
       `≥20` 这个原目标（出处 `proposals/ideas/EV-2026-013.yaml:80`，说的是 selection 侧条数）正好等于 K = 4 时 selection 侧的 Σ；这不等于「20 条就够判 4 次」。
+  - who: agent
+    when: 2026-10-27
+    type: action
+    conclusion: "合入指针回写：本卡（及其结论）随 PR #326 进入 main（回写由 evolve 批次收尾执行，供判据「待合入积压」读取）"

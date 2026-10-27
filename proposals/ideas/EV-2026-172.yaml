@@ -145,3 +145,7 @@ decisions:
       不是代码缺陷；非阻断里收掉的是机制文档三处措辞与一处重复口径、一条新测试（部分留痕时不得
       说成「版本一致」）以及影响面那句 grep 的不完整表述。留作后续小修的是统计表头总条数仍含
       非诊断行（scripts/eval_arena.py 的 issues_total）。
+  - who: agent
+    when: 2026-10-27
+    type: action
+    conclusion: "合入指针回写：本卡（及其结论）随 PR #323 进入 main（回写由 evolve 批次收尾执行，供判据「待合入积压」读取）"
