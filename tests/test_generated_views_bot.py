@@ -191,6 +191,21 @@ class GeneratedViewsBotTest(unittest.TestCase):
         log = sh(remote, "git", "log", "-1", "--format=%s", "main").stdout.strip()
         self.assertEqual(log, "chore: rebuild generated views")
 
+    def test_sync_refuses_untracked_generated_file_instead_of_deleting(self):
+        extra = self.repo / "knowledge" / "_index" / "extra.list"
+        extra.write_text("手放的文件\n", encoding="utf-8")
+        p = sh(
+            self.repo,
+            "python3",
+            "scripts/rebuild_generated.py",
+            "--sync",
+            "--dry-run",
+        )
+        self.assertEqual(p.returncode, 2, p.stdout + p.stderr)
+        self.assertIn("未跟踪文件", p.stdout)
+        self.assertIn("git clean -fd --", p.stdout)
+        self.assertTrue(extra.exists())
+
     def test_sync_pr_branch_pushes_branch_and_leaves_main_alone(self):
         remote, other = self.make_remote()
         p = other / "knowledge" / "inference" / "vllm-ascend" / "interrupt" / "TEST-SYNC-2.yaml"

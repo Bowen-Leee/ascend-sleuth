@@ -123,14 +123,21 @@ def sync(remote: str, main_branch: str, pr_branch: str, dry_run: bool) -> int:
             print(f"  {code} {path}")
         return 2
 
+    untracked = [(code, path) for code, path in generated if code == "??"]
+    if untracked:
+        print("生成物目录有未跟踪文件；先确认它们可以删，再手动清理：")
+        paths = []
+        for code, path in untracked:
+            print(f"  {code} {path}")
+            paths.append(path)
+        print("  git clean -fd -- " + " ".join(paths))
+        return 2
+
     if generated:
-        print(f"丢弃本地生成物改动（共 {len(generated)} 个，之后会重建）：")
+        print(f"丢弃本地已跟踪生成物的改动（共 {len(generated)} 个，之后会重建）：")
         for code, path in generated:
             print(f"  {code} {path}")
-            if code == "??":
-                git("clean", "-fd", "--", path)
-            else:
-                git("checkout", "--", path)
+            git("checkout", "--", path)
 
     print(f"拉取 {remote}/{main_branch} ...")
     git("fetch", remote, main_branch)
@@ -180,11 +187,14 @@ def sync(remote: str, main_branch: str, pr_branch: str, dry_run: bool) -> int:
         if p.returncode != 0:
             return fail(f"建分支 {pr_branch} 失败：可能已存在。换一个名字后重跑。")
 
-    git("add", "-A", "--", *GENERATED_PATHS)
+    # 不在 `git add` 里逐条列路径：生成器可能产出一个当前不存在的目录（如某部署没有
+    # entry-activity），逐条列会 pathspec 报错。先全加，再核对暂存内容只有生成物。
+    git("add", "-A")
     staged = [path for path in git("diff", "--cached", "--name-only").stdout.splitlines() if path]
     not_generated = [path for path in staged if not is_generated(path)]
     if not_generated:
-        return fail("提交前发现非生成物被暂存：" + "、".join(not_generated))
+        git("reset", "-q")
+        return fail("提交前发现非生成物被暂存（已撤销暂存）：" + "、".join(not_generated))
 
     git("commit", "-m", COMMIT_MESSAGE)
     print(f"已提交 {COMMIT_MESSAGE}")

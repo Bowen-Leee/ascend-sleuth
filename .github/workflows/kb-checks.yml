@@ -16,7 +16,7 @@ on:
 jobs:
   # ── 细网：这次改了哪一面 ──────────────────────────────────────────────────────
   # GitHub 只支持 workflow 级 `paths:`，不支持 job 级，所以粗网一命中就会把下面全部 job 拉起来。实测一轮
-  # PR 的 wall clock 140 秒，其中 unit-tests 单独占 135 秒（其余 11 个最慢 38 秒）——只改 docs 的
+  # PR 的 wall clock 140 秒，其中 unit-tests 单独占 135 秒（其余 job 最慢 38 秒）——只改 docs 的
   # PR 也在付这 135 秒。本 job 把「改了哪一面」算成一组布尔量供各 job 取用。
   #
   # 各 job 的触发面 = 它的命令**真正读了**哪些目录（逐条按脚本里的路径字面量核过）。按"读了就
@@ -38,7 +38,7 @@ jobs:
   #   · 8 个 verification job 都吃 code：它们的判定就是「跑一遍 scripts/<x>.py」。改了脚本本身而不跑
   #     那道门，等于改坏了验证脚本没人验（实测：往 scripts/verify_references.py 注入脚本级故障，改前
   #     跑 reference-validation 并置红，只按目录细分后就只剩 unit-tests，而 tests/ 没有一条覆盖它）。
-  #     代价：改 scripts/ 的 PR 仍会跑 11 个 job（与改前 12 个只差 skill-self-contained，它只读 skills/），
+  #     代价：改 scripts/ 的 PR 仍会跑多数 job（与改前只差 skill-self-contained，它只读 skills/），
   #     换到的是 docs / knowledge / skills 类 PR 免付。
   #   · panel-checks 吃 docs 与 trace-status.yaml 的实测反例见下。
   #
@@ -71,7 +71,7 @@ jobs:
       panels: ${{ steps.diff.outputs.panels }}
     steps:
       # fetch-depth: 0 供三点 diff 用：`A...B` 要 merge-base，浅克隆取不到会让 diff 静默为空、
-      # 所有组判 false、12 个 job 全被跳过——那是最坏的失败形态（全绿而什么都没跑）。
+      # 所有组判 false、全部 job 全被跳过——那是最坏的失败形态（全绿而什么都没跑）。
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0

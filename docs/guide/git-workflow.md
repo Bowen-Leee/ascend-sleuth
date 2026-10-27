@@ -111,7 +111,9 @@ fork 负载类型的机制缺口写进 MR 描述或 issue，由维护者拿到�
 - **有 CI 的部署**：合入 main 后由 `rebuild-generated` job 跑 `python3 scripts/rebuild_generated.py --check`，有 diff 就提交。PR 只交源文件；`generated-guard` 挡住手改生成物。门是覆盖检查（能从源产出齐全生成物），不是逐字节相同。
 - **没有合入后重建流水线的部署**：没有这个 job 就不会自动重建。两条路选一条，并写进该部署的说明：
   - **保留旧纪律**：PR 带生成物，提交前跑 `python3 scripts/rebuild_generated.py --check`，评审看生成物 diff；
-  - **合入后人工重建**：在 main 上跑 `python3 scripts/rebuild_generated.py --sync`——一条命令完成拉取、重建、校验、提交、推送。main 受保护或没有权限时加 `--pr-branch chore/rebuild-generated`，改成推分支后开 PR（只用于没有 generated-guard 的部署）。命令会拒绝非生成物的未提交改动、丢弃本地生成物改动、推送前先探权限。必须有人负责；忘记的后果是新 case 不进索引、新路由词不生效，不是只慢一步。
+  - **合入后人工重建**：在 main 上跑 `python3 scripts/rebuild_generated.py --sync`——一条命令完成拉取、重建、校验、提交、推送。main 受保护或没有权限时加 `--pr-branch chore/rebuild-generated`，改成推分支后开 PR（只用于没有 generated-guard 的部署）。命令会拒绝非生成物的未提交改动与生成物目录里的未跟踪文件，只丢弃已跟踪生成物的本地改动，推送前先探权限。必须有人负责；忘记的后果是新 case 不进索引、新路由词不生效，不是只慢一步。
+
+有 `generated-guard` 的部署不要用 `--pr-branch`：那会开一个只含生成物的 PR，被守卫判红。GitHub 上 main 受保护时，正解是让 `rebuild-generated` job 能写 main（允许 Actions 绕过，或用 PAT / App token）；否则没有自动或半自动路径，只能由有绕过权限的人跑 `--sync`。
 
 生成物里不写数字（条数 / 容量 / 日期现算）仍是前提：数字一进 git，两人并发合并时要么落在同一行、要么漂移成错的数。路由性质文件走 `merge=union`，两人同一天加词两边都留；索引是嵌套结构，不配 union——有 CI 时由主干 job 整体重建，无 CI 时冲突了重跑生成器。
 
@@ -224,7 +226,7 @@ PR 经 required review 批准后合入 `main`。有 CI 的部署合并完没有�
 
 ## 4 怎么确认做对了
 
-需要说明各道闸门的实际强度。git 能够硬性强制的是三件事：谁审批过、YAML 是否合法、索引是否新鲜。语义层面的闸门（脱敏是否彻底、root cause 是否正确、severity 标注是否恰当）只能依靠流程约定与人工抽查。下表对每道闸门标注强度，避免把约定误认为已被强制。
+需要说明各道闸门的实际强度。平台与 CI 能硬性强制的是三件事：谁审批过、YAML 是否合法、有 CI 时生成物是否新鲜（无 CI 时降为约定）。语义层面的闸门（脱敏是否彻底、root cause 是否正确、severity 标注是否恰当）只能依靠流程约定与人工抽查。下表对每道闸门标注强度，避免把约定误认为已被强制。
 
 ### 门控映射表
 
@@ -275,9 +277,9 @@ python3 scripts/rebuild_generated.py --check
   `metrics-validation` / `proposal-audit` / `docs-index` / `holdout-integrity` / `eval-scorecard`）
   的 `if` 都带 `code`：它们的判定就是"跑一遍 `scripts/<x>.py`"，改了脚本本身而不跑那道门，等于改坏了
   验证脚本没人验（同一个洞的第二面：改 `scripts/verify_references.py` 只有 `unit-tests` 会跑，而
-  `tests/` 里没有一条覆盖它）。代价是改 `scripts/` 的 PR 仍会跑 11 个 job（和改前 12 个只差
+  `tests/` 里没有一条覆盖它）。代价是改 `scripts/` 的 PR 仍会跑多数 job（与改前只差
   `skill-self-contained`——它只读 `skills/`，不吃 `code`），换来只改 `docs` / `knowledge` / `skills` 的 PR 免付。
-- `changes` 自己失败时的上报形态：其余 12 个 job 全部只上报 `skipped`（GitHub 眼里等于通过）。所以
+- `changes` 自己失败时的上报形态：其余 job 全部只上报 `skipped`（GitHub 眼里等于通过）。所以
   将来开分支保护时必须把 `changes` 也列进 required，否则一条坏 diff 会静默放行全部门。
 - 为什么不拆成多个 workflow 文件：被 `paths:` 过滤掉的 workflow 不上报 check，将来开分支保护
   会让 PR 永远等一个不会出现的 Expected。单文件 + job 级 `if:` 下，跳过的 job 照常上报 skipped。
@@ -359,7 +361,7 @@ CI 侧只有机械切片：模板结构（`pr-template.yml`）、docs 名单与�
 
 ### CI 静默不上报
 
-- `changes` 自己失败时的上报形态：其余 12 个 job 全部只上报 `skipped`（GitHub 眼里等于通过）。所以
+- `changes` 自己失败时的上报形态：其余 job 全部只上报 `skipped`（GitHub 眼里等于通过）。所以
   将来开分支保护时必须把 `changes` 也列进 required，否则一条坏 diff 会静默放行全部门。
 - 为什么不拆成多个 workflow 文件：被 `paths:` 过滤掉的 workflow 不上报 check，将来开分支保护
   会让 PR 永远等一个不会出现的 Expected。单文件 + job 级 `if:` 下，跳过的 job 照常上报 skipped。
