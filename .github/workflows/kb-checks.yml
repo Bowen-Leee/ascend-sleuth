@@ -5,10 +5,16 @@ name: kb-checks
 #      它是目录 glob，不是逐文件清单——旧清单逐个列了 35 个 scripts/*.py|js，实测漏掉 37 个
 #      （改那些脚本 CI 完全不跑），且每加一个脚本要记得来两处补名字（维护成本随文件数线性上涨）。
 #   ② `changes` job = **细网**，算出这次改了哪一面，各 job 用 `if:` 自取所需。
+# 两个事件的触发面不同：`push` 只在 `main` 上起，`pull_request` 在改了下列 `paths` 的 PR 上起。
+# 开发分支的推送不再单独起一轮——PR 事件以主干为基线算改动，文件清单准确。改前这些推送会另起一轮：
+# 新建分支首次推送退化成全量，其后每次推送只是把 PR 那轮的大部分 job 重跑一遍（其中 `unit-tests` 是 wall clock
+# 最长的一条）。`main` 的 push 必须留：PR 验的是当次合并预演（`refs/pull/N/merge`），主干前进后最终
+# 合入的树没有别处验。收窄 `push` 的代价是未开 PR 时推送没有任何 CI。
 # 为什么不拆成多个 workflow 文件：被 `paths:` 过滤掉的 workflow 根本不上报 check，将来开分支
 # 保护会让 PR 永远等一个不会出现的 Expected。单文件 + job 级 `if:` 下，跳过的 job 照常上报 skipped。
 on:
   push:
+    branches: [main]
     paths: ["knowledge/**", "references/**", "skills/**", "metrics/**", "proposals/**", "eval/**", "tests/**", "docs/**", "README.md", ".gitattributes", "triage-tree.yaml", "triage-tree.d/**", "dsh-plugins/**", "scripts/**", "trace-status.yaml", "deployment.yaml", ".github/workflows/**", ".github/actions/**"]
   pull_request:
     paths: ["knowledge/**", "references/**", "skills/**", "metrics/**", "proposals/**", "eval/**", "tests/**", "docs/**", "README.md", ".gitattributes", "triage-tree.yaml", "triage-tree.d/**", "dsh-plugins/**", "scripts/**", "trace-status.yaml", "deployment.yaml", ".github/workflows/**", ".github/actions/**"]
