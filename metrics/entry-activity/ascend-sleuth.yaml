@@ -138,6 +138,7 @@ cold_never_looked_up:
 - hccl-cluster-heartbeat-and-link-probe
 - hccl-comm-init-and-link-faults
 - hccl-debug-env
+- hccl-error-code-emission-by-platform
 - hccl-error-codes
 - hccl-function-env
 - hccl-log-key-info-fields
@@ -147,6 +148,7 @@ cold_never_looked_up:
 - hccl-reliability-env
 - hccl-safety-env
 - hccn-tool-network-diagnosis
+- hcomm-a5-code-map
 - hdmi-fault-patterns
 - hif8-and-mxfp8-low-precision-training
 - hif8-type-contract

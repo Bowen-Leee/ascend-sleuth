@@ -1,0 +1,94 @@
+id: hcomm-a5-code-map
+type: software-fact
+title: HCOMM 在 Ascend950(A5) 上的代码地图（V2 入口、CCU、UB、引擎选择、目录归属）
+summary: A5 集合通信实现分散在三处（hccl_v2 树、base_comm、coll_communicator_mgr）：先按 SoC 名转发 Hccl*V2、再按 DevType 谓词分流；含引擎回退阶梯与目录归属。
+
+sources:
+  - type: official-doc
+    url: https://gitcode.com/cann/hcomm
+    version: hcomm master commit 113acc9（CANN 9.2.0，2026-10-26 本地检出）：构建目标、入口分岔、V2 通信域、引擎选择与算法目录
+    fetched_at: 2026-10-27
+    verification: cross-checked-source
+
+applies_to:
+  platforms: [A5-950]
+  frameworks: [hccl]
+  versions:
+    cann: 9.2.0
+  categories: [interrupt, performance]
+
+related_references:
+  - hccl-error-code-emission-by-platform
+  - a5-ccu
+  - a5-urma-semantics
+  - cann-source-location
+
+status: active
+last_verified: 2026-10-27
+
+content:
+  claim: "Ascend950（A5）的集合通信实现在 HCOMM 里分布在三处。src/legacy/ascend950 是 A5 流程主体（17.6 万行），host 侧编成 libhccl_v2.so，导出 157 个 C 入口（76 个 Hccl*V2、58 个 Hcom*V2、1 个其它 V2、22 个无 V2 后缀）与 327 个 C++ 符号。src/base_comm 提供 CCU 与 UB 资源，src/coll_communicator_mgr 提供 V2 通信域 fullMode、RankGraphV2 与 team。选中有两步：API 入口按 SoC 名（含 Ascend950 或 Ascend960）转调 Hccl*V2；进入实现后按 DevType 的五个谓词做功能级分流。同一个 hcclComm 同时持有 hccl_v2 的 HcclCommunicator 与 L2 的 CollComm。引擎选择是一条回退阶梯：CCU_MS、CCU_SCHED、CCU_FALLBACK、AIV、AICPU_TS。标卡不允许 CCU_MS，通信域含 PCIE 链路时降为 AICPU_TS，HOST 展开在 A5 返回 NOT_SUPPORT。A5 算法以 CCU 为主：算法目录里 ccu_* 文件 244 个、aiv_* 41 个。"
+  evidence: "规模：src/legacy/ascend950 1227 文件 175785 行、src/base_comm 974 文件 188940 行、src/coll_communicator_mgr 231 文件 42326 行；算法目录 src/legacy/ascend950/service/collective/alg/coll_alg_factory 473 文件 69571 行（ccu_* 244、aiv_* 41）。构建：src/legacy/CMakeLists.txt:12,15 无条件编入两棵树；src/legacy/ascend950/CMakeLists.txt:11-16 在 host 侧引入 hccl_v2 与 ccl_dpu；hccl_v2.cmake:12-17 建 add_library(hccl_v2 SHARED) 并定义 HCCL_V2；hccl_v2.map 导出：157 个 C 入口（76 个 Hccl*V2、58 个 Hcom*V2、1 个其它 V2 即 CommGetCCLBufSizeCfgV2、22 个无 V2 后缀如 HcclKernelEntrance、HcclMemExport、HcclSnapshotSave、HcclDlsym）与 327 个带引号的 C++ 符号（Hccl::Buffer、Hccl::UbMemTransport 等）。入口：src/legacy/ascend910/framework/common/src/host/param_check_basic_v2.h:18-26 的 HCCLV2_FUNC_RUN；src/legacy/ascend910/platform/common/adapter/adapter_rts.cc:116-143 的 hrtGetHcclV2Support（aclrtGetSocName 匹配 Ascend950 与 Ascend960）；src/legacy/ascend910/framework/op_base/src/op_base_host.cc:300-312 转调 HcclCommInitClusterInfoV2。谓词：src/base_comm/common/dev_type_utils.h:24-111；DevType 枚举在 pkg_inc/legacy/hccl/dtype_common.h:40-51（910B=2、910_93=4、950=6、960=8）。汇合：src/legacy/ascend910/framework/hcom/hcom_common.cc:178 的 HcomInitCollComm；src/legacy/ascend910/framework/inc/hccl_comm_pub.h:481,493 同时持有 communicator_ 与 collComm_。通信域模式：src/coll_communicator_mgr/communicator/coll_comm.h:63-66。引擎：src/legacy/ascend950/service/collective/alg/selector/auto_selector_base.cc:31-74；src/legacy/ascend950/framework/communicator/communicator_impl.cc:2795-2840（标卡禁 CCU_MS、PCIE 降 AICPU_TS、HOST 展开返回 NOT_SUPPORT）。下发：src/legacy/ascend950/framework/service/ins_rules.cc:757,580（CCU）、src/legacy/ascend950/framework/device_mode/coll_service_device_mode.cpp:106-147 与 framework/aiv/aiv_ins/hccl_aiv_utils.cc:444,487（AIV）、framework/device_mode/aicpu_kernel_launcher.cpp:27 与 framework/communicator/aicpu/kernel_entrance.cc:30（AICPU）。"
+  details: |
+    一、源码分布与规模
+
+    | 目录 | 文件 | 行数 | 放什么 |
+    |---|---|---|---|
+    | src/legacy/ascend950 | 1227 | 175785 | A5 流程主体，host 侧编成 libhccl_v2.so：common、framework、service、unified_platform、interface |
+    | src/base_comm | 974 | 188940 | L3 基础通信：CCU 资源（resources/ccu 216 文件 34094 行）、UB 端点与通道、数据面原语、HCCP 南向栈（474 文件 106355 行） |
+    | src/coll_communicator_mgr | 231 | 42326 | L2 通信域：CollComm、RankGraphV2、team、resource_mgr、dfx |
+    | src/legacy/ascend910 | 1499 | 288189 | A2/A3 全量流程，同时承载共用层：C 接口入口、错误码注册表、HCCL 与 HCOMM 的桥接 |
+
+    ascend950 树内部：framework 292 文件 47821 行（communicator、topo、resource_manager、dfx、entrance、service、ccu、aiv、device_mode、fault_recovery、env_config、misc），service 538 文件 78174 行（只有 collective，含 alg 与 selector），unified_platform 338 文件 45547 行（ccu 144、resource 131、external_system 8）。
+
+    二、选中链路
+
+    1. API 入口按 SoC 名分岔：HCCLV2_FUNC_RUN 调 hrtGetHcclV2Support，SoC 名含 Ascend950 或 Ascend960 时把调用转给同名的 Hccl*V2 实现。libhccl_v2.so 的导出表不是只有 Hccl*V2：157 个 C 入口里 76 个 Hccl*V2、58 个 Hcom*V2、1 个其它 V2（CommGetCCLBufSizeCfgV2）、22 个无 V2 后缀（内核入口、内存注册导出、快照、dlsym 辅助等）；另有 327 个带引号的 C++ 符号（Hccl::Buffer、Hccl::UbMemTransport 等）。
+    2. 实现内按 DevType 分流：五个谓词 EqualTo950、EqualTo960、EqualToOrGreaterThan950、EqualToOrGreaterThan960、LessThan950，取数失败时返回空值（std::optional 无值），必须显式处理；NOSOC 与 MC62 是合法但不归类。
+    3. 两套通信域在同一个 hcclComm 上汇合：HcomInitCollComm 用 V2 的 CommName 与 CclBuffer 初始化 L2 的 CollComm；hcclComm 同时持有 communicator_ 与 collComm_。
+
+    三、引擎与下发落点
+
+    选择阶梯：起点由 accState 决定，CCU_MS 选不中降 CCU_SCHED，再选不中降 CCU_FALLBACK；AIV 选不中也降 CCU_FALLBACK；CCU_FALLBACK、AICPU_TS、HOSTCPU_TS 归入 Stars 状态走 AICPU 算法；本层拓扑（level0）是 PCIE 混合且 CLOS（交换机组网）规模大于 8 时直接走 AIV_ONLY。
+
+    | 引擎 | 组任务 | 下发 |
+    |---|---|---|
+    | CCU | framework/service/ins_rules.cc:757 SubmitCcuTasks | ins_rules.cc:580 LaunchCcuTasks 组 rtCcuTaskInfo_t |
+    | AIV | framework/device_mode/coll_service_device_mode.cpp:106-147 | framework/aiv/aiv_ins/hccl_aiv_utils.cc:444,487 aclrtLaunchKernelWithHostArgs |
+    | AICPU | ins_rules.cc:795-796 | framework/device_mode/aicpu_kernel_launcher.cpp:27，设备入口 framework/communicator/aicpu/kernel_entrance.cc:30 |
+
+    加速模式约束：标卡主板（MAINBOARD_PCIE_STD）不允许 CCU_MS；通信域含 PCIE 链路时 CCU_SCHED 降为 AICPU_TS；HOSTCPU_TS 与 HOST 展开的 AICPU 在 A5 上返回 NOT_SUPPORT。
+
+    四、A5 与 A2/A3 的实现差异
+
+    | 场景 | A5 及以上 | A2/A3 |
+    |---|---|---|
+    | 数据面下发 | Thread 通过 StreamLite 或 RTSQ 直接写 SQE，channel 走 BaseTransportLiteImpl | 走 hccl::Stream 与 HcclXxx 接口由 runtime 下发 |
+    | 任务缓存 | aicpu task cache（非 A5 的 C 接口返回 NOT_SUPPORT） | FFTS+ 子图缓存（HcclTaskClear） |
+    | UB 端点 | {950, 960} 放行 UB_CTP、UBC_TP、UB_MEM、UBOE、UB_RTP | 无 UB 链路；AICPU_TS RoCE 与 HCCS 端点限 {910B, 910_93} |
+    | 拓扑 | RankGraphV1 对 950 返回 COMM_PROTOCOL_RESERVED，必须走 RankGraphV2 | RankGraphV1 |
+    | 通信域 | CollComm fullMode（完整资源管理） | simpleMode（只托管 RankGraph 与 MyRank） |
+
+    SQE 与任务类型只有一份定义，在 A5 树：unified_platform/resource/stream/aicpu/sqe_v82.h 定义 Rt91095StarsSqeType 与 Rt91095StarsUbdmaDBmodeSqe；unified_platform/pub_inc/task_param.h:31-36 的 TaskParamType 含 TASK_UB_INLINE_WRITE、TASK_UB_REDUCE_INLINE、TASK_UB、TASK_CCU、TASK_DPU_*。A2/A3 的任务枚举没有 TASK_UB*。
+
+    五、能力到目录的速查
+
+    | 能力 | 目录与关键文件 |
+    |---|---|
+    | 入口与参数校验 | legacy/ascend950/framework/entrance（op_base_v2、hcom_v2、comm_manager、param_check_v2） |
+    | V2 通信域 | legacy/ascend950/framework/communicator（CommunicatorImpl、comm_topo_desc_v2、aicpu） |
+    | 拓扑 | legacy/ascend950/framework/topo 与 coll_communicator_mgr/rank_graph |
+    | CCU | base_comm/resources/ccu（ccu_device、ccu_transport、ccu_kernel、ccu_microcode、ccu_representation、ccu_dfx）与 legacy/ascend950/unified_platform/ccu |
+    | AIV | legacy/ascend950/framework/aiv 与 base_comm/resources/endpoint_pairs/channels/aiv |
+    | UB 协议栈 | base_comm/resources/endpoints（urma、ub_mem、ub_rtp、uboe）、endpoint_pairs/channels、common/tp_mgr.cc |
+    | 算法 | legacy/ascend950/service/collective/alg（coll_alg_factory 里 ccu_* 244、aiv_* 41、selector） |
+    | 维测 | coll_communicator_mgr/dfx/taskException 与 legacy/ascend950/framework/dfx |
+    | 资源与团队 | coll_communicator_mgr/resource_mgr、team；legacy/ascend950/framework/resource_manager |
+
+    六、版本边界
+
+    1. 本词条对应 hcomm 9.2.0（commit 113acc9）。目录与文件名随版本变化，换版本需重新核验；规模数字的计数口径是 .h/.cc/.cpp/.c 源码文件。
+    2. DPU 由 ccl_dpu 库与 TASK_DPU_* 任务承载，设备侧另有 dpu_task_exception_lite。仓内文档在 950 的 NBI 约束里提到它（HcommReadNbi、HcommReadNbiOnThread、HcommWriteNbi、HcommWriteNbiOnThread 四篇）：engine 用 COMM_ENGINE_CPU、协议用 ROCE，并配置 DPU/1825 NIC（docs/en/api_ref/comm_opdev/data_plane_api/cpu-cpu_ts-aicpu_ts/communication_operations/HcommReadNbi.md:50）；A2/A3 是否可用本次未核。
+    3. base_comm 内没有对 A2/A3 建 CCU channel 的显式拒绝守卫，拦截位置在上层或文档层；同一文件对 UB_RTP 有 devtype 守卫（channel.cc:75,113），不能把 CCU 缺守卫外推到所有协议。
+    4. A5 错误码的产生位置与平台差异见 hccl-error-code-emission-by-platform。
+    5. README.md:54 与 docs/zh/architecture/architecture-brief.md:252 的目录树注释把 ascend950 叫「A5 旧流程兼容代码」，但它产出的是当前主流程 libhccl_v2.so；注释里另有收编说明（如 legacy_dpu_thread.h:144 的「收编后从 hccl_v2.so 迁 hcomm.so」）。

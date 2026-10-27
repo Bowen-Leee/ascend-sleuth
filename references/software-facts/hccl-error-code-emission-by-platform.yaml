@@ -1,0 +1,139 @@
+id: hccl-error-code-emission-by-platform
+type: software-fact
+title: HCCL EI 错误码在 Ascend950(A5) 与 A2/A3 上的上报路径差异（EI0018、CCU、UB CQE）
+summary: 同一份 EI 码表下，A5 与 A2/A3 的差异在「哪条码在哪个位置产生」：EI0018 仅 A5、EI0010 仅 A2/A3、EI0002 在 A5 另有 CCU 与 DPU 来源；含 UB CQE 与 CCU mission 两套非 EI 码表。
+
+sources:
+  - type: official-doc
+    url: https://gitcode.com/cann/hcomm
+    version: hcomm master commit 113acc9（CANN 9.2.0，2026-10-26 本地检出）：错误码注册表、任务异常上报链路、CCU mission 状态表、UB/SDMA CQE 转换
+    fetched_at: 2026-10-27
+    verification: cross-checked-source
+
+applies_to:
+  platforms: [A5-950]
+  frameworks: [hccl]
+  versions:
+    cann: 9.2.0
+  categories: [interrupt]
+
+related_references:
+  - hcomm-a5-code-map
+  - hccl-error-codes
+  - hccl-log-key-info-fields
+  - a5-ccu
+  - a5-urma-semantics
+
+status: active
+last_verified: 2026-10-27
+
+content:
+  claim: "HCCL 的 EI0001~EI0020 是同一份码表：注册表只有一处（src/legacy/ascend910/common/error_code/error_code.cc），A5 与 A2/A3 共用。平台差异不在码表，而在上报位置。EI0018（UB CQE）只在 A5 树与新分层（base_comm 与 coll_communicator_mgr）上报；A2/A3 没有 UB 链路，CQE 类故障由 EI0013（RoCE CQE）与 EI0012（SDMA）承载。EI0010（P2P）只在 A2/A3 代码路径上报。EI0002 在 A5 上另有来源：CCU mission 状态 0x09 加子状态 0x02（任务被杀），参数是 dieId、missionId、currentInsId；DPU 任务异常也报 EI0002。A5 另有两套不在 EI 体系内的码：UB CQE 状态 0x2/0x3/0x5 转 TS 错误码 0x3ea/0x3eb/0x3ec；CCU mission status 0x01~0x0A 含子状态。判读：A5 上 EI0018 表示出错任务走 UB 链路；EI0002 的 task information 出现 dieId 与 missionId 时查 CCU mission 状态，而不是 HCCL_EXEC_TIMEOUT。"
+  evidence: "码表与上报点：src/legacy/ascend910/common/error_code/error_code.cc:209（EI0018）、:231（EI0020）；EI0018 上报 src/coll_communicator_mgr/dfx/taskException/host/hcclCommTaskException.cc:705-711,725-750 与 src/legacy/ascend950/framework/dfx/task_exception/task_exception_handler.cpp:632-637（TASK_CCU）,777-790（UB 类任务）；EI0010 上报仅 src/legacy/ascend910/framework/communicator/impl/hccl_communicator_host.cc；CCU mission 被杀报 EI0002：src/coll_communicator_mgr/dfx/taskException/host/ccuTaskException.cc:603-610 与 src/legacy/ascend950/unified_platform/ccu/dfx/ccu_error_handler.cpp:220-230；UB/SDMA CQE 转 TS 码：src/coll_communicator_mgr/dfx/taskException/aicpu/hcclCommTaskExceptionLite.cc:27-29,517-544，常量在 external_depends/tsch/hcomm_task_scheduler_error.h:205-208；CCU mission 状态表：src/coll_communicator_mgr/dfx/taskException/host/ccuTaskException.cc:44-100。"
+  details: |
+    一、20 条 EI 码的上报位置矩阵
+
+    ✓ 表示该代码树存在上报点，— 表示没有。新分层指 src/base_comm 与 src/coll_communicator_mgr。
+
+    | 码 | 标题 | A2/A3 树 | A5 树 | 新分层 | A5 侧触发场景 |
+    |---|---|---|---|---|---|
+    | EI0001 | 环境变量非法 | ✓ | ✓ | ✓ | env_func.cc、cfg_field.h、base_config.cc |
+    | EI0002 | 通信超时 | ✓ | ✓ | ✓ | notify 等待超时、CCU mission 被杀或 DPU 任务异常（见第三节） |
+    | EI0003 | 算子参数非法 | ✓ | ✓ | — | op_params_checker.cc、param_check_v2.cc、op_base_v2.cc |
+    | EI0004 | ranktable 解析失败 | ✓ | ✓ | ✓ | json_parser.cc、phy_topo_builder.cc |
+    | EI0005 | 跨 rank 参数不一致 | ✓ | ✓ | ✓ | coll_operator_check.cc、rank_consistency_checker_v2.cc |
+    | EI0006 | 取 socket 超时 | ✓ | ✓ | ✓ | ccu_transport_manager.cpp、ub_memory_transport_mgr.cc、coll_service_base.cc |
+    | EI0007 | 资源耗尽 | ✓ | ✓ | ✓ | orion_adapter_hccp.cc、orion_adapter_rts.cc |
+    | EI0008 | 版本不一致 | ✓ | — | ✓ | A5 树无上报点，走新分层 rank_consistency_checker_v2 |
+    | EI0009 | transport 初始化失败 | ✓ | ✓ | — | orion_adapter_hccp.cc |
+    | EI0010 | P2P 失败 | ✓ | — | — | A5 无上报点 |
+    | EI0011 | 设备内存不足 | ✓ | ✓ | — | orion_adapter_hccp.cc |
+    | EI0012 | SDMA 拷贝异常 | ✓ | ✓ | — | AICPU 侧 task_exception_handler_lite.cpp |
+    | EI0013 | RoCE CQE 错误 | ✓ | — | ✓ | 新分层仅 host RoCE 通道 host_cpu_roce_channel.cc |
+    | EI0014 | ranktable 变量非法 | ✓ | ✓ | ✓ | json_parser.cc、rank_table_info.cc |
+    | EI0015 | ranktable 协商失败 | ✓ | ✓ | ✓ | rank_info_detect*.cc、orion_adapter_hccp.cc |
+    | EI0016 | 配置项非法 | ✓ | ✓ | ✓ | communicator_impl.cc、rank_table_report_macro.h |
+    | EI0017 | ranktable 缺配置 | ✓ | ✓ | ✓ | json_parser.cc |
+    | EI0018 | UB CQE 错误 | — | ✓ | ✓ | 见第二节；A2/A3 树只有注册表条目、无上报点 |
+    | EI0019 | host 网卡监听失败 | ✓ | ✓ | — | socket_manager.cc、orion_adapter_hccp.cc |
+    | EI0020 | NPU 网卡监听失败 | ✓ | ✓ | — | socket_manager.cc、preempt_port_manager.cc |
+
+    二、EI0018 的触发条件与参数
+
+    触发任务类型固定为 5 种 UB 写/归约类任务：TASK_WRITE_REDUCE_WITH_NOTIFY、TASK_WRITE_WITH_NOTIFY、TASK_UB_INLINE_WRITE、TASK_UB_REDUCE_INLINE、TASK_UB。
+
+    参数 6 个：localServerId、localDeviceId、localDeviceIp、remoteServerId、remoteDeviceId、remoteDeviceIp。两套实现的参数来源不同：
+
+    | 项 | A5 老树（legacy/ascend950）task_exception_handler.cpp | 新分层（base_comm 与 coll_communicator_mgr）hcclCommTaskException.cc |
+    |---|---|---|
+    | serverId 与对端 deviceId | 填空串；本地 deviceId 直接取 exceptionInfo->deviceid | 用 rankId 与 remoteUserRank 反查 RankGraphV2 的 netInstance 与 superDeviceId |
+    | IP | 直接用 locEid 与 rmtEid | 取 GetReverseEid() 后再输出 |
+    | CCU 分支 | TASK_CCU 一律报 EI0018 | CCU 交给 CcuTaskException，只在 mission 被杀时报 EI0002 |
+
+    报文中的 deviceIp 是 UB EID 串（`eid[64 位十六进制:64 位十六进制]`），与 RoCE 的点分 IPv4 设备 IP 不同。
+
+    三、EI0002 的其它来源：CCU mission 被杀与 DPU 任务异常
+
+    经典 EI0002 来自 TASK_NOTIFY_WAIT 超时，task information 含 streamID、taskID、taskType、tag、AlgType。A5 上还有一条：CCU mission 状态高 8 位为 0x09（CCUM Execute Error）且低 8 位为 0x02（CCU Mission Task Killed）时直接上报 EI0002，base information 为 dieId 与 missionId，task information 为 currentInsId 与 status。
+
+    DPU 任务异常也报 EI0002：`dpuTaskException.cc` 的 HandleDpuErrorReport 在 host 侧尚未上报过时上报一次，参数为 remoteRank、base information、para information、groupRank（`src/coll_communicator_mgr/dfx/taskException/host/dpuTaskException.cc:171-181`）。
+
+    定位含义：task information 出现 dieId 与 missionId 说明是 CCU 任务被杀，排查方向是 mission 状态码（第五节）与 CCU 资源，不是 HCCL_EXEC_TIMEOUT 或某 rank 执行慢。
+
+    四、两套实现对同一次 CCU 异常上报的码不同
+
+    | 任务类型 | A5 老树（legacy/ascend950） | 新分层（base_comm 与 coll_communicator_mgr） |
+    |---|---|---|
+    | TASK_CCU | 一律报 EI0018 | 只在 mission 被杀时报 EI0002，其它 mission 状态只进 CcuErrorInfo 日志 |
+    | UB 类任务 | 报 EI0018 | 报 EI0018，参数做 rank 到 serverId 与 deviceId 的反查 |
+    | TASK_NOTIFY_WAIT | 报 EI0002 | 报 EI0002，带去重 |
+    | AICPU 侧 SDMA CQE | 报 EI0012（legacy lite） | 不报 EI 码：lite 只回传 ErrorMessageReport 并经 Mailbox 上报 TS 错误码 |
+    | MC2 CCU（RT_FUSION_AICORE_CCU） | 只有日志，无 EI 码 | 回退老流程 |
+
+    新分层注册异常回调时会注销老回调，但 MC2 异常与 isIndop_ 为 false 的任务显式回退老流程。因此同一类 CCU 故障在 A5 日志里可能表现为 EI0018、EI0002 或只有日志，取决于任务走哪套实现。
+
+    五、A5 独有的非 EI 码表
+
+    UB CQE 状态转 TS 错误码（Mailbox 上报用）：
+
+    | UB CQE errorCode | 含义 | TS 错误码 | 值 |
+    |---|---|---|---|
+    | 0x2 | UB 本端返回 ERROR | TS_ERROR_HCCL_OP_UB_DDRC_FAILED | 0x3ea |
+    | 0x3 | UB 远端返回 ERROR | TS_ERROR_HCCL_OP_UB_POISON_FAILED | 0x3eb |
+    | 0x5 | 网络异常、ack 超时（源码注释写作 taack） | TS_ERROR_HCCL_OP_UB_LINK_FAILED | 0x3ec |
+    | 其他 | — | TS_ERROR_HCCL_OTHER_ERROR | 0x223 |
+
+    同级还有 SDMA 一套：0x9 转 0x222、0xa 转 0x221、0x8 转 0x220；两条路径按 sqeType 分流（UB 为 9、SDMA 为 11）。
+
+    CCU mission status（高 8 位）：
+
+    | 值 | 含义 | 子状态示例 |
+    |---|---|---|
+    | 0x01 | Unsupported Opcode | — |
+    | 0x02 | Local Operation Error | 长度错、本端访问错、远端响应长度错、本端数据 poison |
+    | 0x03 | Remote Operation Error | 远端不支持请求、远端访问中止、远端数据 poison |
+    | 0x04 | Transaction Retry Counter Exceeded | — |
+    | 0x05 | Transaction ACK Timeout | — |
+    | 0x06 | Jetty Work Request Flushed | — |
+    | 0x07 | CCUA Alg Task Error | 溢出、下溢、NaN、Inf、Inf 溢出 |
+    | 0x08 | Memory ECC Error | — |
+    | 0x09 | CCUM Execute Error | SQE 指令与 key 不匹配、mission 被杀（转 EI0002） |
+    | 0x0A | CCUA Execute Error | EXOKAY、SLVERR、DECERR、Abort、读写原子权限错、Tokenval、Page Fault、本地内存 poison |
+
+    六、日志检索关键字
+
+    一级关键字：TaskExecStage（执行期）、InitGroupStage（通信域初始化）、InitChannelStage、LinkInfo。二级：Timeout、RunFailed、HeartbeatAbnormal、EnvConfig、RanktableConfig、RanktableCheck、RanktableDetect、ParameterConflict、VersionConflict、InvalidArgument、Resource、Not Supported。三级（引擎）：HOST、HOST_TS、AIV、AICPU、CCU、CQE ERROR。定义在 src/base_comm/common/hccl_log_keywords.h。
+
+    ```bash
+    grep -F '[TaskExecStage][RunFailed][CCU]' plog
+    grep -F '[TaskExecStage][Timeout][CCU]' plog
+    grep -F '[InitGroupStage][EnvConfig]' plog
+    grep -F 'UB CQE error' plog
+    ```
+
+    七、边界
+
+    1. 本词条描述的是 hcomm 9.2.0（commit 113acc9）的代码。错误码语义与上报位置随版本变化，换版本需重新核验。
+    2. EI 码表本身以官方错误码文档为准（见 hccl-error-codes），本词条只补平台差异与上报位置；A5 的代码结构、引擎与目录归属见 hcomm-a5-code-map。
+    3. CCU 异常最终走新分层还是老流程，取决于任务的 Indop 标记与是否 MC2；仅凭错误码不能反推走的是哪条实现。
+    4. A5 只匹配大写 Ascend950，Ascend960 同时匹配小写 ascend960；SoC 名大小写异常会退回老流程。
