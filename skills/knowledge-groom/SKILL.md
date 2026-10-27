@@ -113,9 +113,9 @@ disable-model-invocation: true
    - 检查 `_archive/` 中 case 是否因新 `compat` 区间该复活（2.7 退休、2.8 恢复）
 6. **容量治理**：被治理的量是**查一次问题要读进来多少字**（实读 token），不按条数——条数只作观察值记在容量表里。执行参数：**评估线 8000**（到线→评估能否再省：先看行宽/字段，再看平台轴切分）、**硬线 20000**（= 常驻指令面的量级→强制处理，先瘦身再评估拆分）；**两条读取路径各判一条线**（类视图与 ns 兜底视图；后者 vllm-ascend 已超硬线）；**先验层与阶段二候选全文只量不判**（先验层看检索残量：两刀切完剩多少行，随词条数线性涨）。健康指标阈值：候选溢出率 >20%、同根因重复率连续两轮上升、维护时长 >30 分钟/周。每次 groom 附**容量表**：各格子的条数与读入成本 + 一次诊断的四个读入分项（`python3 scripts/index_read_cost.py`）+ 三项健康指标。**不预拆目录**：拆分是超硬线之后才评估的选项，不是到线就做的动作（拆分轴与实测代价见 docs/adr/0004 与 roadmap 的「格子容量治理」行）。**越界清单与行动走 `python3 scripts/metrics_health.py`**（判据数值在 `metrics/gates.yaml`，与本节一致）——别只看 `_index.yaml` 头注的数字：头注只列数，不判越界，也不告诉你这条闸门已经越了多久。
 7. **同 namespace 合并建议**：相似 case 对自动提示。
-8. **索引维护（收尾必做）**：所有 KB 变更（升格 / 合并 / 退休 / 补内容）完成后，运行 `python3 scripts/build_index.py`，把分片与总表一起提交。它顺手把第 4 步算出来的分数写进生成物，并在头注按**模式**披露这一次的分数来源（有记录 / 退回先验 / 两者并存）。门是**覆盖检查**（每条 case 的索引行都在、与内容对得上），另有两条内容门：全库条目 id 唯一、案例文件名与 id 一致。`--check` 报问题 = 变更不完整、索引行被手改过，或那两条内容门不通过。要归一化（顺序/注释回到生成器口径）就重跑一次；`--canonical` 是那个自检（不作门）。软退休的 case 移 `_archive/` 后自动从活跃索引消失。
+8. **索引维护（收尾不提交生成物）**：所有 KB 变更（升格 / 合并 / 退休 / 补内容）完成后，本地跑 `python3 scripts/rebuild_generated.py --check` 预览（它重建索引、路由聚合、reference 索引、timeline 与条目使用记录并校验；会写工作区，看完 `git checkout -- <生成物>` 还原）。**有合入后重建 job 的部署由主干 job 提交生成物，PR 不带**；没有这个 job 的部署二选一：保留旧纪律（跑同一条命令，生成物随 PR 提交），或合入后由人在 main 上跑 `python3 scripts/rebuild_generated.py --sync`。生成物会顺手把第 4 步算出来的分数写进索引，并在头注按**模式**披露这一次的分数来源（有记录 / 退回先验 / 两者并存）。门是**覆盖检查**（每条 case 的索引行都在、与内容对得上），另有两条内容门：全库条目 id 唯一、案例文件名与 id 一致。`--check` 报问题 = 变更不完整、索引行被手改过，或那两条内容门不通过。要归一化（顺序/注释回到生成器口径）就重跑一次；`--canonical` 是那个自检（不作门）。软退休的 case 移 `_archive/` 后自动从活跃索引消失。
 
-8.5. **周界：组装本期读数（一周一次）**：只有**周界那一次** groom 跑 `python3 scripts/metrics_snapshot.py`，把诊断侧 / 结构侧 / 内容流程侧拼成一份新期文件写进 `metrics/timeline.d/`，复核分母后随同一个 PR 提交，再跑 `python3 scripts/build_timeline.py` 重建聚合。期文件一周一期，不跟着每次运行增长——日粒度里每次运行只有一两次诊断，比例读数全是 0/1 与 1/1，噪声盖过信号。
+8.5. **周界：组装本期读数（一周一次）**：只有**周界那一次** groom 跑 `python3 scripts/metrics_snapshot.py`，把诊断侧 / 结构侧 / 内容流程侧拼成一份新期文件写进 `metrics/timeline.d/`，复核分母后随 PR 提交；`metrics/timeline.yaml` 由主干 job 重建（本地可跑 `python3 scripts/build_timeline.py` 预览，但不提交）。期文件一周一期，不跟着每次运行增长——日粒度里每次运行只有一两次诊断，比例读数全是 0/1 与 1/1，噪声盖过信号。
 
    条目使用记录与本期读数是**两个粒度**：记录每次运行都追加（一行一条，3.5 / 3.6 写），期文件只在周界组装（这一步）。读端读的是生成物（`metrics/entry-activity/<部署>.yaml` 与 `metrics/timeline.yaml`），不读源。
 
@@ -147,7 +147,7 @@ disable-model-invocation: true
 
 **R7. reference 索引触发检测（修订 2 渐进式）**：每次 groom 检查——
 - `references/` 下文件数 >50，**或** metrics 显示 reference 检索退化（漏检增多 / 平台匹配耗时长）；
-- 达到 → 变更摘要**建议**按层建索引——背景类走 `scripts/build_ref_summary_index.py`（生成 `references/_summary-index.yaml`），流程类走 `scripts/build_procedure_index.py`（生成 `references/_procedure-index.yaml`）；两层都已有生成物与 `--check`（CI 强制），**case 层 `build_index.py` 与之同构**。**建议不自动改生成物**（生成物只由脚本写，建议与决定分离）；未达到 → 不提及（目录 + grep 足够，不为不存在的规模购置基础设施）。
+- 达到 → 变更摘要**建议**按层建索引——背景类走 `scripts/build_ref_summary_index.py`（生成 `references/_summary-index.yaml`），流程类走 `scripts/build_procedure_index.py`（生成 `references/_procedure-index.yaml`）；两层都已有生成物与 `--check`（CI 先生成再校验），**case 层 `build_index.py` 与之同构**。**建议不自动改生成物**（生成物只由主干 job 或显式跑生成器的人写，建议与决定分离）；未达到 → 不提及（目录 + grep 足够，不为不存在的规模购置基础设施）。
 
 **R8. case 共性提炼候选（case-derived reference 触发信号）**：跑 `python3 scripts/tag_hygiene.py`（机械聚类，零 token 手扫）——**同 tag 的 case ≥3 条且 ≥3 条未被 reference 收录** → 变更摘要列出该组（tag + case id），**建议**走 `/skill:to-reference --ingest-cases "[id1, id2...]"` 提炼共性（methodology / error-code 表追加）。**建议与决定分离**：同 tag 是弱信号，是否提炼由 owner 定；owner 认可后**在同一轮 groom 里由 agent 执行**（不再等下一次），产出的 reference 与本轮升格随同一个 PR 提交。**执行前提：case 已升格**——R8 只扫 `knowledge/`，引用的 id 天然都已入库；`references/**` 的 `sources[].cases` 不得出现 `postmortems/inbox/` 里的草稿 id（CI 会红）。
 

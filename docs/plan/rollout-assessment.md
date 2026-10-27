@@ -27,7 +27,7 @@
 | 原则 | 实现证据 | 状态 |
 |---|---|---|
 | 一 验证先于交付 | severity 闸门、fix 是建议不动生产、2 次失败转人工、diagnosis checks 验证后才给 fix | ✅ 完整 |
-| 二 不变量写进结构 | `build_index.py --check` CI、`verify_references.py` 强校验（含 error-code 表形态：非空/码唯一/逐条必填）、`feedback_pending` 标记、机器路径 CI 挡、词条零注释 | ✅ 完整 |
+| 二 不变量写进结构 | `rebuild_generated.py` 生成后检查 + 主干 job 重建索引、`verify_references.py` 强校验（含 error-code 表形态：非空/码唯一/逐条必填）、`feedback_pending` 标记、机器路径 CI 挡、词条零注释 | ✅ 完整 |
 | 三 底座保持词法 | 无向量检索（ADR-0002）、YAML/git 底座、quickly_check 双 regex、**不引入图存储（ADR-0008 §1.6 明确否决）** | ✅ 完整 |
 | 四 知识库有界 | soft_cap 30 / hard_cap 60 + 容量表、`_archive/` 软退休复活、方法论/资产分目录、聚类规则（追加不新建、关联不合并） | ⚠️ case 层完整；**reference 层容量治理参数仍是开放项**（ADR-0008 Open Question） |
 | 五 建议与决定分离 | 预分诊三分类 + 人审、高风险双签 + 随机审序、to-reference grill→active 直进→**PR review 即审核闸门（合入即生效）** | ✅ 完整 |

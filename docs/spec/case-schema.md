@@ -131,7 +131,7 @@ case 文件，结算就变成每次改知识条目，观测与知识本体也就
 已进 CI（`.github/workflows/kb-checks.yml`）：
 
 - `case-structure` job 跑 `python3 scripts/verify_case_draft.py --all`：必需字段、三个枚举（`category` / `severity` / `fix_type`）、`ref_knowledge` 的悬挂与 active 校验、`expected` 的正则可编译且无空分支。
-- `index-freshness` job 跑 `python3 scripts/build_index.py --check`：每条 case 都有读侧索引行（覆盖检查），且全库条目 id 唯一、案例文件名与 id 一致。
+- `index-freshness` job 先跑 `python3 scripts/rebuild_generated.py`，再跑 `python3 scripts/build_index.py --check`：每条 case 都有读侧索引行（覆盖检查），且全库条目 id 唯一、案例文件名与 id 一致；main 上的索引由 `rebuild-generated` job 重建并提交。
 - `case-structure` job 跑 `python3 scripts/score_entries.py --check-overrides`：`score_override` 若填则必带 `reason` 与 `by`、`score` 在 `[0, 1]`。
 - `metrics-validation` job 跑 `python3 scripts/verify_entry_activity.py` 与 `python3 scripts/build_entry_activity.py --check`：使用记录的行形状、`(run, kind, id)` 唯一、条目的计数键都对应真实存在的条目，生成物与源一致。
 - `reference-validation` job 跑 `python3 scripts/verify_references.py --check`：解析全部 case YAML 算派生计数。

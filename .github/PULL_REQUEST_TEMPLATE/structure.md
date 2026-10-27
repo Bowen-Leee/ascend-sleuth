@@ -50,7 +50,7 @@ PR body 正文从首个 "## " 区块开始。
 
 - [ ] case 文件迁移完成，`_archive/` 处置明确
 - [ ] 路由 `search_namespaces` 同步（改的是 `triage-tree.d/<族>.yaml`，不是生成的 `triage-tree.yaml`）
-- [ ] 生成物随本 PR 一起提交（跑 `python3 scripts/build_index.py` 与 `python3 scripts/build_triage_tree.py` 后 `git add`）：索引分片、总表、路由族文件、路由聚合
+- [ ] 生成物不随本 PR 提交：只改源文件；索引、路由聚合由主干 job 重建（本地可跑 `python3 scripts/rebuild_generated.py --check` 预览；它会写工作区，看完 `git checkout -- <生成物>` 还原，不要提交结果）
 - [ ] golden fixture 的 namespace 断言同步
 - [ ] 受影响 case 的 references 路径修正
 

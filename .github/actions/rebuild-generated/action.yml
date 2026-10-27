@@ -1,0 +1,12 @@
+name: rebuild generated views
+description: 在 CI 工作树里重建生成物（PR 不提交它们；各 job 在读之前调它）
+
+# 为什么做成 composite action：生成物是索引 / 路由聚合 / reference 索引的公共输入，
+# 有六个 job 会读它。每个 job 各抄一遍 `python3 scripts/rebuild_generated.py`，改了脚本
+# 就要记得改六处；抄漏的那一处会读到过期文件，而报错通常指向别的原因。
+runs:
+  using: composite
+  steps:
+    - name: rebuild generated views
+      shell: bash
+      run: python3 scripts/rebuild_generated.py

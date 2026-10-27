@@ -48,7 +48,7 @@
 
 依据：理论 §5（失败模式不对称：LLM 失败静默，确定性组件失败可观测、可归因）。
 
-落地：阶段一加载固定为读生成索引（`_index.yaml`），不依赖"只读部分字段"的自觉；反馈追踪落在状态文件的 `feedback_pending` 标记上，续接启动与面板待办都会扫它，不依赖记性；索引新鲜度由 `build_index.py --check` 硬校验并接入 CI。无法硬化的规则（脱敏彻底性、severity 标注正确性）必须显式标注强度为"约定"，不得写成硬门。
+落地：阶段一加载固定为读生成索引（`_index.yaml`），不依赖"只读部分字段"的自觉；反馈追踪落在状态文件的 `feedback_pending` 标记上，续接启动与面板待办都会扫它，不依赖记性；索引新鲜度由主干 job 重建、PR 先生成后检查来保证；没有合入后重建 job 的部署这条降为约定（手工部署，合入后人工重建）。无法硬化的规则（脱敏彻底性、severity 标注正确性）必须显式标注强度为"约定"，不得写成硬门。
 
 反例：把约定当硬门宣传，等于制造虚假的安全感。
 
@@ -170,7 +170,7 @@
 
 本文是判断性条文，十一条都没有机械检查进 CI。落到实现层的机检挂在原则二上，由 `.github/workflows/kb-checks.yml` 的 job 承载：
 
-- `index-freshness`：`python3 scripts/build_index.py --check`、`python3 scripts/build_triage_tree.py --check-sources` / `--check-coverage`。
+- `index-freshness`：PR 先 `python3 scripts/rebuild_generated.py`，再跑 `build_index.py --check`、`build_triage_tree.py --check-sources` / `--check-coverage`；main 由 `rebuild-generated` job 重建。
 - `case-structure`：`python3 scripts/verify_case_draft.py --all`。
 - `reference-validation`：`python3 scripts/verify_references.py --check`。
 - `docs-index`：`python3 scripts/build_docs_index.py --check`。

@@ -111,7 +111,7 @@ traces 是各检出各一份的运行时件：在 worktree 里跑知识整理收
 | 量 | 写在哪 | 谁写 |
 |---|---|---|
 | 计数（被选中、被加载、解决、误诊、自证解决、先验三态、消费点、被排除） | `metrics/entry-activity.d/<周>.yaml` 的追加行 | `trace_entry_activity.py`、`settle_trace_feedback.py` |
-| 排序分数 | 索引生成物 `knowledge/_index.yaml` 与 `knowledge/_index/*.list` | `score_entries.py` 从计数加冷启动先验算出，`build_index.py` 写进生成物 |
+| 排序分数 | 索引生成物 `knowledge/_index.yaml` 与 `knowledge/_index/*.list` | `score_entries.py` 从计数加冷启动先验算出，`build_index.py` 写进生成物；有合入后重建 job 的部署由主干 job 在合入后提交 |
 | 人工覆盖的分数 | 案例的可选字段 `score_override`（`score`、`reason`、`by`） | 人，两人复核 |
 
 `score_override` 的合法性由 `python3 scripts/score_entries.py --check-overrides` 判：不带 `reason` 的覆盖报错（CI 的 `case-structure` job）。
@@ -207,7 +207,7 @@ periods:
    python3 scripts/verify_entry_activity.py          # 门：行形状 / (run,kind,id) 唯一 / id 查得到 / run 与文件名归周 / 部署名一致
    python3 scripts/build_entry_activity.py --check   # 门：生成物与源一致（与上一条同在 CI 的 metrics-validation）
    python3 scripts/score_entries.py                  # 算分：记录计数 + 冷启动先验，不落盘
-   python3 scripts/build_index.py                    # 把分数写进索引生成物
+   python3 scripts/rebuild_generated.py --check      # 重建索引/时序/记录生成物并校验；有合入后重建 job 时由主干 job 提交；本地只作预览，跑完 `git checkout -- <生成物>` 还原
 1. 组一期骨架（三块一起，不用再从多个脚本手工搬运）：
    python3 scripts/metrics_snapshot.py --kind live
    → 期号默认按 kind 生成正确形状（live 为 2026-W37-live-0912），不要手写

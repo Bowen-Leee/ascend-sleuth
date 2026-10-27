@@ -75,7 +75,7 @@ ascend-sleuth 把这些经验沉淀为结构化知识库。诊断时按症状路
 
 ```
 knowledge/
-├── _index.yaml / _index/   总表与读侧视图（scripts/build_index.py 生成）
+├── _index.yaml / _index/   总表与读侧视图（scripts/build_index.py 生成；合入后由主干 job 重建）
 ├── training/{mindspeed-llm,mindspeed-mm,verl}/
 ├── inference/{vllm-ascend,sglang}/
 ├── common/                 多框架共用的权威记录（由 groom 提升）
