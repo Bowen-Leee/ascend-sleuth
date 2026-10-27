@@ -4,8 +4,9 @@ description: >
   在 DSH 会话中加载 ascend-sleuth 面板，并处理「装了但 tab 不出现」。先按本机给模型的工具与桌面版
   自带的东西选装载路：有 cordis_define / cordis_run 在会话内热加载；有 plugin_manager 就装常驻插件
   包；DSH Desktop 用安装目录自带的 dsh 命令行把 dsh-plugins/dsh-sleuth-panels/ 装进 profile（拿不到
-  地址与 token 时这是主路）；另有 scripts/panel_install.js 经 /api 通路安装、以及在侧栏「插件」页粘贴
-  路径两条备用路。面板：ascend-panel →「诊断」「指标」两个 tab；ev-panel →「自演进」tab。仅 DSH 可用
+  地址与 token 时这是主路）；另有 scripts/panel_install.js --all 经 /api 通路一次装面板与 vllm-kb
+  两个包、以及在侧栏「插件」页粘贴路径两条备用路。面板：ascend-panel →「诊断」「指标」两个 tab；
+  ev-panel →「自演进」tab。仅 DSH 可用
   ——依赖 conversation.view 插槽；其他 agent（Claude Code / Codex / pi）无此机制。
 ---
 
@@ -29,6 +30,11 @@ DSH 会话中加载可视化面板（诊断 / 指标 / 自演进）。每个面�
 | 两件都没有（DSH Desktop 默认），且有 `<安装目录>/resources/runtime/cli/bin/dsh[.cmd]` | 路由三：桌面版自带的命令行 |
 | 命令行不在，或要装进别的 profile，或用户能操作界面 | 路由五：侧栏「插件」页粘贴路径 |
 | 要在装之前确认包能加载，或界面不可用 | 路由四：HTTP 脚本安装（先要有地址与 token） |
+
+**默认装两个包**：面板包 `dsh-sleuth-panels`，以及 `dsh-sleuth-vllm-kb`（设置页左侧栏的
+「vllm-kb」一栏，四个 `vllm_kb_*` 工具默认关）。路由四用 `--all` 一次装齐；路由三对 vllm-kb 再跑
+一次 `add`；路由二用 `install_bundle` 装两次；路由五在插件页粘贴两次。
+两个包分开登记：装面板不会带上 vllm-kb。
 
 桌面版多半落在第三行，原因有两条：发行版把插件管理器那条模型工具标成 `disabled: true`
 （`@deepseek-ai/dsh-base/cordis.patch.yml`、`@deepseek-ai/dsh-web-app/cordis.patch.yml` 各一处），
@@ -80,7 +86,8 @@ DSH 会话中加载可视化面板（诊断 / 指标 / 自演进）。每个面�
    找不到 DSH 时这一项按本地桩校验工具定义（桌面版把 DSH 装在 `app.asar` 内，探针到不了）。
    `--selftest-dsh` 用临时假 DSH 自测这条判据，`--dsh-root <目录>` 指到别的安装处。
 
-2. **装**：`plugin_manager install_bundle(target: <仓库绝对路径>/dsh-plugins/dsh-sleuth-panels)`。
+2. **装**：`plugin_manager install_bundle(target: <仓库绝对路径>/dsh-plugins/dsh-sleuth-panels)`；
+   对 `<仓库绝对路径>/dsh-plugins/dsh-sleuth-vllm-kb` 再装一次。
 
 3. **读安装结果**（`application` 与 `warnings` 决定是否已生效，不要拿日志或进程列表代替）：
    - `applied` → 已生效。
@@ -107,8 +114,10 @@ DSH 会话中加载可视化面板（诊断 / 指标 / 自演进）。每个面�
 
    ```
    dsh.cmd plugin --profile desktop add "<仓库绝对路径>/dsh-plugins/dsh-sleuth-panels"
+   dsh.cmd plugin --profile desktop add "<仓库绝对路径>/dsh-plugins/dsh-sleuth-vllm-kb"
    ```
 
+   两条都要跑：第一条装面板，第二条装 vllm-kb（设置页左侧栏那一栏）。
    命令做三件事：在 profile 目录跑包管理器、把依赖写成 `link:<仓库路径>`、把包名加进
    `dsh.profile.bundles`。最后一项决定启动时加载它——只写了依赖没进 bundles，等于没装。
    输出里的 `Already up to date` 只说明包管理器没搬文件，装没装看下一行的 `dependencies:`。
@@ -126,6 +135,10 @@ DSH 会话中加载可视化面板（诊断 / 指标 / 自演进）。每个面�
 5. **验证**：先读「装上了但 tab 不出现」，再按「无 token 时的验证」跑一遍。
 
 ## 路由四：HTTP 脚本安装（要有地址与 token）
+
+1. **装**：`node scripts/panel_install.js --all`。两个包各自判版本：与仓库一致就跳过，不一致才换装
+   （换装后要重启，见「更新已装的面板」）；只想装其中一个时用 `--spec <包目录>`。
+2. **核对**：`node scripts/panel_install.js --all --check`，两个包的版本号都应与仓库里的一致。
 
 `node scripts/panel_install.js` 走的是界面同一条通路：先 `GET <base>/?token=<token>` 换会话 cookie，
 再 `POST <base>/api/pluginManager/<方法>`，信封是
@@ -149,7 +162,8 @@ DSH 会话中加载可视化面板（诊断 / 指标 / 自演进）。每个面�
 
 ## 路由五：插件页粘贴（命令行不可用，或用户能操作界面时）
 
-1. 让用户在侧栏「插件」页的添加入口粘贴 `<仓库绝对路径>/dsh-plugins/dsh-sleuth-panels`。
+1. 让用户在侧栏「插件」页的添加入口粘贴 `<仓库绝对路径>/dsh-plugins/dsh-sleuth-panels`，
+   再用同一条路径把 `<仓库绝对路径>/dsh-plugins/dsh-sleuth-vllm-kb` 粘一次。
    该入口接受包名、Git 地址、压缩包或本地绝对路径。粘的是这个包目录，不是面板源目录
    `dsh-plugins/ascend-panel/`——后者没有 `package.json`，入口会拒。
 2. **读结果**：界面不给模型可读的 `application` / `warnings`，改读 profile 的 `package.json`
@@ -208,11 +222,12 @@ DSH 会话中加载可视化面板（诊断 / 指标 / 自演进）。每个面�
 
 ## 更新已装的面板
 
-先判装法，两种的更新动作不同。
+先判装法，两种的更新动作不同。拉完代码先跑 `node scripts/panel_install.js --sync`：两个包各自判
+版本，一致就什么都不做，不一致就换装并说明要不要重启。它与 `--all` 用同一套版本判定。
 
 - **link 安装**（路由三，`node_modules` 里是指回仓库的链接）：改完源码跑
   `node scripts/build_panel_bundle.js` 重建产物，再重启宿主进程。不用重装，也不用改版本号。
-- **快照安装**（路由二、五，插件管理器按 name+version 判「已装」）：同版本重装返回
+- **快照安装**（路由二、四、五，插件管理器按 name+version 判「已装」）：同版本重装返回
   `changed=false`、产物不换。要换版本：把 `dsh-plugins/dsh-sleuth-panels/package.json` 的 version
   加一、重建产物，再按原路装一次；或 `node scripts/panel_install.js --force` 强制换装。
 - 两种都改不到"用户手上那个 tab"：改完必须重启宿主进程，host 半才会加载新代码。
@@ -228,10 +243,11 @@ DSH 会话中加载可视化面板（诊断 / 指标 / 自演进）。每个面�
 | 诊断面板 | `dsh-plugins/ascend-panel/` | `ascend-diagnose`(20) / `ascend-metrics`(21) | 会话列表/轨迹/证据 + 指标闭环判决（判据→结论/证据/下一步）/容量逐格/趋势 |
 | 自演进看板 | `dsh-plugins/ev-panel/` | `ascend-evolve`(22) | 首屏是体检判决（要处理的判据 + 下一步动作）与触及面；卡收在默认收起的抽屉里作为 diff 日志 |
 
-## 顺带装一个非面板包：vllm-kb 接入插件（可选）
+## 非面板包：vllm-kb 接入插件
 
 `dsh-plugins/dsh-sleuth-vllm-kb` 不是面板。它给设置页加左侧栏一项「vllm-kb」（配端点、启停、测
-连通），并注册四个 `vllm_kb_*` 工具。装法与面板包相同：
+连通），并注册四个 `vllm_kb_*` 工具。它默认随面板一起装（路由四的 `--all`、路由三的第二条
+`add`）；只有要单独补装时才用下面这两条：
 
 ```
 node scripts/panel_install.js --spec "<仓库绝对路径>/dsh-plugins/dsh-sleuth-vllm-kb"
@@ -239,7 +255,7 @@ dsh.cmd plugin --profile desktop add "<仓库绝对路径>/dsh-plugins/dsh-sleut
 ```
 
 第一条要地址与 token，第二条不要。换装要重启才加载。装完在设置页左侧栏看到「vllm-kb」；
-工具行 `vllm-kb-tools` 默认关，在插件页单独打开。
+工具行 `vllm-kb-tools` 与 `vllm-kb-ocr` 默认关，在插件页单独打开。
 
 ## 依赖预检（激活前跑）
 
