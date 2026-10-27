@@ -7,15 +7,16 @@ pipefail` 直接报错；即使跑起来，Git Bash 的 `ln -s` 默认退化成*
 skills/ 的目录副本而非链接，之后 git pull 更新 SKILL.md 不再同步。Python 三平台统一，
 Windows 分支先试真 symlink（需 Developer Mode），失败退到 `mklink /J`（junction，免管理员）。
 
-检测策略（三检测，覆盖主流场景）：
-  - 配置目录存在（~/.dsh ~/.claude ~/.cursor ~/.trae ~/.codebuddy ~/.codex）——
-    装了 agent 并用过即有目录，是最可靠的信号；
-  - 或命令可执行（dsh/claude/cursor/trae/codebuddy/codex）——CLI 版即使目录不在
-    默认位置也能命中；
-  - 或该 agent 的 home 环境变量指向存在的目录（DSH_HOME）——DSH Desktop 把 home 放在
-    %APPDATA%\\dsh-desktop\\harness，前两条都不成立；而 Windows clone 下需要本脚本修的
-    `.dsh/skills`（文本文件残留）正好是这一个是。
-  三者皆无 → 该 agent 未检测到（不建；可用 --agents 手动指定）。
+检测策略（两检测，覆盖主流场景）：
+  - 配置目录存在（~/.dsh、~/.claude 等六家）——装了 agent 并用过即有目录，是最可靠的信号；
+  - 或命令可执行（dsh、claude 等六家）——CLI 版即使目录不在默认位置也能命中。
+  两者皆无 → 该 agent 未检测到（不建；可用 --all 或 --agents 手动指定），
+  Windows 上逐个打印跳过的原因。
+`.dsh` 是例外：`.dsh/skills` 是本仓自己跟踪的条目，任何模式（含 --agents）都修，不参与检测。
+  DSH Desktop 的 home 不在 ~/.dsh、不装 dsh 命令，两条检测都不成立；而 Windows clone 下
+  它落成内容为 `../skills` 的文本文件，正是必须修的那一个。
+某个目录已存在却不是链接（Git Bash `ln -s` 退化成副本、破损的 reparse 点等）→ 打印 ⚠️
+  跳过、以非 0 退出，不假装配好了。
 只建项目级配置，不碰 agent 全局配置。
 
 用法：
@@ -39,15 +40,20 @@ REPO_DIR = Path(__file__).resolve().parent.parent
 SKILLS_DIR = REPO_DIR / "skills"
 REL_TARGET = "../skills"  # 相对链接：仓库整体挪位置也不失效
 
-# label / 仓库内目录 / 命令 / home 环境变量（home 不在 ~ 下的 agent 靠它兜底，无则空串）
-AGENTS: list[tuple[str, str, str, str]] = [
-    ("DeepSeek Harness", ".dsh", "dsh", "DSH_HOME"),
-    ("Claude Code", ".claude", "claude", ""),
-    ("Cursor", ".cursor", "cursor", ""),
-    ("Trae", ".trae", "trae", ""),
-    ("CodeBuddy", ".codebuddy", "codebuddy", ""),
-    ("Codex", ".codex", "codex", ""),
+# label / 仓库内目录 / 命令
+AGENTS: list[tuple[str, str, str]] = [
+    ("DeepSeek Harness", ".dsh", "dsh"),
+    ("Claude Code", ".claude", "claude"),
+    ("Cursor", ".cursor", "cursor"),
+    ("Trae", ".trae", "trae"),
+    ("CodeBuddy", ".codebuddy", "codebuddy"),
+    ("Codex", ".codex", "codex"),
 ]
+
+# 不参与检测的一家：`.dsh/skills` 是本仓自己跟踪的条目（index mode 120000），Windows clone 下
+# 落成内容为 `../skills` 的文本文件，必须修好。它不取决于「检测到 DSH 装了」——DSH Desktop 的
+# home 在 %APPDATA%\dsh-desktop\harness、不装 dsh 命令，人手动开的 PowerShell 里两条检测都不成立。
+REPO_OWNED_DIR = ".dsh"
 
 IO_REPARSE_TAG_MOUNT_POINT = getattr(stat, "IO_REPARSE_TAG_MOUNT_POINT", 0xA0000003)
 
@@ -184,17 +190,18 @@ def ensure_skip_worktree(repo: Path, rel_path: str) -> str | None:
     )
 
 
-def detected(conf_dir: str, cmd: str, home_env: str = "") -> bool:
-    """本机是否装了该 agent。三条判据任一成立即可。
+def detected(conf_dir: str, cmd: str) -> bool:
+    """本机是否装了该 agent：配置目录存在，或命令可执行。
 
-    第三条为 home 不在 `~` 下的形态而加：DSH Desktop 在 Windows 上把 home 放在
-    `%APPDATA%\\dsh-desktop\\harness` 并用 `DSH_HOME` 指出来，这时前两条都不成立，
-    自动模式会跳过 DSH——而 `.dsh/skills` 在 Windows clone 下正是需要本脚本修的那一个。
+    两条都不覆盖「home 不在 `~` 下」的形态（DSH Desktop 把 home 放在
+    `%APPDATA%\\dsh-desktop\\harness`）——该形态对应的 `.dsh` 不参与检测，见 REPO_OWNED_DIR。
     """
-    if (Path.home() / conf_dir).is_dir() or shutil.which(cmd) is not None:
-        return True
-    home = os.environ.get(home_env, "") if home_env else ""
-    return bool(home) and Path(home).is_dir()
+    return (Path.home() / conf_dir).is_dir() or shutil.which(cmd) is not None
+
+
+def skip_reason(conf_dir: str, cmd: str) -> str:
+    """自动模式判定「未安装」时，逐条给出两条检测的实际取值，让用户看出是误判还是真没装。"""
+    return f"~/{conf_dir} 不存在、PATH 上没有 {cmd}"
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -214,45 +221,62 @@ def main(argv: list[str] | None = None) -> int:
         print(f"错误：{SKILLS_DIR} 不存在（请确认在 ascend-sleuth 仓库内运行）", file=sys.stderr)
         return 1
 
+    known = [conf_dir.lstrip(".") for _, conf_dir, _ in AGENTS]
     if args.agents:
         wanted = {item.strip().lstrip(".") for item in args.agents.split(",") if item.strip()}
         mode = "manual"
+        unknown = sorted(wanted - set(known))
+        if unknown:
+            print(f"--agents 里有不认识的名字：{'、'.join(unknown)}")
+            print("可写：" + " ".join(known))
+            return 1
     else:
         wanted = set()
         mode = "all" if args.all else "auto"
 
-    configured = 0
-    for label, conf_dir, cmd, home_env in AGENTS:
-        if mode == "manual":
+    unresolved: list[str] = []
+    skipped: list[str] = []
+    for label, conf_dir, cmd in AGENTS:
+        if conf_dir == REPO_OWNED_DIR:
+            want = True  # 仓库自己的条目，任何模式都修
+        elif mode == "manual":
             want = conf_dir.lstrip(".") in wanted
         elif mode == "all":
             want = True
         else:
-            want = detected(conf_dir, cmd, home_env)
+            want = detected(conf_dir, cmd)
         if not want:
+            skipped.append(f"[跳过] {label}：{skip_reason(conf_dir, cmd)}")
             continue
-        report, _ = ensure_link(REPO_DIR / conf_dir, label, SKILLS_DIR)
+        report, kind = ensure_link(REPO_DIR / conf_dir, label, SKILLS_DIR)
         print(report)
-        configured += 1
+        if kind is None:  # 已有同名目录 / 指向别处的链接：没建好，也不替用户删
+            unresolved.append(label)
 
-    if configured == 0:
-        print("未检测到已安装 agent（~/.dsh ~/.claude ~/.cursor ~/.trae ~/.codebuddy ~/.codex、"
-              "对应命令、对应 home 环境变量均无）。")
-        print("确定要用的 agent 不在默认路径 → 手动指定：python3 scripts/enable_agent_skills.py --agents claude")
-        return 0
+    if os.name == "nt" and mode == "auto" and skipped:
+        # Windows 上「没建」与「建好了」必须在输出里分开：这正是 `.dsh/skills` 长期修不上的成因。
+        # 其他平台的 symlink 随检出就有，跳过一个 agent 没有后果，不必刷屏。
+        print()
+        for line in skipped:
+            print(line)
+        print("要连未检测到的 agent 一起建：python3 scripts/enable_agent_skills.py --all")
 
     if os.name == "nt" and not args.no_git_adjust:
         link = REPO_DIR / ".dsh" / "skills"
         if link.is_symlink():  # 真 symlink（Developer Mode 生效）→ 让 git 也按 symlink 比对
             note = ensure_core_symlinks(REPO_DIR)
-        elif link.exists():  # junction → git 侧需 skip-worktree
+        elif is_link(link):  # junction → git 侧需 skip-worktree
             note = ensure_skip_worktree(REPO_DIR, ".dsh/skills")
-        else:
+        else:  # 不是链接（目录副本 / 破损残留）：不动 git 配置，由上面的 ⚠️ 交代
             note = None
         if note:
             print(note)
 
     print()
+    if unresolved:
+        print(f"有 {len(unresolved)} 个 agent 的 skills 目录没建好：{'、'.join(unresolved)}（见上面 ⚠️ 行）")
+        print("按每行的提示处理后重跑本脚本；`.dsh/skills` 没建好时 DSH 读不到任何 skill。")
+        return 1
     print("完成。在仓库目录内启动 agent 即自动发现 skills/（各 agent 项目 roots 扫描）。")
     print("仓库 git pull 更新 SKILL.md 后：DSH 热刷新即时生效；其余 agent 重新加载会话即可。")
     return 0
