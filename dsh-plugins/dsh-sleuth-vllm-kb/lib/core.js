@@ -329,13 +329,36 @@ export async function handleApiRequest(request, deps = {}) {
 
   if (method === 'POST' && suffix === '/probe') {
     const { config } = await read()
-    const endpoint = payload.endpoint_id
+    const endpoint = (payload.endpoint_id
       ? config.endpoints.find((item) => item.id === payload.endpoint_id)
-      : activeEndpoint(config)
-    if (!endpoint) return { status: 200, payload: { ok: false, status: 0, elapsed_ms: 0, detail: '没有可探测的端点' } }
-    const result = await probeImpl(endpoint.base_url, config.probe_timeout_ms)
-    if (deps.cache && typeof deps.cache.set === 'function') deps.cache.set(endpoint.id, { at: Date.now(), result })
-    return { status: 200, payload: { ...result, endpoint_id: endpoint.id, label: endpoint.label, checked_at: new Date().toISOString() } }
+      : activeEndpoint(config)) || null
+    // 探的是页面上的那条地址，不是配置文件里存着的那条：请求带了 base_url 就用它。
+    // 否则「填地址 → 点测试」会去探上次保存的地址（新加的端点还没有地址，必失败），
+    // 非先点一次保存不可。超时同理，高级里改完不保存也要生效。
+    const typed = typeof payload.base_url === 'string' ? payload.base_url.trim().replace(/\/+$/, '') : ''
+    const baseUrl = typed !== '' ? typed : (endpoint ? endpoint.base_url : '')
+    if (baseUrl === '') {
+      return { status: 200, payload: { ok: false, status: 0, elapsed_ms: 0, endpoint_id: endpoint ? endpoint.id : '', detail: '这个端点还没有地址：填上再点「测试」（新加的端点、地址为空的那条，都还没进配置文件）' } }
+    }
+    const timeoutMs = Number.isFinite(payload.probe_timeout_ms) && payload.probe_timeout_ms > 0
+      ? payload.probe_timeout_ms
+      : config.probe_timeout_ms
+    const result = await probeImpl(baseUrl, timeoutMs)
+    // 只有探的就是配置文件里那条地址，才写进缓存：拿没保存的地址写缓存，会让工具侧的
+    // 可用性判断跟着变（那时保存还没发生，地址随时可能再改）。
+    const isSaved = endpoint !== null && endpoint.base_url === baseUrl
+    if (isSaved && deps.cache && typeof deps.cache.set === 'function') deps.cache.set(endpoint.id, { at: Date.now(), result })
+    return {
+      status: 200,
+      payload: {
+        ...result,
+        endpoint_id: endpoint ? endpoint.id : '',
+        label: endpoint ? endpoint.label : baseUrl,
+        base_url: baseUrl,
+        saved: isSaved,
+        checked_at: new Date().toISOString(),
+      },
+    }
   }
 
   return { status: 404, payload: { error: '未知路径' } }
