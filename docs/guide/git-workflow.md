@@ -270,13 +270,20 @@ python3 scripts/rebuild_generated.py --check
   不是逐文件清单——新增脚本不必回来补名字。
   旧清单逐个列了 35 个 `scripts/*`，实测漏掉 37 个（改那些脚本 CI 不跑）。漏一条 `paths:` 的
   代价是整条流水线静默不跑，所以它宁可宽，细活交给下面那层。
+  另有一层事件边界：`push` 只在 `main` 上起，`pull_request` 只在改了上述路径的 PR 上起。开发分支
+  的推送不起这个 workflow——`pull_request` 那次以主干为基线算出的文件清单才是准的。改前这些推送
+  会另起一轮：新建分支首次推送退化成全量，其后每次推送只是把 PR 那轮的大部分 job 重跑一遍。
+  `main` 的 push 保留：PR 验的是当次合并预演（`refs/pull/N/merge`），主干前进后最终合入的树
+  没有别处验。代价是未开 PR 时推送零 CI 反馈；已有 PR 的分支再推送，会以 `synchronize` 重跑
+  `pull_request`。
 - 细网：`changes` job 算出这次改了哪一面（`docs` / `knowledge` / `references` / `metrics` /
   `proposals` / `eval` / `skills` / `code` / `panels` 九个布尔量），各 job 用
   `if: needs.changes.outputs.<组> == 'true'` 自取所需。新增 job 时按"它的命令真正读了哪些目录"挑组
   （看脚本里的路径字面量），不要按直觉——触发面取"读了就触发"，不按"断言强不强"取。
-- 它会退化成全量（九个布尔量全 true 并打印原因）的四种情形：本地复跑、新分支首次推送（`before`
-  全 0）、无 `.git` 的副本（端到端演练场就是这个形态）、与基线比不了（孤儿分支 / 与 `main` 无
-  merge base 的推送）。后一类是独立预核抓出来的：比对取不到内容时必须按全量，不能吞成"零改动"。
+- 它会退化成全量（九个布尔量全 true 并打印原因）的几种情形：本地复跑、无 `.git` 的副本
+  （端到端演练场就是这个形态）。另有三条兜底判断留在代码里，收窄 `push` 后都基本不可达：
+  `before` 为全 0（拿不到父提交）、与基线比不了（无 merge base 的推送）、`origin/<基线>`
+  解析不到（checkout 没带下该分支）。比对取不到内容时必须按全量，不能吞成"零改动"。
 - 8 个 verification job（`index-freshness` / `case-structure` / `reference-validation` /
   `metrics-validation` / `proposal-audit` / `docs-index` / `holdout-integrity` / `eval-scorecard`）
   的 `if` 都带 `code`：它们的判定就是"跑一遍 `scripts/<x>.py`"，改了脚本本身而不跑那道门，等于改坏了
