@@ -37,6 +37,7 @@ const os = require('os')
 const crypto = require('crypto')
 const { pathToFileURL } = require('node:url')
 const { register } = require('node:module')
+const { execFileSync } = require('node:child_process')
 
 const repo = path.resolve(__dirname, '..')
 const BUNDLE = 'dsh-plugins/dsh-sleuth-panels'
@@ -836,6 +837,44 @@ function selftestDsh() {
   return 0
 }
 
+// 兜底分支：解析不到 @deepseek-ai/dsh-tools 时，产物仍要能加载。
+//
+// 为什么单独一例：这条分支正是「插件页显示已安装、对话视图里 tab 一个都不出现」的成因——顶层
+// import 一失败，整个 host 半 import 不进来，工具与 RPC 全没注册，界面上没有任何报错。
+// 冒烟测试的其余各例都在 stub loader 让 import 成功的前提下跑，覆盖不到它；这里用一个拒绝该
+// 包名的解析钩子在子进程里再加载一次（子进程是为了让钩子只影响这一次加载）。
+function checkFallbackLoad() {
+  const source = fs.readFileSync(path.join(repo, BUNDLE, 'lib/index.js'), 'utf8')
+  check(source.includes('if (sdkDefineTool === undefined) return plainDefineTool(options)'),
+    '兜底分支已接上（解析不到 dsh-tools 时走 plainDefineTool）')
+  check(source.includes('parameters: options.parameters'),
+    '兜底分支按 JSON Schema 交出 parameters（不做 DSL 归一化）')
+
+  const loader = pathToFileURL(path.join(__dirname, 'fixtures', 'panel-bundle-no-tools-loader.mjs')).href
+  const bundle = pathToFileURL(path.join(repo, BUNDLE, 'lib/index.js')).href
+  const script = [
+    "import { register } from 'node:module'",
+    'register(process.env.PANEL_NO_TOOLS_LOADER)',
+    'const mod = await import(process.env.PANEL_BUNDLE_URL)',
+    "console.log('FALLBACK_OK', typeof mod.apply, JSON.stringify(mod.inject))",
+  ].join('\n')
+
+  let out = ''
+  try {
+    out = execFileSync(process.execPath, ['--input-type=module', '-e', script], {
+      cwd: repo,
+      encoding: 'utf8',
+      env: Object.assign({}, process.env, { PANEL_NO_TOOLS_LOADER: loader, PANEL_BUNDLE_URL: bundle }),
+    })
+  } catch (e) {
+    check(false, '解析不到 @deepseek-ai/dsh-tools 时产物仍能加载',
+      String((e && (e.stderr || e.message)) || e).split('\n').slice(0, 3).join(' ').slice(0, 200))
+    return
+  }
+  const ok = /FALLBACK_OK function \["connection","tools"\]/.test(out)
+  check(ok, '解析不到 @deepseek-ai/dsh-tools 时产物仍能加载', ok ? undefined : out.trim().slice(0, 200))
+}
+
 async function main() {
   if (process.argv.includes('--selftest-dsh')) {
     process.exit(selftestDsh())
@@ -845,6 +884,7 @@ async function main() {
   await checkClient()
   checkFidelity('lib/index.js', 'host')
   checkFidelity('lib/client.js', 'client')
+  checkFallbackLoad()
 
   if (failures.length > 0) {
     process.stderr.write('\n面板包冒烟测试未通过（' + failures.length + ' 项）：\n')

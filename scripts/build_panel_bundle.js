@@ -12,9 +12,11 @@
 //
 //   host 半： harness.handle(name, fn)        → ctx.connection.rpc.handle(CHANNEL, 分发表)
 //            harness.registerTool(ctx, tool)  → ctx.tools.register(tool)
-//            harness.defineTool               → 从 dsh 安装处解析的 @deepseek-ai/dsh-tools
-//                                               （桌面端注册了 @deepseek-ai/* 模块回退，
-//                                                symlink 装的 profile 插件能直接 import）
+//            harness.defineTool               → 能解析到就用 dsh 自带的 @deepseek-ai/dsh-tools，
+//                                               解析不到就用本文件里的最小实现（包被装进
+//                                               profile 时它从仓库路径出发，走不到安装处的
+//                                               node_modules，静态 import 会让整个 host 半
+//                                               import 失败）
 //   client 半：host.call(name, args)          → ctx.get('connection').rpc.call(CHANNEL, name, args)
 //
 // 生成物进 git（与 knowledge/_index、triage-tree.yaml 同一约定：生成物随 PR 走），
@@ -88,7 +90,8 @@ function renderHost() {
     '//',
     '// 面板源码是动态插件方言（文件是函数体，靠沙箱提供的 harness 通信）；这里原文嵌入常驻',
     '// 插件，并补一层适配：harness.handle → connection RPC 路由分发表、harness.registerTool →',
-    '// ctx.tools.register、harness.defineTool → dsh 自带 @deepseek-ai/dsh-tools。',
+    '// ctx.tools.register、harness.defineTool → dsh 自带 @deepseek-ai/dsh-tools（解析不到时', 
+    '// 用本文件的最小实现，见下面的 try/catch）。',
     '',
   ].join('\n')
 
@@ -106,7 +109,17 @@ function renderHost() {
   ].join('\n')).join('\n')
 
   return header + [
-    "import { defineTool } from '@deepseek-ai/dsh-tools'",
+    '// defineTool 从 dsh 安装处解析（`@deepseek-ai/dsh-tools`），但**不能写成静态 import**：',
+    '// 包被装进 profile 时，模块解析从本文件的真实路径（仓库）出发，走不到安装处的 node_modules。',
+    '// 静态 import 失败会让整个 host 半 import 不进来——插件不报错，只是工具与 RPC 全没注册，',
+    '// 面板 tab 一个都不出现（实测：`failed to import: Cannot find package @deepseek-ai/dsh-tools`）。',
+    '// 所以先试着拿真品，拿不到就用下面的最小实现接管。',
+    'let sdkDefineTool',
+    'try {',
+    "  sdkDefineTool = (await import('@deepseek-ai/dsh-tools')).defineTool",
+    '} catch {',
+    '  sdkDefineTool = undefined',
+    '}',
     '',
     "const CHANNEL = '" + CHANNEL + "'",
     '// 单次请求体上限（面板的 RPC 都是小 JSON；上限只为挡住失控请求）',
@@ -119,6 +132,18 @@ function renderHost() {
     '// 常驻包拿到的 dsh 自带 defineTool 只认 DSL。面板源码用的是包装写法，这里补这一步；',
     '// 缺了它参数校验会抛 unsupported JSON schema: parameters.type must be a value schema object，',
     '// 而那次抛在面板自身的 try/catch 之外，整个 host 半挂不上去（实测：RPC 全部没注册）。',
+    '// 拿不到真品时反之：最小实现直接把面板的包装写法当 JSON Schema 交出（ctx.tools.register',
+    '// 收的就是 JSON Schema，模型侧看到的 schema 与真品路径一致），只是少了参数预校验。',
+    'function plainDefineTool(options) {',
+    '  return {',
+    '    name: options.name,',
+    '    description: options.description,',
+    '    parameters: options.parameters,',
+    '    output: { schema: options.output.schema, render: options.output.render },',
+    '    execute: options.execute,',
+    '  }',
+    '}',
+    '',
     'function toParameterSpec(parameters) {',
     '  if (parameters === undefined || parameters === null) return {}',
     '  const isWrapper = parameters.type !== undefined || parameters.properties !== undefined',
@@ -137,7 +162,8 @@ function renderHost() {
     'function makeHarness(ctx, handlers) {',
     '  return {',
     '    defineTool(options) {',
-    '      return defineTool(Object.assign({}, options, { parameters: toParameterSpec(options.parameters) }))',
+    '      if (sdkDefineTool === undefined) return plainDefineTool(options)',
+    '      return sdkDefineTool(Object.assign({}, options, { parameters: toParameterSpec(options.parameters) }))',
     '    },',
     '    registerTool(_ctx, tool) { return ctx.tools.register(tool) },',
     '    handle(endpoint, fn) {',
