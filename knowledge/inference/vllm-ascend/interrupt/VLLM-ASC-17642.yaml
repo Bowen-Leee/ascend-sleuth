@@ -1,0 +1,74 @@
+# VLLM-ASC-17642 —— DeepSeek-V4 默认配置在 A2 启动崩于 aclnnScatterNdUpdateSk（EZ1001 dtype 不一致）
+# 来源：https://github.com/vllm-project/vllm-ascend/issues/17642
+# 修复：PR #17635（merged 2026-10-08）：把 indexer KV dtype 的 auto 解析成平台默认（非 A5 = int8）
+# pre-triage: new_pattern —— 现有 VLLM-ASC-10322 同算子但签名/根因不同（507015 MTE 越界 vs EZ1001 dtype）
+# verification: upstream-fix-merged（fix PR #17635，issue 同日 closed）
+# 建议命名空间：inference/vllm-ascend/interrupt/
+# 脱敏：上游 issue 无内网 IP/密钥
+
+cases:
+  - id: VLLM-ASC-17642
+
+    title: "DeepSeek-V4 W4A8/W8A8 在 A2（非 A5）默认配置拉起：aclnnScatterNdUpdateSk 报 EZ1001 updates dtype DT_INT8 should be same with varRef dtype DT_BFLOAT16——indexer KV dtype 的 auto 未解析成平台默认；PR #17635 修复"
+
+    category: interrupt
+    tags: [deepseek-v4, indexer, dtype, aclnn, ez1001, startup-failure, scatternd]
+    platforms: ["A2-910B"]
+    investigation_quality: medium
+
+    validation_record:
+      consistent: 0
+      inconsistent: 0
+      self_consistent: 1
+      last_verified: 2026-W44
+    upstream:
+      - repo: vllm-project/vllm-ascend
+        issue: 17642
+        url: https://github.com/vllm-project/vllm-ascend/issues/17642
+
+    verification:
+      source: upstream-fix-merged
+      detail: "fix PR #17635（merged 2026-10-08，issue #17642 同日 closed）：新增 resolve_indexer_kv_dtype / get_indexer_k_dtype，把 auto 解析成平台默认；非 A5 平台为 int8"
+
+    symptoms:
+      - "DeepSeek-V4 W4A8/W8A8 在 A2（910B）默认配置拉起：aclnnScatterNdUpdateSk 报 AclNN_Parameter_Error(EZ1001): updates dtype DT_INT8 should be same with varRef dtype DT_BFLOAT16"
+      - "显式 --attention-config '{\"indexer_kv_dtype\":\"int8\"}' 可启动；A5 默认不走这条路径"
+
+    quickly_check:
+      primary:
+        command_template: "grep -aE 'aclnnScatterNdUpdateSk|updates dtype DT_INT8 should be same with varRef dtype DT_BFLOAT16' {{log_path}}"
+        rank_selector: all_failed
+        expected: "regex:aclnnScatterNdUpdateSk|updates dtype DT_INT8 should be same with varRef dtype DT_BFLOAT16"
+      fallback:
+        command_template: "grep -aE 'EZ1001|AclNN_Parameter_Error|indexer_kv_dtype' {{log_path}}"
+        rank_selector: all_failed
+        expected: "regex:EZ1001|AclNN_Parameter_Error|indexer_kv_dtype"
+
+    diagnosis:
+      - step: 1
+        check: "报错是否为 aclnnScatterNdUpdateSk / EZ1001，且文本包含 updates dtype DT_INT8 should be same with varRef dtype DT_BFLOAT16？"
+        expected: "是——先查 dtype 一致性，不要先怀疑算子实现"
+      - step: 2
+        check: "平台是否为非 A5（如 A2-910B），且启动参数未显式给 indexer_kv_dtype？"
+        expected: "是——auto 在修复前会原样透传，非 A5 平台默认应为 int8"
+      - step: 3
+        check: "vllm-ascend 是否含 PR #17635（resolve_indexer_kv_dtype / get_indexer_k_dtype）？"
+        expected: "不含 → 升级；含 → 按第 4 步重试"
+      - step: 4
+        check: "临时规避：显式传 --attention-config '{\"indexer_kv_dtype\":\"int8\"}'"
+        expected: "服务可启动；升级含 #17635 的版本后恢复默认 auto"
+
+    severity: service-affecting
+    fix_side_effects: [requires-restart]
+    fix_type: code-patch
+
+    root_cause: >
+      indexer KV dtype 的 auto 没有被解析成平台默认。非 A5 平台默认应为 int8，但修复前
+      auto 原样透传到 ACLNN，导致 ScatterNdUpdate 的 updates（int8）与 varRef（bf16）
+      dtype 不一致，参数校验以 EZ1001 拒绝启动。PR #17635 新增 resolve_indexer_kv_dtype /
+      get_indexer_k_dtype，在进算子前按平台解析 auto。
+
+    fix: >
+      升级到含 PR #17635 的 vllm-ascend。升级前规避：显式传
+      --attention-config '{"indexer_kv_dtype":"int8"}'；不要靠改算子或关精度模式绕过。
+    rollback: "撤掉显式 indexer_kv_dtype 即回到修复前的 auto 透传路径（可复现）"
