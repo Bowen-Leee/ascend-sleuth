@@ -38,6 +38,7 @@ metrics/entry-activity.d/*.yaml merge=union
 #   总表还是**嵌套**结构（namespaces → ns → category → 条目列表），union 是行级文本合并——
 #   两人在同一格各加一条时，两段插入会被拼成不合法的 YAML（实测：parser 报 "expected <block end>"）。
 #   读侧视图（2026-09-29 起）已经是一层平铺的 `一行一条 case` 了，本来够格配 union；但**同一格的
-#   并发照样会在总表上撞一次**，所以配了也只省掉一半冲突——于是两处都保持没配，冲突动作不变：
-#   重跑生成器（`python3 scripts/build_index.py`，机械、无判断）。
+#   并发照样会在总表上撞一次**，所以配了也只省掉一半冲突——于是两处都保持没配。
+#   现在生成物不随 PR 提交，由主干 job 重建（有 CI 的部署）；无 CI 的部署若仍让 PR 带生成物，
+#   冲突动作是先还原到基线，再跑 `python3 scripts/rebuild_generated.py --check`。
 # 想彻底消掉它得把总表也压成一层平铺条目（自带 ns/category）——那是另一件事（要同时改面板与排序器）。

@@ -55,7 +55,7 @@ ascend-sleuth 是面向昇腾 NPU 训练与推理问题的诊断知识库。它�
 - case（Tier 2 条目）：一个问题的完整闭环，症状 → 检查 → 根因 → fix。沉淀在 `knowledge/`。
 - reference（先验知识层条目）：独立事实或方法论，如"507015 错误码含义"、"MoE 算子故障排查流程"。沉淀在 `references/`。
 - postmortem（Tier 3 底稿）：原始调查记录，未结构化。进 `postmortems/inbox/` 待审。
-- groom：周批维护，把待审草稿分诊、转正、重算置信度、重建索引。
+- groom：周批维护，把待审草稿分诊、转正、重算置信度；索引由主干 job 在合入后重建。
 - confidence：case 的可信度（0-1）。新 case 按调查质量给初始值，随用户反馈校准，详见第 4 节。
 - pre-triage：沉淀时预判新 case 是全新模式（`new_pattern`）、已有 case 的变体（`variant_of`）、还是已被覆盖（`covered_by`）。
 

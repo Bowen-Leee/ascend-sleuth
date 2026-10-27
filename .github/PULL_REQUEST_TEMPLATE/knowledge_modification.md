@@ -58,7 +58,7 @@ PR body 正文从首个 "## " 区块开始。
 
 - 影响范围：哪些症状匹配路径会变化
 - 回退方式：revert 本 PR 即可 / 其他（说明）
-- [ ] CI 绿：索引随本 PR 重建
+- [ ] 生成物不随本 PR 提交：索引由主干 job 重建（本地可跑 `python3 scripts/rebuild_generated.py --check` 预览）
 
 ## 关联更新（如适用）
 

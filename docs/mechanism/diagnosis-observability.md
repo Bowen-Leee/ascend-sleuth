@@ -281,7 +281,7 @@ flowchart TB
 | 3 汇总本机记录 | 按 id 折算本次增量与工具分布 | `scripts/trace_entry_activity.py` | 追加进条目使用记录（`kind: case` 的触达三态 / `kind: ref` / `kind: tool`）+ 本机明细 |
 | 4 算分 | 读记录计数与冷启动先验（条目还没有现场记录时用的初始分），算出每个条目的分数 | 新增 `scripts/score_entries.py` | 不落盘，作为第 5、6 步的输入 |
 | 5 复审与退休 | 按记录与分数改内容或存续 | `knowledge-groom` 的复审步骤 | 案例文件或 `_archive/` |
-| 6 索引重建 | 重建索引、算好的分数写进生成物，顺带出容量表 | `scripts/index_read_cost.py`、`scripts/build_index.py` | `knowledge/_index*` 生成物 |
+| 6 索引重建 | 合入后由主干 job 重建索引；算好的分数写进生成物，顺带出容量表 | `scripts/rebuild_generated.py`、`scripts/index_read_cost.py` | `knowledge/_index*` 生成物（PR 不提交） |
 | 7 组装本期读数 | 只做本期读数，周界那一次 | `scripts/metrics_snapshot.py` | `metrics/timeline.d/<期号>.yaml`（随后跑 `scripts/build_timeline.py` 重建聚合）|
 
 「降置信」不是单独一步。分数由第 4 步算出来，低分就是降置信的结果；第 5 步做的是内容层的事：复审、合并、退休、补样例。
@@ -399,7 +399,7 @@ id 本身可读。案例侧是 `VLLM-ASC-12430` 这类短标识，先验侧是 `
 
 1. 工程师回报时，轨迹记一条 `feedback{case, outcome, confirmed_at}`。渠道是续接时的追问，不改诊断流程。
 2. 知识整理收尾跑 `settle_trace_feedback.py --apply`。它按 `.settle-state.json` 的游标，把事件折进当期记录里对应 id 的行，累加 `resolved`、`misdiagnosed`、`self_resolved` 三个计数。
-3. 同一次整理里算分并重建索引，分数落在索引生成物里，案例文件不动。
+3. 同一次整理里算分；索引生成物由主干 job 在合入后重建，案例文件不动。
 4. 记录与索引都在 git 里，反馈照样入库；改变下次排序的是第 3 步。
 
 ```mermaid
@@ -408,7 +408,7 @@ flowchart LR
     R1["工程师回报<br/>解决 / 没解决"] --> T["轨迹<br/>feedback 事件"]
     T --> S["结算脚本<br/>按游标折算，事件哈希幂等"]
     S --> L["使用记录<br/>resolved / misdiagnosed / self_resolved"]
-    L --> C["算分并重建索引<br/>分数落在索引生成物"]
+    L --> C["算分；主干 job 重建索引<br/>分数落在索引生成物"]
     C --> O["下一轮候选排序"]
 
     classDef step fill:#e7f5ff,stroke:#1971c2,stroke-width:1.5px,color:#0b3d66

@@ -99,38 +99,34 @@ fork 负载类型的机制缺口写进 MR 描述或 issue，由维护者拿到�
 
 ### 1 开分支与进 worktree
 
-1. 从受保护的 `main` 开自己的 `kb/*` 分支。分支名全局唯一，同一分支同时只能被一个 worktree 检出。
+1. 从 `main` 开自己的 `kb/*` 分支。分支名全局唯一，同一分支同时只能被一个 worktree 检出。
 2. `git fetch origin` 确认最新。
 3. 按「多 agent 并行（worktree 约束）」建独立 worktree，确认自己在自己的 worktree 与分支。
 4. 收工前提交或 stash，清空工作区，不留未提交改动。
 
-### 2 生成物与源：改文件与分面提交
+### 2 生成物与源：谁写、什么时候写
 
-判据只有一条：这个文件的内容里有没有"会变的数字"，以及它是不是一层平铺的追加型结构。
+生成物（索引、路由聚合、reference 索引、timeline、条目使用记录）由脚本写，不由人写。分两种部署形态：
 
-- 有数字（条数 / 容量 / 日期）→ 数字一进 git，两人并发合并时要么落在同一行、要么漂移成错的数。
-  所以生成物里不写数字：要数字就现算（`python3 scripts/index_counts.py`）。
-- 一层平铺的追加型结构（每条 case 一行、每个性质一段）→ 可以配 `merge=union`：两边新增的都留住。
-- 嵌套结构（总表就是：namespaces → ns → category → 条目）→ 不能 union（实测会把 YAML 拼坏），
-  同一个格子的两人并发仍会冲突一次，解决动作是重跑生成器。读侧视图（`knowledge/_index/*.list`）
-  现在虽然是一层平铺行，但同一格的并发照样会在总表上冲突一次——所以两处都保持没配 union，
-  冲突动作没变（重跑一次生成器）。
+- **有 CI 的部署**：合入 main 后由 `rebuild-generated` job 跑 `python3 scripts/rebuild_generated.py --check`，有 diff 就提交。PR 只交源文件；`generated-guard` 挡住手改生成物。门是覆盖检查（能从源产出齐全生成物），不是逐字节相同。
+- **没有 CI 的部署**（内网 CodeHub 等）：没有这个 job 就不会自动重建。两条路选一条，并写进该部署的说明：
+  - **保留旧纪律**：PR 带生成物，提交前跑 `python3 scripts/rebuild_generated.py --check`，评审看生成物 diff；
+  - **合入后人工重建**：由人跑同一条命令并提交。必须有人负责；忘记的后果是新 case 不进索引、新路由词不生效，不是只慢一步。
 
-| 文件 | 谁提交 | 提交前跑什么 | 门（PR 与主干同一条） |
+生成物里不写数字（条数 / 容量 / 日期现算）仍是前提：数字一进 git，两人并发合并时要么落在同一行、要么漂移成错的数。路由性质文件走 `merge=union`，两人同一天加词两边都留；索引是嵌套结构，不配 union——有 CI 时由主干 job 整体重建，无 CI 时冲突了重跑生成器。
+
+| 文件 | 谁提交 | 提交前跑什么 | 门 |
 |---|---|---|---|
 | case 本体 `knowledge/<ns>/<cat>/*.yaml` | 人（PR） | — | `verify_case_draft.py --all` |
-| 读侧视图 + 总表 `knowledge/_index/…`（`.list` 一行一条 + `_index.yaml`） | 人（PR） | `python3 scripts/build_index.py` | `build_index.py --check`（覆盖检查：每条 case 的读侧行与总表条目都在、与内容对得上） |
+| 读侧视图 + 总表 `knowledge/_index/…` | 主干 job（有 CI）/ 人（无 CI） | `rebuild_generated.py` | `build_index.py --check`（覆盖检查：每条 case 的读侧行与总表条目都在、与内容对得上） |
 | 路由性质文件 `triage-tree.d/<性质>.yaml` | 人（PR） | — | `build_triage_tree.py --check-sources`（性质 id 唯一 / category 合法 / ≤30 性质 / 一性质一文件 / `<side>` 占位在 / 源清单无遗漏） |
 | 路由协议与清单 `triage-tree.d/00-protocol.md` | 人（PR） | — | 同上（`sources:` 决定拼接顺序与归属，`workload_types:` 是负载类型层的唯一写点） |
-| 路由聚合 `triage-tree.yaml` | 人（PR） | `python3 scripts/build_triage_tree.py` | `build_triage_tree.py --check-coverage`（源里每条症状组、负载类型层每个字段都在聚合里） |
+| 路由聚合 `triage-tree.yaml` | 主干 job（有 CI）/ 人（无 CI） | `build_triage_tree.py` | `build_triage_tree.py --check-coverage`（源里每条症状组、负载类型层每个字段都在聚合里） |
+| reference 索引 / timeline / 条目使用记录 | 主干 job（有 CI）/ 人（无 CI） | `rebuild_generated.py` | 各自 `--check` |
 
-合并完没有任何收尾动作——不需要谁再跑一次命令。这是"生成物里不写数字 + 路由层可 union +
-门改成覆盖检查"三件事一起带来的：
+有 CI 的部署合并不需要任何人再跑命令；没有 CI 的部署必须有人跑 `rebuild_generated.py --check` 并提交，或者保留“PR 带生成物”的旧纪律。两种纪律不要混用：混用时 `generated-guard` 会把带生成物的 PR 判红，而人工重建又没人负责。
 
-- 覆盖检查问的是"条目都在吗、与内容对得上吗"，不问"是否与重新生成一遍逐字节相同"。
-  逐字节会把 union 合并出来的、内容正确的文件判红，于是又逼人跑一遍命令——收益就没了。
-- 想归一化（顺序/注释回到生成器口径）随时跑一次生成器，那是可选的：
-  `build_index.py --check --canonical` 与 `build_triage_tree.py --check` 是那两个自检，不作门。
+覆盖检查问的是“条目都在吗、与内容对得上吗”，不问“是否与重新生成一遍逐字节相同”。想归一化（顺序/注释回到生成器口径）随时跑一次生成器，那是可选的：`build_index.py --check --canonical` 与 `build_triage_tree.py --check` 是那两个自检，不作门。
 
 ### 3 人读性与代号约定（审读面 / 存储面分离）
 
@@ -202,7 +198,7 @@ PR 经 required review 批准后合入受保护的 `main`。合并完没有任�
 1. `git fetch upstream && git merge upstream/main`，合并后 `git status`：冲突应只出现在「两边都写」那四个路径上；
 2. 只接收面出现冲突，说明 fork 改过它——还原上游那份，改动挪进反提 PR；
 3. 「每部署一份」保留本仓那份，「生成物」重新生成，都不逐行解；
-4. `python3 scripts/build_index.py --check` 与 `python3 scripts/verify_proposals.py --check` 应绿。
+4. `python3 scripts/rebuild_generated.py --check` 与 `python3 scripts/verify_proposals.py --check` 应绿（本地生成只作预览；有 CI 的部署由主干 job 提交生成物）。
 
 ## 4 怎么确认做对了
 
@@ -212,7 +208,7 @@ PR 经 required review 批准后合入受保护的 `main`。合并完没有任�
 
 | 闸门 | 机制 | 强度 |
 |---|---|---|
-| YAML 语法 + 索引新鲜度 | CI：`scripts/build_index.py --check`（顺带解析全部 case YAML） | 硬（红即挡 merge） |
+| YAML 语法 + 生成物新鲜度 | CI：PR 先跑 `rebuild_generated.py` 再跑各 `--check`；main 由 `rebuild-generated` job 重建并提交 | 硬（有 CI）；无 CI 的部署降为约定，靠人工重建 |
 | 命名空间变更审批 | `CODEOWNERS` + 分支保护 required review | 硬 |
 | 高风险双签 | `kb/high-risk` 标签 + CODEOWNERS 双组路径（每组至少一人批） | 半硬（两个 approval 是否来自两组需人核验，见下） |
 | 脱敏 / severity 纪律 | to-postmortem 流程 + groom 周批审抽查 | 约定 |
@@ -233,10 +229,10 @@ PR 经 required review 批准后合入受保护的 `main`。合并完没有任�
 
 ```bash
 pip install pyyaml
-python3 scripts/build_index.py --check
+python3 scripts/rebuild_generated.py --check
 ```
 
-两条命令在任何平台都能等价配置（GitLab CI 的 `.gitlab-ci.yml`、GitCode 流水线同理）。索引过期意味着变更不完整，比如修改了 case 却忘记重建索引，CI 直接置红。
+这条命令在任何平台都能等价配置：有 CI 就放在合入后的 job（GitHub 的写法见 `.github/workflows/rebuild-generated.yml`，GitLab / CodeHub 流水线调用同一个脚本即可）；没有 CI 就在合入后由人跑并提交。`--check` 会先重建再校验，不只是检查。没有 CI 又没人跑时，新 case 不会进索引、诊断看不见——这个失败形态不报错，比“CI 变红”更难发现。
 
 ### 触发分两层（改 CI 时两者都要照顾）
 
@@ -324,20 +320,20 @@ CI 侧只有机械切片：模板结构（`pr-template.yml`）、docs 名单与�
 
 ### 合并冲突：生成物与源
 
-冲突了怎么办——按文件类型处理，不需要判断"留哪份"：
+按文件类型处理，不需要判断“留哪份”：
 
 | 冲突文件 | 动作 |
 |---|---|
-| `triage-tree.d/<性质>.yaml`、`triage-tree.d/00-protocol.md`、`triage-tree.yaml` | 通常不会冲突（配了 `merge=union`）。若真出现冲突标记：把两份都留下、删掉三行标记，再跑一次聚合。 |
-| 总表 / 读侧视图（故意都没配 union） | 不要逐行解（总表的冲突段交错在条目块内部，删标记会拼出非法 YAML；读侧视图虽然是一行一条，但同一格并发仍会在总表上冲突）。正确动作是三行：`git checkout --theirs -- knowledge/_index.yaml knowledge/_index` → `python3 scripts/build_index.py` → `git add` 后提交。约 5 秒、无判断——两边都不接受，重生成一份对的。 |
+| `triage-tree.d/<性质>.yaml`、`triage-tree.d/00-protocol.md` | 通常不会冲突（配了 `merge=union`）。若真出现冲突标记：把两份都留下、删掉三行标记。聚合由主干 job 重建，不在 PR 里解。 |
+| 生成物（总表 / 读侧视图 / 路由聚合 / reference 索引） | 正常不会冲突：生成物不进 PR。旧分支若还带着生成物，把它还原到基线（`git checkout origin/main -- knowledge/_index.yaml knowledge/_index triage-tree.yaml …`），不要逐行解；有 CI 时合入后主干 job 会重建，无 CI 时本地跑 `python3 scripts/rebuild_generated.py --check` 后提交。 |
 | case 本体 | 真正需要人判断的只剩这里（同一 case 两人改）——按内容合。 |
 
-建议在平台上开启"合并前分支必须最新到主干"（设置项名字各平台不同）：这样索引冲突会落在提交者本地——他有检出、能跑生成器；不开启的话，冲突会落到合并者的网页冲突编辑器上，而网页上跑不了生成器，只能先选一边落下、再去本地重生成一次（多一次往返，且主干会短暂红）。
+有 CI 时建议开启“合并前分支必须最新到主干”：它不会再把索引冲突丢给提交者（生成物已不在 PR 里），只会让内容冲突在合入前暴露。
 
 为什么这么做（可复跑的实验在 `tests/test_concurrent_submit.py`，`python3 tests/test_concurrent_submit.py`
 会打印一张对比表）：三人并发、同一个框架时，改前冲突在总表 + 分片 + 路由单文件上，其中路由文件的冲突
 要人判断留哪份（判断错就静默少一条路由词）；改后判断冲突为 0。三人各改不同框架（常见形态）时，
-改后一次都不冲突。同一个格子的并发仍会冲突在索引文件，但那一类冲突的动作是重跑一条命令（机械、无判断）。
+改后一次都不冲突。生成物改由主干 job 重建后，同一个格子的并发也不再需要提交者重建。
 
 ### CI 静默不上报
 
@@ -350,5 +346,5 @@ CI 侧只有机械切片：模板结构（`pr-template.yml`）、docs 名单与�
 
 - 未合入的改动：`git worktree remove ../ascend-sleuth-s<session>` 清理 worktree；收工前提交或 stash，不留未提交改动。
 - fork 首次同步冲突：只接收面还原上游那份，把改动挪进反提 PR；「每部署一份」保留本仓那份；「生成物」重新生成。
-- 生成物冲突：重跑 `python3 scripts/build_index.py`（总表与读侧视图）或 `python3 scripts/build_triage_tree.py`（路由聚合），不逐行解。
+- 生成物冲突：先还原到基线；有 CI 由主干 job 重建，无 CI 跑 `python3 scripts/rebuild_generated.py --check` 后提交。
 - 已合入改动的回滚不在本文范围。

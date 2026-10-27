@@ -54,7 +54,7 @@ PR body 正文从首个 "## " 区块开始。
 
 ## 完整性（机器校验）
 
-- [ ] CI 绿：`build_index.py --check`（索引已随本 PR 重建：分片 + 总表）
+- [ ] 生成物不随本 PR 提交：CI 先生成再检查（`build_index.py --check`），索引由主干 job 重建
 - [ ] postmortem 落位 `postmortems/YYYY-QN/`（covered 也转正，不是丢弃）
 - [ ] 新 case 照 `examples/sample-case.yaml` 模板，category 形态未混用
 
