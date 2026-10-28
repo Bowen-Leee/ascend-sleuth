@@ -117,6 +117,8 @@ python3 scripts/evolve_mode.py --json      # → {"mode": "full" | "record-only"
 > ```
 >
 > 台账随 PR 提交（`proposals/signals/`，一条信号一个文件）。收尾说明里给出台账条数，并提示拿批的人可以跑 `python3 scripts/evolve_signals.py export` 生成可粘贴的 issue / MR 描述。后续步骤（查重、产骨架、验证门、judgement）整段跳过。
+>
+> **只记现场，不做验证**：本档不跑实验、不设计验证、不写预测与目标值。已经跑过的命令与输出可以写进 `--evidence`，没跑过的不许编——下游凑出来的判据上游不会采信，反而把「现象」污染成「结论」。判优先级、读组件、写 `measure`、跑验证都在上游手动跑深度轮时做。
 
 
 1. **先读候选水位**（产卡前的机械检查，别靠自觉）：`python3 scripts/ev_proposal.py --waterline`

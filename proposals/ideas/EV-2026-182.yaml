@@ -54,6 +54,10 @@ decisions:
     type: eval
     conclusion: 9 个单测通过（去重、改证据即新条目、导出形态、since 过滤、坏文件退 2）；proposal 校验通过；measure 实跑 PASS
   - who: agent
+    when: 2026-10-28
+    type: action
+    conclusion: 补一条边界进 SKILL 与台账 README——下游只记现象与出处，不做实验、不做验证、不写预测；已跑过的命令可写进 evidence，没跑过的不许编
+  - who: agent
     when: 2026-10-27
     type: decision
     conclusion: 采纳（validated）——交接从「人复制」变成「仓库里可提交的文件 + 一条导出命令」
